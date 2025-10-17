@@ -25,3 +25,9 @@ export async function uploadExcel(formData: FormData) {
 export async function getData() {
   return globalData;
 }
+
+
+export async function clearData() {
+  globalData = null;
+  return { success: true };
+}
