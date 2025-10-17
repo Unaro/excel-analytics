@@ -226,70 +226,119 @@ const insertFieldIntoFormula = (fieldName: string) => {
     );
   }
 
-    const numericFields = fieldsInfo.filter(f => f.type === 'number' && f.isAllowedInFormulas);
-    const textFields = fieldsInfo.filter(f => f.type === 'text' || !f.isAllowedInFormulas);
-    const mixedFields = fieldsInfo.filter(f => f.type === 'mixed');
+    const numericFields = fieldsInfo.filter(f => 
+    f.isAllowedInFormulas && f.type === 'number'
+    );
 
+    const categoricalFields = fieldsInfo.filter(f => 
+    !f.isAllowedInFormulas && f.numericCount > 0
+    );
+
+    const textFields = fieldsInfo.filter(f => 
+    (f.type === 'text' && f.isAllowedInFormulas) ||
+    (!f.isAllowedInFormulas && f.numericCount === 0)
+    );
+
+    const mixedFields = fieldsInfo.filter(f => 
+    f.type === 'mixed' && f.isAllowedInFormulas
+    );
   return (
     <div className="flex gap-6">
       {/* Боковая панель с полями */}
       {showFieldsPanel && (
         <div className="w-80 bg-white rounded-lg shadow-lg p-4 h-fit sticky top-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold">Доступные поля</h2>
-            <button
-              onClick={() => setShowFieldsPanel(false)}
-              className="text-gray-500 hover:text-gray-700"
-            >
-              ✕
-            </button>
-          </div>
+            <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Доступные поля</h2>
+                <button
+                onClick={() => setShowFieldsPanel(false)}
+                className="text-gray-500 hover:text-gray-700"
+                >
+                ✕
+                </button>
+            </div>
 
-          <div className="space-y-4">
-            {/* Числовые поля */}
+            <div className="space-y-4">
+            {/* Числовые поля - доступны для формул */}
             {numericFields.length > 0 && (
-              <div>
+                <div>
                 <div className="flex items-center gap-2 text-sm font-medium text-green-700 mb-2">
-                  <Hash size={16} />
-                  <span>Числовые поля ({numericFields.length})</span>
+                    <Hash size={16} />
+                    <span>Числовые поля ({numericFields.length})</span>
                 </div>
                 <div className="space-y-1">
-                  {numericFields.map((field) => (
+                    {numericFields.map((field) => (
                     <div key={field.name} className="border border-green-200 rounded">
-                      <button
+                        <button
                         onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
                         className="w-full px-3 py-2 text-left text-sm hover:bg-green-50 rounded flex items-center justify-between"
-                      >
+                        >
                         <span className="font-mono text-xs truncate flex-1">{field.name}</span>
                         {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
-                      
-                      {expandedField === field.name && (
+                        </button>
+                        
+                        {expandedField === field.name && (
                         <div className="px-3 py-2 bg-green-50 border-t border-green-200 text-xs space-y-1">
-                          <p><strong>Мин:</strong> {field.min?.toFixed(2)}</p>
-                          <p><strong>Макс:</strong> {field.max?.toFixed(2)}</p>
-                          <p><strong>Среднее:</strong> {field.avg?.toFixed(2)}</p>
-                          <p><strong>Значений:</strong> {field.numericCount}</p>
-                          <button
+                            <p><strong>Мин:</strong> {field.min?.toFixed(2)}</p>
+                            <p><strong>Макс:</strong> {field.max?.toFixed(2)}</p>
+                            <p><strong>Среднее:</strong> {field.avg?.toFixed(2)}</p>
+                            <p><strong>Значений:</strong> {field.numericCount}</p>
+                            <button
                             onClick={() => insertFieldIntoFormula(field.name)}
                             className="mt-2 w-full px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
-                          >
+                            >
                             Вставить в формулу
-                          </button>
+                            </button>
                         </div>
-                      )}
+                        )}
                     </div>
-                  ))}
+                    ))}
                 </div>
-              </div>
+                </div>
+            )}
+
+            {/* Категориальные поля - НЕ доступны для формул */}
+            {categoricalFields.length > 0 && (
+                <div>
+                <div className="flex items-center gap-2 text-sm font-medium text-orange-700 mb-2">
+                    <Info size={16} />
+                    <span>Категориальные поля ({categoricalFields.length})</span>
+                </div>
+                <div className="space-y-1">
+                    {categoricalFields.map((field) => (
+                    <div key={field.name} className="border border-orange-200 rounded bg-orange-50">
+                        <button
+                        onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-orange-100 rounded flex items-center justify-between"
+                        >
+                        <span className="font-mono text-xs truncate flex-1">{field.name}</span>
+                        {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                        
+                        {expandedField === field.name && (
+                        <div className="px-3 py-2 bg-orange-100 border-t border-orange-200 text-xs space-y-1">
+                            <p><strong>Числовых значений:</strong> {field.numericCount} из {field.totalCount}</p>
+                            <div className="mt-2 p-2 bg-white rounded border border-orange-300">
+                            <p className="text-orange-800">
+                                ⚠️ Недоступно для формул (категориальный тип)
+                            </p>
+                            <p className="text-gray-600 mt-1">
+                                Используется для фильтрации и группировки
+                            </p>
+                            </div>
+                        </div>
+                        )}
+                    </div>
+                    ))}
+                </div>
+                </div>
             )}
 
             {/* Текстовые поля */}
             {textFields.length > 0 && (
-              <div>
+                <div>
                 <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-2">
-                  <Type size={16} />
-                  <span>Текстовые поля ({textFields.length})</span>
+                    <Type size={16} />
+                    <span>Текстовые поля ({textFields.length})</span>
                 </div>
                 <div className="space-y-1">
                     {textFields.map((field) => (
@@ -312,9 +361,9 @@ const insertFieldIntoFormula = (fieldName: string) => {
                             </ul>
                             <p className="mt-2"><strong>Всего:</strong> {field.totalCount} значений</p>
                             {!field.isAllowedInFormulas && (
-                            <div className="mt-2 p-2 bg-yellow-100 rounded text-yellow-800">
-                                <p className="text-xs">
-                                ⚠️ Недоступно для формул. Настройте тип в разделе "Настройки"
+                            <div className="mt-2 p-2 bg-yellow-100 rounded">
+                                <p className="text-yellow-800 text-xs">
+                                ⚠️ Недоступно для формул
                                 </p>
                             </div>
                             )}
@@ -323,50 +372,58 @@ const insertFieldIntoFormula = (fieldName: string) => {
                     </div>
                     ))}
                 </div>
-              </div>
+                </div>
             )}
 
             {/* Смешанные поля */}
             {mixedFields.length > 0 && (
-              <div>
-                <div className="flex items-center gap-2 text-sm font-medium text-orange-700 mb-2">
-                  <Info size={16} />
-                  <span>Смешанные поля ({mixedFields.length})</span>
+                <div>
+                <div className="flex items-center gap-2 text-sm font-medium text-purple-700 mb-2">
+                    <Info size={16} />
+                    <span>Смешанные поля ({mixedFields.length})</span>
                 </div>
                 <div className="space-y-1">
-                  {mixedFields.map((field) => (
-                    <div key={field.name} className="border border-orange-200 rounded">
-                      <button
+                    {mixedFields.map((field) => (
+                    <div key={field.name} className="border border-purple-200 rounded">
+                        <button
                         onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-orange-50 rounded flex items-center justify-between"
-                      >
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 rounded flex items-center justify-between"
+                        >
                         <span className="font-mono text-xs truncate flex-1">{field.name}</span>
                         {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
-                      
-                      {expandedField === field.name && (
-                        <div className="px-3 py-2 bg-orange-50 border-t border-orange-200 text-xs space-y-1">
-                          <p><strong>Числовых:</strong> {field.numericCount} из {field.totalCount}</p>
-                          {field.min !== undefined && (
+                        </button>
+                        
+                        {expandedField === field.name && (
+                        <div className="px-3 py-2 bg-purple-50 border-t border-purple-200 text-xs space-y-1">
+                            <p><strong>Числовых:</strong> {field.numericCount} из {field.totalCount}</p>
+                            {field.min !== undefined && field.isAllowedInFormulas && (
                             <>
-                              <p><strong>Мин:</strong> {field.min.toFixed(2)}</p>
-                              <p><strong>Макс:</strong> {field.max?.toFixed(2)}</p>
+                                <p><strong>Мин:</strong> {field.min.toFixed(2)}</p>
+                                <p><strong>Макс:</strong> {field.max?.toFixed(2)}</p>
+                                <button
+                                onClick={() => insertFieldIntoFormula(field.name)}
+                                className="mt-2 w-full px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs"
+                                >
+                                Вставить в формулу
+                                </button>
                             </>
-                          )}
-                          <button
-                            onClick={() => insertFieldIntoFormula(field.name)}
-                            className="mt-2 w-full px-2 py-1 bg-orange-600 text-white rounded hover:bg-orange-700 text-xs"
-                          >
-                            Вставить в формулу
-                          </button>
+                            )}
+                            {!field.isAllowedInFormulas && (
+                            <div className="mt-2 p-2 bg-yellow-100 rounded">
+                                <p className="text-yellow-800 text-xs">
+                                ⚠️ Недоступно для формул. Настройте в разделе "Настройки"
+                                </p>
+                            </div>
+                            )}
                         </div>
-                      )}
+                        )}
                     </div>
-                  ))}
+                    ))}
                 </div>
-              </div>
+                </div>
             )}
-          </div>
+            </div>
+
 
           {/* Справка по формулам */}
           <div className="mt-6 p-3 bg-gray-100 rounded text-xs">
