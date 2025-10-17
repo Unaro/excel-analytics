@@ -2,13 +2,12 @@ import { ColumnMetadata, DatasetMetadata, ColumnDataType } from '@/types';
 
 const METADATA_STORAGE_KEY = 'datasetMetadata';
 
-// Автоматическое определение типа данных
-export function detectColumnType(values: any[]): 'number' | 'text' | 'mixed' {
+export function detectColumnType(values: (string | number | boolean | null)[]): 'number' | 'text' | 'mixed' {
   const nonNullValues = values.filter(v => v !== null && v !== undefined && v !== '');
   
   if (nonNullValues.length === 0) return 'text';
   
-  const numericValues = nonNullValues.filter(v => !isNaN(parseFloat(v)));
+  const numericValues = nonNullValues.filter(v => !isNaN(parseFloat(String(v))));
   const numericRatio = numericValues.length / nonNullValues.length;
   
   if (numericRatio === 1) return 'number';
@@ -16,13 +15,11 @@ export function detectColumnType(values: any[]): 'number' | 'text' | 'mixed' {
   return 'text';
 }
 
-// Предложение типа данных на основе автоопределения
 export function suggestDataType(autoDetectedType: 'number' | 'text' | 'mixed'): ColumnDataType {
   if (autoDetectedType === 'number') return 'numeric';
   return 'text';
 }
 
-// Сохранение метаданных
 export function saveMetadata(metadata: DatasetMetadata): void {
   try {
     const existing = getAllMetadata();
@@ -40,7 +37,6 @@ export function saveMetadata(metadata: DatasetMetadata): void {
   }
 }
 
-// Получение всех метаданных
 export function getAllMetadata(): DatasetMetadata[] {
   try {
     const data = localStorage.getItem(METADATA_STORAGE_KEY);
@@ -51,17 +47,15 @@ export function getAllMetadata(): DatasetMetadata[] {
   }
 }
 
-// Получение метаданных для конкретного листа
 export function getMetadataForSheet(sheetName: string): DatasetMetadata | null {
   const allMetadata = getAllMetadata();
   return allMetadata.find(m => m.sheetName === sheetName) || null;
 }
 
-// Создание начальных метаданных из данных
 export function createInitialMetadata(
   sheetName: string,
   headers: string[],
-  rows: any[]
+  rows: Record<string, string | number | boolean | null>[]
 ): DatasetMetadata {
   const columns: ColumnMetadata[] = headers.map((header) => {
     const values = rows.map(row => row[header]);
@@ -83,7 +77,6 @@ export function createInitialMetadata(
   };
 }
 
-// Обновление типа колонки
 export function updateColumnType(
   sheetName: string,
   columnName: string,
@@ -102,7 +95,6 @@ export function updateColumnType(
   saveMetadata(metadata);
 }
 
-// Получение списка колонок, доступных для формул
 export function getFormulaAllowedColumns(sheetName: string): string[] {
   const metadata = getMetadataForSheet(sheetName);
   if (!metadata) return [];

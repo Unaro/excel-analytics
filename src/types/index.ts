@@ -25,27 +25,6 @@ export interface SheetData {
   rows: ExcelRow[];
 }
 
-export interface GroupResult {
-  groupId: string;
-  groupName: string;
-  filters: FilterCondition[];
-  indicators: {
-    name: string;
-    formula: string;
-    value: number;
-  }[];
-  rowCount: number;
-  timestamp: number;
-}
-
-export interface DashboardMetric {
-  label: string;
-  value: number;
-  unit?: string;
-  trend?: number;
-  status?: 'positive' | 'negative' | 'neutral';
-}
-
 export type ColumnDataType = 'numeric' | 'categorical' | 'text' | 'date';
 
 export interface ColumnMetadata {
