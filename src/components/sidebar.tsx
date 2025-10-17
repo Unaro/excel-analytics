@@ -8,8 +8,10 @@ const menuItems = [
   { href: '/', label: 'Главная', icon: Home },
   { href: '/data', label: 'Данные', icon: Table },
   { href: '/groups', label: 'Группы показателей', icon: Layers },
+  { href: '/dashboard', label: 'Дашборд', icon: BarChart3 },
   { href: '/statistics', label: 'Статистика', icon: BarChart3 },
 ];
+
 
 export default function Sidebar() {
   const pathname = usePathname();

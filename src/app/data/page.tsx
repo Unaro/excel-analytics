@@ -62,27 +62,29 @@ export default function DataPage() {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
   };
 
-  // Экспорт в CSV
-  const exportToCSV = () => {
+    // Экспорт в CSV с корректной кодировкой
+    const exportToCSV = () => {
     if (!sheets || sheets.length === 0) return;
     
     const currentSheet = sheets[selectedSheet];
     const csvContent = [
-      currentSheet.headers.join(','),
-      ...filteredRows.map((row: any) => 
+        currentSheet.headers.join(','),
+        ...filteredRows.map((row: any) => 
         currentSheet.headers.map((header: string) => {
-          const value = row[header];
-          return value !== null && value !== undefined ? `"${value}"` : '';
+            const value = row[header];
+            return value !== null && value !== undefined ? `"${value}"` : '';
         }).join(',')
-      )
+        )
     ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // Добавляем UTF-8 BOM для корректного отображения кириллицы в Excel
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `${currentSheet.sheetName}_export.csv`;
     link.click();
-  };
+    };
 
   if (loading) {
     return (

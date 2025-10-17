@@ -153,29 +153,36 @@ export default function GroupsPage() {
     setNewIndicators(newIndicators.filter(i => i.id !== id));
   };
 
-  const createGroup = () => {
-    if (newGroupName && newIndicators.length > 0) {
-      setGroups([
-        ...groups,
-        {
-          id: Date.now().toString(),
-          name: newGroupName,
-          filters: [...newFilters],
-          indicators: [...newIndicators],
-        },
-      ]);
-      setNewGroupName('');
-      setNewFilters([]);
-      setNewIndicators([]);
-    }
-  };
+const createGroup = () => {
+if (newGroupName && newIndicators.length > 0) {
+    const newGroup = {
+    id: Date.now().toString(),
+    name: newGroupName,
+    filters: [...newFilters],
+    indicators: [...newIndicators],
+    };
+    
+    const updatedGroups = [...groups, newGroup];
+    setGroups(updatedGroups);
+    
+    // Сохраняем в localStorage для использования в дашборде
+    localStorage.setItem('analyticsGroups', JSON.stringify(updatedGroups));
+    
+    setNewGroupName('');
+    setNewFilters([]);
+    setNewIndicators([]);
+}
+};
 
-  const deleteGroup = (id: string) => {
-    setGroups(groups.filter(g => g.id !== id));
-  };
+const deleteGroup = (id: string) => {
+const updatedGroups = groups.filter(g => g.id !== id);
+setGroups(updatedGroups);
 
-  // Вставка поля в формулу
-  const insertFieldIntoFormula = (fieldName: string) => {
+// Обновляем localStorage
+localStorage.setItem('analyticsGroups', JSON.stringify(updatedGroups));
+};
+// Вставка поля в формулу
+const insertFieldIntoFormula = (fieldName: string) => {
     const input = formulaInputRef.current;
     if (input) {
       const start = input.selectionStart || 0;
