@@ -111,7 +111,7 @@ export default function DataPage() {
   const currentSheet = sheets[selectedSheet];
 
   return (
-    <div className="max-w-full">
+    <div className="max-w-7xl mx-auto">
       <div className="mb-6">
         <h1 className="text-3xl font-bold mb-2">Данные из Excel</h1>
         <p className="text-gray-600">
@@ -191,19 +191,20 @@ export default function DataPage() {
         </div>
       </div>
 
-      {/* Таблица */}
+      {/* Таблица с ограниченной шириной и скроллом */}
       <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Контейнер для горизонтального скролла */}
+        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
           <table className="w-full border-collapse">
-            <thead>
+            <thead className="sticky top-0 z-20">
               <tr className="bg-gradient-to-r from-gray-800 to-gray-700 text-white">
-                <th className="px-4 py-3 text-left font-semibold text-sm sticky left-0 bg-gray-800 z-10">
+                <th className="px-4 py-3 text-left font-semibold text-sm sticky left-0 bg-gray-800 z-30 border-r border-gray-600">
                   #
                 </th>
                 {currentSheet.headers.map((header: string, index: number) => (
                   <th 
                     key={index} 
-                    className="px-4 py-3 text-left font-semibold text-sm whitespace-nowrap"
+                    className="px-4 py-3 text-left font-semibold text-sm whitespace-nowrap min-w-[150px]"
                   >
                     {header}
                   </th>
@@ -220,13 +221,13 @@ export default function DataPage() {
                       hover:bg-blue-50 transition-colors border-b border-gray-200
                     `}
                   >
-                    <td className="px-4 py-3 text-sm font-medium text-gray-600 sticky left-0 bg-inherit">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-600 sticky left-0 bg-inherit z-10 border-r border-gray-200">
                       {startIndex + rowIndex + 1}
                     </td>
                     {currentSheet.headers.map((header: string, colIndex: number) => (
                       <td 
                         key={colIndex} 
-                        className="px-4 py-3 text-sm text-gray-800 whitespace-nowrap"
+                        className="px-4 py-3 text-sm text-gray-800"
                       >
                         {row[header] !== null && row[header] !== undefined 
                           ? String(row[header]) 
@@ -257,10 +258,10 @@ export default function DataPage() {
         {/* Пагинация */}
         {filteredRows.length > 0 && (
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
               {/* Выбор количества строк */}
               <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-700">Строк на странице:</label>
+                <label className="text-sm text-gray-700 whitespace-nowrap">Строк на странице:</label>
                 <select
                   value={rowsPerPage}
                   onChange={(e) => {
@@ -277,21 +278,21 @@ export default function DataPage() {
               </div>
 
               {/* Информация о текущей странице */}
-              <div className="text-sm text-gray-700">
+              <div className="text-sm text-gray-700 text-center">
                 Показано <span className="font-semibold">{startIndex + 1}</span> - 
                 <span className="font-semibold"> {Math.min(endIndex, filteredRows.length)}</span> из 
                 <span className="font-semibold"> {filteredRows.length}</span> строк
               </div>
 
               {/* Кнопки навигации */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 <button
                   onClick={() => goToPage(1)}
                   disabled={currentPage === 1}
                   className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   title="Первая страница"
                 >
-                  <ChevronsLeft size={20} />
+                  <ChevronsLeft size={18} />
                 </button>
                 
                 <button
@@ -300,11 +301,11 @@ export default function DataPage() {
                   className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   title="Предыдущая"
                 >
-                  <ChevronLeft size={20} />
+                  <ChevronLeft size={18} />
                 </button>
 
                 {/* Номера страниц */}
-                <div className="flex items-center gap-1">
+                <div className="hidden sm:flex items-center gap-1">
                   {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                     let pageNum;
                     if (totalPages <= 5) {
@@ -322,7 +323,7 @@ export default function DataPage() {
                         key={i}
                         onClick={() => goToPage(pageNum)}
                         className={`
-                          w-10 h-10 rounded-lg font-medium text-sm transition-colors
+                          w-9 h-9 rounded-lg font-medium text-sm transition-colors
                           ${currentPage === pageNum
                             ? 'bg-blue-600 text-white'
                             : 'border border-gray-300 hover:bg-gray-100'
@@ -335,13 +336,18 @@ export default function DataPage() {
                   })}
                 </div>
 
+                {/* Мобильный индикатор страницы */}
+                <div className="sm:hidden px-3 py-2 text-sm font-medium">
+                  {currentPage} / {totalPages}
+                </div>
+
                 <button
                   onClick={() => goToPage(currentPage + 1)}
                   disabled={currentPage === totalPages}
                   className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   title="Следующая"
                 >
-                  <ChevronRight size={20} />
+                  <ChevronRight size={18} />
                 </button>
                 
                 <button
@@ -350,7 +356,7 @@ export default function DataPage() {
                   className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   title="Последняя страница"
                 >
-                  <ChevronsRight size={20} />
+                  <ChevronsRight size={18} />
                 </button>
               </div>
             </div>
