@@ -1,4 +1,7 @@
 import * as XLSX from 'xlsx';
+import { create, all } from 'mathjs';
+
+const math = create(all);
 
 export async function parseExcelFile(file: File): Promise<{
   sheetName: string;
@@ -31,62 +34,84 @@ export async function parseExcelFile(file: File): Promise<{
   return sheets;
 }
 
-export function calculateGroupMetrics(
+// Фильтрация данных по условиям
+export function applyFilters(
   rows: any[],
-  indicators: string[]
-): { [key: string]: number } {
-  const metrics: { [key: string]: number } = {};
-  
-  indicators.forEach(indicator => {
-    const values = rows
-      .map(row => parseFloat(row[indicator]))
-      .filter(val => !isNaN(val));
-    
-    if (values.length > 0) {
-      metrics[`${indicator}_sum`] = values.reduce((a, b) => a + b, 0);
-      metrics[`${indicator}_avg`] = metrics[`${indicator}_sum`] / values.length;
-      metrics[`${indicator}_min`] = Math.min(...values);
-      metrics[`${indicator}_max`] = Math.max(...values);
-      metrics[`${indicator}_count`] = values.length;
-    }
+  filters: Array<{
+    column: string;
+    operator: string;
+    value: any;
+  }>
+): any[] {
+  return rows.filter(row => {
+    return filters.every(filter => {
+      const cellValue = row[filter.column];
+      const filterValue = filter.value;
+      
+      switch (filter.operator) {
+        case '=':
+          return String(cellValue).toLowerCase() === String(filterValue).toLowerCase();
+        case '>':
+          return parseFloat(cellValue) > parseFloat(filterValue);
+        case '<':
+          return parseFloat(cellValue) < parseFloat(filterValue);
+        case '>=':
+          return parseFloat(cellValue) >= parseFloat(filterValue);
+        case '<=':
+          return parseFloat(cellValue) <= parseFloat(filterValue);
+        case '!=':
+          return String(cellValue).toLowerCase() !== String(filterValue).toLowerCase();
+        case 'contains':
+          return String(cellValue).toLowerCase().includes(String(filterValue).toLowerCase());
+        default:
+          return true;
+      }
+    });
   });
-  
-  return metrics;
 }
 
-export function applyStatisticsRule(
-  rows: any[],
-  column: string,
-  condition: string,
-  value: any,
-  aggregation: string
+// Вычисление формулы с использованием mathjs
+export function evaluateFormula(
+  formula: string,
+  filteredRows: any[],
+  availableColumns: string[]
 ): number {
-  const filteredRows = rows.filter(row => {
-    const cellValue = row[column];
-    switch (condition) {
-      case '=': return cellValue == value;
-      case '>': return parseFloat(cellValue) > parseFloat(value);
-      case '<': return parseFloat(cellValue) < parseFloat(value);
-      case '>=': return parseFloat(cellValue) >= parseFloat(value);
-      case '<=': return parseFloat(cellValue) <= parseFloat(value);
-      case '!=': return cellValue != value;
-      case 'contains': return String(cellValue).includes(String(value));
-      default: return false;
-    }
-  });
-  
-  const numericValues = filteredRows
+  try {
+    // Подготовка данных для формулы
+    const scope: any = {};
+    
+    // Создаем массивы значений для каждой колонки
+    availableColumns.forEach(column => {
+      const values = filteredRows
+        .map(row => {
+          const val = row[column];
+          return val !== null && val !== undefined ? parseFloat(val) : null;
+        })
+        .filter(val => val !== null && !isNaN(val as number));
+      
+      scope[column] = values;
+    });
+    
+    // Добавляем агрегационные функции
+    scope.SUM = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
+    scope.AVG = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    scope.COUNT = (arr: number[]) => arr.length;
+    scope.MIN = (arr: number[]) => arr.length > 0 ? Math.min(...arr) : 0;
+    scope.MAX = (arr: number[]) => arr.length > 0 ? Math.max(...arr) : 0;
+    
+    // Вычисляем формулу
+    const result = math.evaluate(formula, scope);
+    
+    return typeof result === 'number' ? result : 0;
+  } catch (error) {
+    console.error('Ошибка вычисления формулы:', error);
+    return 0;
+  }
+}
+
+// Получить значение одного столбца из отфильтрованных строк
+export function getColumnValues(rows: any[], column: string): number[] {
+  return rows
     .map(row => parseFloat(row[column]))
     .filter(val => !isNaN(val));
-  
-  switch (aggregation) {
-    case 'sum': return numericValues.reduce((a, b) => a + b, 0);
-    case 'count': return filteredRows.length;
-    case 'avg': return numericValues.length > 0 
-      ? numericValues.reduce((a, b) => a + b, 0) / numericValues.length 
-      : 0;
-    case 'min': return Math.min(...numericValues);
-    case 'max': return Math.max(...numericValues);
-    default: return 0;
-  }
 }

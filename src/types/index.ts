@@ -2,18 +2,21 @@ export interface ExcelRow {
   [key: string]: string | number | boolean | null;
 }
 
+export interface FilterCondition {
+  id: string;
+  column: string;
+  operator: '=' | '>' | '<' | '>=' | '<=' | '!=' | 'contains';
+  value: string | number;
+}
+
 export interface GroupDefinition {
   id: string;
   name: string;
-  indicators: string[];
-  formula?: string;
-}
-
-export interface StatisticsRule {
-  column: string;
-  condition: string;
-  value: string | number;
-  aggregation: 'sum' | 'count' | 'avg' | 'min' | 'max';
+  filters: FilterCondition[];
+  indicators: {
+    name: string;
+    formula: string;
+  }[];
 }
 
 export interface SheetData {
