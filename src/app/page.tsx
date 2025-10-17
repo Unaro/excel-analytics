@@ -1,103 +1,92 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useState } from 'react';
+import { uploadExcel } from './actions/excel';
+import { Upload } from 'lucide-react';
+
+export default function HomePage() {
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  async function handleFileUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    if (!event.target.files || event.target.files.length === 0) {
+      return;
+    }
+
+    const file = event.target.files[0];
+    setUploading(true);
+    setMessage('');
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const result = await uploadExcel(formData);
+      
+      if (result.error) {
+        setMessage(`Ошибка: ${result.error}`);
+      } else {
+        setMessage(`Успешно загружено ${result.data?.length} листов`);
+      }
+    } catch (error) {
+      setMessage('Произошла ошибка при загрузке файла');
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+    <div className="max-w-4xl">
+      <h1 className="text-4xl font-bold mb-6">Загрузка Excel файла</h1>
+      
+      <div className="bg-white rounded-lg shadow-lg p-8">
+        <label
+          htmlFor="file-upload"
+          className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+            <Upload className="w-12 h-12 mb-4 text-gray-400" />
+            <p className="mb-2 text-lg text-gray-700">
+              <span className="font-semibold">Нажмите для загрузки</span> или перетащите файл
+            </p>
+            <p className="text-sm text-gray-500">Excel файлы (.xlsx, .xls)</p>
+          </div>
+          <input
+            id="file-upload"
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleFileUpload}
+            disabled={uploading}
+            className="hidden"
+          />
+        </label>
+        
+        {uploading && (
+          <div className="mt-4 text-center text-blue-600">
+            Загрузка файла...
+          </div>
+        )}
+        
+        {message && (
+          <div className={`mt-4 p-4 rounded ${
+            message.includes('Ошибка') 
+              ? 'bg-red-100 text-red-700' 
+              : 'bg-green-100 text-green-700'
+          }`}>
+            {message}
+          </div>
+        )}
+      </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+        <h2 className="text-xl font-semibold mb-3">Инструкция</h2>
+        <ol className="list-decimal list-inside space-y-2 text-gray-700">
+          <li>Загрузите Excel файл с данными</li>
+          <li>Перейдите в раздел "Данные" для просмотра таблицы</li>
+          <li>Создайте группы показателей во вкладке "Группы показателей"</li>
+          <li>Настройте статистические расчёты в разделе "Статистика"</li>
+        </ol>
+      </div>
     </div>
   );
 }
