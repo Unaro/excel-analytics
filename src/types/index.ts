@@ -45,3 +45,19 @@ export interface DashboardMetric {
   trend?: number;
   status?: 'positive' | 'negative' | 'neutral';
 }
+
+export type ColumnDataType = 'numeric' | 'categorical' | 'text' | 'date';
+
+export interface ColumnMetadata {
+  name: string;
+  dataType: ColumnDataType;
+  autoDetectedType: 'number' | 'text' | 'mixed';
+  description?: string;
+  allowInFormulas: boolean;
+}
+
+export interface DatasetMetadata {
+  sheetName: string;
+  columns: ColumnMetadata[];
+  lastModified: number;
+}

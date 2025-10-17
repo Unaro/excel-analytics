@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { getData } from '../actions/excel';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import { Plus, Trash2, Filter, Hash, Type, ChevronDown, ChevronUp, Info } from 'lucide-react';
+import { getFormulaAllowedColumns, getMetadataForSheet } from '@/lib/metadata-manager';
 
 interface FilterCondition {
   id: string;
@@ -31,6 +32,7 @@ interface FieldInfo {
   sampleValues: any[];
   numericCount: number;
   totalCount: number;
+  isAllowedInFormulas: boolean;
   min?: number;
   max?: number;
   avg?: number;
@@ -64,58 +66,65 @@ export default function GroupsPage() {
     formula: '',
   });
 
-  useEffect(() => {
-    async function fetchData() {
-      const data = await getData();
-      if (data && data.length > 0) {
-        setSheets(data);
-        analyzeFields(data[0]);
-      }
-      setLoading(false);
+// В useEffect после загрузки данных:
+useEffect(() => {
+  async function fetchData() {
+    const data = await getData();
+    if (data && data.length > 0) {
+      setSheets(data);
+      analyzeFields(data[0]);
     }
-    fetchData();
-  }, []);
+    setLoading(false);
+  }
+  fetchData();
+}, []);
 
-  // Анализ полей
-  const analyzeFields = (sheet: any) => {
-    const fields: FieldInfo[] = sheet.headers.map((header: string) => {
-      const values = sheet.rows.map((row: any) => row[header]);
-      const numericValues = values
-        .map((v: any) => parseFloat(v))
-        .filter((v: number) => !isNaN(v));
+//Фильтрация
+const analyzeFields = (sheet: any) => {
+  const allowedColumns = getFormulaAllowedColumns(sheet.sheetName);
+  
+  const fields: FieldInfo[] = sheet.headers.map((header: string) => {
+    const values = sheet.rows.map((row: any) => row[header]);
+    const numericValues = values
+      .map((v: any) => parseFloat(v))
+      .filter((v: number) => !isNaN(v));
 
-      const sampleValues = values.filter((v: any) => v !== null && v !== undefined).slice(0, 5);
-      const numericCount = numericValues.length;
-      const totalCount = values.filter((v: any) => v !== null && v !== undefined).length;
+    const sampleValues = values.filter((v: any) => v !== null && v !== undefined).slice(0, 5);
+    const numericCount = numericValues.length;
+    const totalCount = values.filter((v: any) => v !== null && v !== undefined).length;
 
-      let type: 'number' | 'text' | 'mixed' = 'text';
-      if (numericCount === totalCount && numericCount > 0) {
-        type = 'number';
-      } else if (numericCount > 0 && numericCount < totalCount) {
-        type = 'mixed';
-      }
+    // Проверяем, разрешена ли колонка для формул
+    const isAllowedInFormulas = allowedColumns.length > 0 ? allowedColumns.includes(header) : true;
+    
+    let type: 'number' | 'text' | 'mixed' = 'text';
+    if (isAllowedInFormulas && numericCount === totalCount && numericCount > 0) {
+      type = 'number';
+    } else if (numericCount > 0 && numericCount < totalCount) {
+      type = 'mixed';
+    }
 
-      let stats = {};
-      if (numericValues.length > 0) {
-        stats = {
-          min: Math.min(...numericValues),
-          max: Math.max(...numericValues),
-          avg: numericValues.reduce((a, b) => a + b, 0) / numericValues.length,
-        };
-      }
-
-      return {
-        name: header,
-        type,
-        sampleValues,
-        numericCount,
-        totalCount,
-        ...stats,
+    let stats = {};
+    if (numericValues.length > 0 && isAllowedInFormulas) {
+      stats = {
+        min: Math.min(...numericValues),
+        max: Math.max(...numericValues),
+        avg: numericValues.reduce((a, b) => a + b, 0) / numericValues.length,
       };
-    });
+    }
 
-    setFieldsInfo(fields);
-  };
+    return {
+      name: header,
+      type,
+      sampleValues,
+      numericCount,
+      totalCount,
+      isAllowedInFormulas,
+      ...stats,
+    };
+  });
+
+  setFieldsInfo(fields);
+};
 
   const availableHeaders = sheets[0]?.headers || [];
 
@@ -217,9 +226,9 @@ const insertFieldIntoFormula = (fieldName: string) => {
     );
   }
 
-  const numericFields = fieldsInfo.filter(f => f.type === 'number');
-  const textFields = fieldsInfo.filter(f => f.type === 'text');
-  const mixedFields = fieldsInfo.filter(f => f.type === 'mixed');
+    const numericFields = fieldsInfo.filter(f => f.type === 'number' && f.isAllowedInFormulas);
+    const textFields = fieldsInfo.filter(f => f.type === 'text' || !f.isAllowedInFormulas);
+    const mixedFields = fieldsInfo.filter(f => f.type === 'mixed');
 
   return (
     <div className="flex gap-6">
@@ -283,29 +292,36 @@ const insertFieldIntoFormula = (fieldName: string) => {
                   <span>Текстовые поля ({textFields.length})</span>
                 </div>
                 <div className="space-y-1">
-                  {textFields.map((field) => (
+                    {textFields.map((field) => (
                     <div key={field.name} className="border border-blue-200 rounded">
-                      <button
+                        <button
                         onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
                         className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 rounded flex items-center justify-between"
-                      >
+                        >
                         <span className="font-mono text-xs truncate flex-1">{field.name}</span>
                         {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      </button>
-                      
-                      {expandedField === field.name && (
+                        </button>
+                        
+                        {expandedField === field.name && (
                         <div className="px-3 py-2 bg-blue-50 border-t border-blue-200 text-xs space-y-1">
-                          <p><strong>Примеры значений:</strong></p>
-                          <ul className="list-disc list-inside text-gray-700 space-y-0.5">
+                            <p><strong>Примеры значений:</strong></p>
+                            <ul className="list-disc list-inside text-gray-700 space-y-0.5">
                             {field.sampleValues.slice(0, 3).map((val, idx) => (
-                              <li key={idx} className="truncate">{String(val)}</li>
+                                <li key={idx} className="truncate">{String(val)}</li>
                             ))}
-                          </ul>
-                          <p className="mt-2"><strong>Всего:</strong> {field.totalCount} значений</p>
+                            </ul>
+                            <p className="mt-2"><strong>Всего:</strong> {field.totalCount} значений</p>
+                            {!field.isAllowedInFormulas && (
+                            <div className="mt-2 p-2 bg-yellow-100 rounded text-yellow-800">
+                                <p className="text-xs">
+                                ⚠️ Недоступно для формул. Настройте тип в разделе "Настройки"
+                                </p>
+                            </div>
+                            )}
                         </div>
-                      )}
+                        )}
                     </div>
-                  ))}
+                    ))}
                 </div>
               </div>
             )}

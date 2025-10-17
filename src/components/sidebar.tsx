@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Table, Layers, BarChart3 } from 'lucide-react';
+import { Home, Table, Layers, BarChart3, Settings } from 'lucide-react';
 
 const menuItems = [
   { href: '/', label: 'Главная', icon: Home },
@@ -10,6 +10,8 @@ const menuItems = [
   { href: '/groups', label: 'Группы показателей', icon: Layers },
   { href: '/dashboard', label: 'Дашборд', icon: BarChart3 },
   { href: '/statistics', label: 'Статистика', icon: BarChart3 },
+  { href: '/settings', label: 'Настройки', icon: Settings },
+
 ];
 
 
