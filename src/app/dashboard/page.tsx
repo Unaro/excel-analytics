@@ -5,8 +5,8 @@ import { getData } from '../actions/excel';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import KPICard from '@/components/kpi-card';
 import GroupSummaryTable from '@/components/group-summary-table';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from '@/lib/recharts';
-import { TrendingUp, AlertCircle, BarChart3 } from 'lucide-react';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/lib/recharts';
+import { TrendingUp, AlertCircle, BarChart3, Printer } from 'lucide-react';
 
 interface Group {
   id: string;
@@ -80,24 +80,35 @@ export default function DashboardPage() {
     });
   }, [groupResults]);
 
-    // Экспорт в CSV
-    const exportToCSV = () => {
+  // Данные для круговой диаграммы - берем первый показатель из каждой группы
+  const pieChartData = useMemo(() => {
+    return groupResults.map((result) => {
+      const firstIndicator = result.indicators[0];
+      return {
+        name: result.groupName,
+        value: firstIndicator ? firstIndicator.value : 0,
+      };
+    });
+  }, [groupResults]);
+
+  // Экспорт в CSV
+  const exportToCSV = () => {
     if (groupResults.length === 0) return;
 
     const headers = ['Группа', 'Показатель', 'Формула', 'Значение', 'Количество строк'];
     const rows = groupResults.flatMap((group) =>
-        group.indicators.map((indicator, index) => [
+      group.indicators.map((indicator, index) => [
         index === 0 ? group.groupName : '',
         indicator.name,
         indicator.formula,
         indicator.value.toFixed(2),
         index === 0 ? group.rowCount.toString() : '',
-        ])
+      ])
     );
 
     const csvContent = [
-        headers.join(','),
-        ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
+      headers.join(','),
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
     ].join('\n');
 
     // Добавляем UTF-8 BOM для корректного отображения кириллицы
@@ -107,11 +118,15 @@ export default function DashboardPage() {
     link.href = URL.createObjectURL(blob);
     link.download = `dashboard_export_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
-    };
+  };
 
+  // Функция печати
+  const handlePrint = () => {
+    window.print();
+  };
 
   // Цвета для графиков
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#f43f5e', '#14b8a6'];
 
   if (loading) {
     return (
@@ -168,10 +183,32 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-7xl mx-auto">
-      <div className="mb-6">
+      {/* Кнопка печати - скрывается при печати */}
+      <div className="mb-6 flex items-center justify-between no-print">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Дашборд показателей</h1>
+          <p className="text-gray-600">
+            Визуализация и анализ групповых показателей
+          </p>
+        </div>
+        <button
+          onClick={handlePrint}
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+        >
+          <Printer size={20} />
+          Печать
+        </button>
+      </div>
+
+      {/* Заголовок для печати - показывается только при печати */}
+      <div className="print-only mb-6">
         <h1 className="text-3xl font-bold mb-2">Дашборд показателей</h1>
         <p className="text-gray-600">
-          Визуализация и анализ групповых показателей
+          Дата формирования: {new Date().toLocaleDateString('ru-RU', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          })}
         </p>
       </div>
 
@@ -206,15 +243,15 @@ export default function DashboardPage() {
       {/* Графики */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Столбчатая диаграмма */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
+        <div className="bg-white rounded-lg shadow-lg p-6 print-break-inside-avoid">
           <h3 className="text-lg font-semibold mb-4">Сравнение показателей по группам</h3>
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
-              <YAxis />
+              <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} fontSize={12} />
+              <YAxis fontSize={12} />
               <Tooltip />
-              <Legend />
+              <Legend wrapperStyle={{ fontSize: '12px' }} />
               {groupResults[0]?.indicators.map((indicator, index) => (
                 <Bar
                   key={indicator.name}
@@ -226,34 +263,59 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </div>
 
-        {/* Линейный график */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h3 className="text-lg font-semibold mb-4">Динамика показателей</h3>
+        {/* Круговая диаграмма */}
+        <div className="bg-white rounded-lg shadow-lg p-6 print-break-inside-avoid">
+          <h3 className="text-lg font-semibold mb-4">Распределение по группам</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {groupResults[0]?.indicators.map((indicator, index) => (
-                <Line
-                  key={indicator.name}
-                  type="monotone"
-                  dataKey={indicator.name}
-                  stroke={COLORS[index % COLORS.length]}
-                  strokeWidth={2}
-                />
-              ))}
-            </LineChart>
+            <PieChart>
+              <Pie
+                data={pieChartData}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name}: ${(percent as number * 100).toFixed(0)}%`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {pieChartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip formatter={(value: number) => value.toFixed(2)} />
+              <Legend wrapperStyle={{ fontSize: '12px' }} />
+            </PieChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* Линейный график - полная ширина */}
+      <div className="bg-white rounded-lg shadow-lg p-6 mb-8 print-break-inside-avoid">
+        <h3 className="text-lg font-semibold mb-4">Динамика показателей</h3>
+        <ResponsiveContainer width="100%" height={300}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} fontSize={12} />
+            <YAxis fontSize={12} />
+            <Tooltip />
+            <Legend wrapperStyle={{ fontSize: '12px' }} />
+            {groupResults[0]?.indicators.map((indicator, index) => (
+              <Line
+                key={indicator.name}
+                type="monotone"
+                dataKey={indicator.name}
+                stroke={COLORS[index % COLORS.length]}
+                strokeWidth={2}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Детальные карточки по группам */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {groupResults.map((result, index) => (
-          <div key={result.groupId} className="bg-white rounded-lg shadow-lg p-6">
+          <div key={result.groupId} className="bg-white rounded-lg shadow-lg p-6 print-break-inside-avoid">
             <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
               <div
                 className="w-4 h-4 rounded-full"
@@ -281,7 +343,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Сводная таблица */}
-      <GroupSummaryTable groups={groupResults} onExport={exportToCSV} />
+      <div className="print-break-before">
+        <GroupSummaryTable groups={groupResults} onExport={exportToCSV} />
+      </div>
     </div>
   );
 }
