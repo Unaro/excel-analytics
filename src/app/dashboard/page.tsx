@@ -7,6 +7,7 @@ import KPICard from '@/components/kpi-card';
 import GroupSummaryTable from '@/components/group-summary-table';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/lib/recharts';
 import { TrendingUp, AlertCircle, BarChart3, Printer } from 'lucide-react';
+import { SheetData } from '@/types';
 
 interface Group {
   id: string;
@@ -24,8 +25,13 @@ interface Group {
   }>;
 }
 
+interface ChartDataPoint {
+  name: string;
+  [key: string]: string | number;
+}
+
 export default function DashboardPage() {
-  const [sheets, setSheets] = useState<any[]>([]);
+  const [sheets, setSheets] = useState<SheetData[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -39,14 +45,12 @@ export default function DashboardPage() {
     }
     fetchData();
 
-    // Загрузка сохранённых групп из localStorage
     const savedGroups = localStorage.getItem('analyticsGroups');
     if (savedGroups) {
       setGroups(JSON.parse(savedGroups));
     }
   }, []);
 
-  // Вычисление результатов для всех групп
   const groupResults = useMemo(() => {
     if (!sheets || sheets.length === 0 || groups.length === 0) return [];
 
@@ -69,10 +73,9 @@ export default function DashboardPage() {
     });
   }, [sheets, groups]);
 
-  // Данные для графиков
   const chartData = useMemo(() => {
     return groupResults.map((result) => {
-      const dataPoint: any = { name: result.groupName };
+      const dataPoint: ChartDataPoint = { name: result.groupName };
       result.indicators.forEach((indicator) => {
         dataPoint[indicator.name] = indicator.value;
       });
@@ -80,7 +83,6 @@ export default function DashboardPage() {
     });
   }, [groupResults]);
 
-  // Данные для круговой диаграммы - берем первый показатель из каждой группы
   const pieChartData = useMemo(() => {
     return groupResults.map((result) => {
       const firstIndicator = result.indicators[0];

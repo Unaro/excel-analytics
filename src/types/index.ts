@@ -40,3 +40,15 @@ export interface DatasetMetadata {
   columns: ColumnMetadata[];
   lastModified: number;
 }
+
+export interface FieldInfo {
+  name: string;
+  type: 'number' | 'text' | 'mixed';
+  sampleValues: (string | number | boolean | null)[];
+  numericCount: number;
+  totalCount: number;
+  isAllowedInFormulas: boolean;
+  min?: number;
+  max?: number;
+  avg?: number;
+}

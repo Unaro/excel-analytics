@@ -3,17 +3,16 @@
 import { useEffect, useState, useMemo } from 'react';
 import { getData } from '../actions/excel';
 import { Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, X, Filter } from 'lucide-react';
+import { ExcelRow, SheetData } from '@/types';
 
 export default function DataPage() {
-  const [sheets, setSheets] = useState<any[]>([]);
+const [sheets, setSheets] = useState<SheetData[]>([]);
   const [selectedSheet, setSelectedSheet] = useState(0);
   const [loading, setLoading] = useState(true);
   
-  // Пагинация
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   
-  // Поиск
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
 
@@ -28,14 +27,12 @@ export default function DataPage() {
     fetchData();
   }, []);
 
-  // Сброс страницы при изменении листа
   useEffect(() => {
     setCurrentPage(1);
     setSearchQuery('');
     setSelectedColumn(null);
   }, [selectedSheet]);
 
-  // Фильтрация данных по поисковому запросу
   const filteredRows = useMemo(() => {
     if (!sheets || sheets.length === 0) return [];
     
@@ -44,9 +41,8 @@ export default function DataPage() {
 
     const query = searchQuery.toLowerCase();
     
-    // Если выбрана конкретная колонка, ищем только в ней
     if (selectedColumn) {
-      return currentSheet.rows.filter((row: any) => {
+      return currentSheet.rows.filter((row: ExcelRow) => {
         const value = row[selectedColumn];
         return value !== null && 
                value !== undefined && 
@@ -54,8 +50,7 @@ export default function DataPage() {
       });
     }
     
-    // Иначе ищем по всем колонкам
-    return currentSheet.rows.filter((row: any) => {
+    return currentSheet.rows.filter((row: ExcelRow) => {
       return currentSheet.headers.some((header: string) => {
         const value = row[header];
         return value !== null && 
@@ -102,7 +97,7 @@ export default function DataPage() {
     const currentSheet = sheets[selectedSheet];
     const csvContent = [
       currentSheet.headers.join(','),
-      ...filteredRows.map((row: any) => 
+      ...filteredRows.map((row: ExcelRow) => 
         currentSheet.headers.map((header: string) => {
           const value = row[header];
           return value !== null && value !== undefined ? `"${value}"` : '';
@@ -293,7 +288,7 @@ export default function DataPage() {
             </thead>
             <tbody>
               {currentRows.length > 0 ? (
-                currentRows.map((row: any, rowIndex: number) => (
+                currentRows.map((row: ExcelRow, rowIndex: number) => (
                   <tr 
                     key={rowIndex} 
                     className={`

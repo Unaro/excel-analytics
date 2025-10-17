@@ -9,11 +9,11 @@ import {
   updateColumnType,
   saveMetadata,
 } from '@/lib/metadata-manager';
-import { ColumnMetadata, ColumnDataType } from '@/types';
+import { ColumnMetadata, ColumnDataType, SheetData, ExcelRow } from '@/types';
 import { Settings, Database, Hash, Type, Calendar, Tag, CheckCircle, AlertTriangle, Info, Trash2, AlertCircle } from 'lucide-react';
 
 export default function SettingsPage() {
-  const [sheets, setSheets] = useState<any[]>([]);
+  const [sheets, setSheets] = useState<SheetData[]>([]);
   const [selectedSheet, setSelectedSheet] = useState(0);
   const [loading, setLoading] = useState(true);
   const [metadata, setMetadata] = useState<ColumnMetadata[]>([]);
@@ -43,7 +43,7 @@ export default function SettingsPage() {
     }
   }, [selectedSheet, sheets]);
 
-  const loadMetadata = (sheetName: string, headers: string[], rows: any[]) => {
+  const loadMetadata = (sheetName: string, headers: string[], rows: ExcelRow[]) => {
     let sheetMetadata = getMetadataForSheet(sheetName);
     
     if (!sheetMetadata) {

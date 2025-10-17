@@ -1,8 +1,9 @@
 'use server';
 
 import { parseExcelFile } from '@/lib/excel-parser';
+import { SheetData } from '@/types';
 
-let globalData: any = null;
+let globalData: SheetData[] | null = null;
 
 export async function uploadExcel(formData: FormData) {
   try {
@@ -25,7 +26,6 @@ export async function uploadExcel(formData: FormData) {
 export async function getData() {
   return globalData;
 }
-
 
 export async function clearData() {
   globalData = null;

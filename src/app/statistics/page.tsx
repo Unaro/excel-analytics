@@ -3,20 +3,24 @@
 import { useEffect, useState } from 'react';
 import { getData } from '../actions/excel';
 import { TrendingUp, TrendingDown, Users, FileText, BarChart3, Database } from 'lucide-react';
+import { SheetData, ExcelRow } from '@/types';
 
-interface StatCard {
-  title: string;
-  value: string | number;
-  icon: any;
-  trend?: {
-    value: number;
-    isPositive: boolean;
-  };
-  color: string;
+interface ColumnStats {
+  sum: number;
+  avg: number;
+  min: number;
+  max: number;
+  count: number;
+  median: number;
+}
+
+interface TopValue {
+  value: string | number | boolean | null;
+  numValue: number;
 }
 
 export default function StatisticsPage() {
-  const [sheets, setSheets] = useState<any[]>([]);
+  const [sheets, setSheets] = useState<SheetData[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedColumn, setSelectedColumn] = useState('');
 
@@ -53,9 +57,9 @@ export default function StatisticsPage() {
   const totalColumns = currentSheet.headers.length;
 
   // Вычисление статистики для выбранной колонки
-  const getColumnStats = (column: string) => {
+  const getColumnStats = (column: string): ColumnStats => {
     const values = currentSheet.rows
-      .map((row: any) => parseFloat(row[column]))
+      .map((row: ExcelRow) => parseFloat(String(row[column])))
       .filter((val: number) => !isNaN(val));
 
     if (values.length === 0) {
@@ -82,23 +86,23 @@ export default function StatisticsPage() {
   const stats = selectedColumn ? getColumnStats(selectedColumn) : null;
 
   // Получить топ-5 значений по выбранной колонке
-  const getTopValues = (column: string, limit: number = 5) => {
+  const getTopValues = (column: string, limit: number = 5): TopValue[] => {
     return currentSheet.rows
-      .map((row: any) => ({
+      .map((row: ExcelRow) => ({
         value: row[column],
-        numValue: parseFloat(row[column]),
+        numValue: parseFloat(String(row[column])),
       }))
-      .filter((item: any) => !isNaN(item.numValue))
-      .sort((a: any, b: any) => b.numValue - a.numValue)
+      .filter((item: TopValue) => !isNaN(item.numValue))
+      .sort((a: TopValue, b: TopValue) => b.numValue - a.numValue)
       .slice(0, limit);
   };
 
   const topValues = selectedColumn ? getTopValues(selectedColumn) : [];
 
   // Подсчет пустых значений
-  const countEmptyValues = () => {
+  const countEmptyValues = (): number => {
     let emptyCount = 0;
-    currentSheet.rows.forEach((row: any) => {
+    currentSheet.rows.forEach((row: ExcelRow) => {
       currentSheet.headers.forEach((header: string) => {
         if (row[header] === null || row[header] === undefined || row[header] === '') {
           emptyCount++;
@@ -221,7 +225,7 @@ export default function StatisticsPage() {
         
         {topValues.length > 0 ? (
           <div className="space-y-3">
-            {topValues.map((item: any, index: number) => (
+            {topValues.map((item: TopValue, index: number) => (
               <div
                 key={index}
                 className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"

@@ -5,6 +5,7 @@ import { getData } from '../actions/excel';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import { Plus, Trash2, Filter, Hash, Type, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { getFormulaAllowedColumns, getMetadataForSheet } from '@/lib/metadata-manager';
+import { ExcelRow, FieldInfo, SheetData } from '@/types';
 
 interface FilterCondition {
   id: string;
@@ -26,20 +27,10 @@ interface Group {
   indicators: Indicator[];
 }
 
-interface FieldInfo {
-  name: string;
-  type: 'number' | 'text' | 'mixed';
-  sampleValues: any[];
-  numericCount: number;
-  totalCount: number;
-  isAllowedInFormulas: boolean;
-  min?: number;
-  max?: number;
-  avg?: number;
-}
+
 
 export default function GroupsPage() {
-  const [sheets, setSheets] = useState<any[]>([]);
+  const [sheets, setSheets] = useState<SheetData[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [fieldsInfo, setFieldsInfo] = useState<FieldInfo[]>([]);
@@ -80,51 +71,51 @@ useEffect(() => {
 }, []);
 
 //Фильтрация
-const analyzeFields = (sheet: any) => {
-  const allowedColumns = getFormulaAllowedColumns(sheet.sheetName);
-  
-  const fields: FieldInfo[] = sheet.headers.map((header: string) => {
-    const values = sheet.rows.map((row: any) => row[header]);
-    const numericValues = values
-      .map((v: any) => parseFloat(v))
-      .filter((v: number) => !isNaN(v));
-
-    const sampleValues = values.filter((v: any) => v !== null && v !== undefined).slice(0, 5);
-    const numericCount = numericValues.length;
-    const totalCount = values.filter((v: any) => v !== null && v !== undefined).length;
-
-    // Проверяем, разрешена ли колонка для формул
-    const isAllowedInFormulas = allowedColumns.length > 0 ? allowedColumns.includes(header) : true;
+const analyzeFields = (sheet: SheetData) => {
+    const allowedColumns = getFormulaAllowedColumns(sheet.sheetName);
     
-    let type: 'number' | 'text' | 'mixed' = 'text';
-    if (isAllowedInFormulas && numericCount === totalCount && numericCount > 0) {
-      type = 'number';
-    } else if (numericCount > 0 && numericCount < totalCount) {
-      type = 'mixed';
-    }
+    const fields: FieldInfo[] = sheet.headers.map((header: string) => {
+      const values = sheet.rows.map((row: ExcelRow) => row[header]);
+      const numericValues = values
+        .map((v) => parseFloat(String(v)))
+        .filter((v: number) => !isNaN(v));
 
-    let stats = {};
-    if (numericValues.length > 0 && isAllowedInFormulas) {
-      stats = {
-        min: Math.min(...numericValues),
-        max: Math.max(...numericValues),
-        avg: numericValues.reduce((a, b) => a + b, 0) / numericValues.length,
+      const sampleValues = values.filter((v) => v !== null && v !== undefined).slice(0, 5);
+      const numericCount = numericValues.length;
+      const totalCount = values.filter((v) => v !== null && v !== undefined).length;
+
+      // Проверяем, разрешена ли колонка для формул
+      const isAllowedInFormulas = allowedColumns.length > 0 ? allowedColumns.includes(header) : true;
+      
+      let type: 'number' | 'text' | 'mixed' = 'text';
+      if (isAllowedInFormulas && numericCount === totalCount && numericCount > 0) {
+        type = 'number';
+      } else if (numericCount > 0 && numericCount < totalCount) {
+        type = 'mixed';
+      }
+
+      let stats: { min?: number; max?: number; avg?: number } = {};
+      if (numericValues.length > 0 && isAllowedInFormulas) {
+        stats = {
+          min: Math.min(...numericValues),
+          max: Math.max(...numericValues),
+          avg: numericValues.reduce((a, b) => a + b, 0) / numericValues.length,
+        };
+      }
+
+      return {
+        name: header,
+        type,
+        sampleValues,
+        numericCount,
+        totalCount,
+        isAllowedInFormulas,
+        ...stats,
       };
-    }
+    });
 
-    return {
-      name: header,
-      type,
-      sampleValues,
-      numericCount,
-      totalCount,
-      isAllowedInFormulas,
-      ...stats,
-    };
-  });
-
-  setFieldsInfo(fields);
-};
+    setFieldsInfo(fields);
+  };
 
   const availableHeaders = sheets[0]?.headers || [];
 
