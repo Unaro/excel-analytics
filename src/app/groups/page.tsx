@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { getData } from '../actions/excel';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import { Plus, Trash2, Filter, Hash, Type, ChevronDown, ChevronUp, Info } from 'lucide-react';
-import { getFormulaAllowedColumns, getMetadataForSheet } from '@/lib/metadata-manager';
+import { getFormulaAllowedColumns } from '@/lib/metadata-manager';
 import { ExcelRow, FieldInfo, SheetData } from '@/types';
 
 interface FilterCondition {
@@ -402,7 +402,7 @@ const insertFieldIntoFormula = (fieldName: string) => {
                             {!field.isAllowedInFormulas && (
                             <div className="mt-2 p-2 bg-yellow-100 rounded">
                                 <p className="text-yellow-800 text-xs">
-                                ⚠️ Недоступно для формул. Настройте в разделе "Настройки"
+                                ⚠️ Недоступно для формул. Настройте в разделе &quot;Настройки&quot;
                                 </p>
                             </div>
                             )}

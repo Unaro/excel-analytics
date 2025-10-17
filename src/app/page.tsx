@@ -53,7 +53,7 @@ export default function HomePage() {
         setMessage(`Успешно загружено ${result.data?.length} листов из файла "${file.name}"`);
         setMessageType('success');
       }
-    } catch (error) {
+    } catch {
       setMessage('Произошла ошибка при загрузке файла');
       setMessageType('error');
       setUploadedFile(null);
@@ -222,11 +222,11 @@ export default function HomePage() {
         </h2>
         <ol className="list-decimal list-inside space-y-2 text-gray-700">
           <li>Загрузите Excel файл (.xlsx, .xls) или CSV файл (.csv) с данными</li>
-          <li>Перейдите в раздел "Данные" для просмотра таблицы</li>
-          <li>Создайте группы показателей во вкладке "Группы показателей"</li>
+          <li>Перейдите в раздел &quot;Данные&quot; для просмотра таблицы</li>
+          <li>Создайте группы показателей во вкладке &quot;Группы показателей&quot;</li>
           <li>Настройте фильтры и формулы для расчёта показателей</li>
-          <li>Просмотрите визуализацию в разделе "Дашборд"</li>
-          <li>Изучите общую статистику в разделе "Статистика"</li>
+          <li>Просмотрите визуализацию в разделе &quot;Дашборд&quot;</li>
+          <li>Изучите общую статистику в разделе &quot;Статистика&quot;</li>
         </ol>
 
         <div className="mt-4 p-4 bg-white rounded-lg">

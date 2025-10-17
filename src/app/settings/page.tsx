@@ -5,8 +5,6 @@ import { clearData, getData } from '../actions/excel';
 import {
   createInitialMetadata,
   getMetadataForSheet,
-  getAllMetadata,
-  updateColumnType,
   saveMetadata,
 } from '@/lib/metadata-manager';
 import { ColumnMetadata, ColumnDataType, SheetData, ExcelRow } from '@/types';
@@ -418,7 +416,7 @@ export default function SettingsPage() {
           <div>
             <h3 className="font-semibold text-yellow-900 mb-1">Важно!</h3>
             <p className="text-sm text-yellow-800">
-              Только колонки с типом "Числовой" будут доступны для использования в формулах. 
+              Только колонки с типом &quot;Числовой&quot; будут доступны для использования в формулах. 
               Убедитесь, что правильно настроили типы перед созданием групп показателей.
             </p>
           </div>

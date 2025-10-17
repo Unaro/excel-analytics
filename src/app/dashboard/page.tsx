@@ -6,7 +6,7 @@ import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import KPICard from '@/components/kpi-card';
 import GroupSummaryTable from '@/components/group-summary-table';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/lib/recharts';
-import { TrendingUp, AlertCircle, BarChart3, Printer } from 'lucide-react';
+import { AlertCircle, BarChart3, Printer } from 'lucide-react';
 import { SheetData } from '@/types';
 
 interface Group {
