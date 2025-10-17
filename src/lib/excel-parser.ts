@@ -70,6 +70,11 @@ export function applyFilters(
   });
 }
 
+// Создание безопасного имени для mathjs (только латиница)
+function createSafeFieldName(fieldName: string, index: number): string {
+  return `field_${index}`;
+}
+
 // Вычисление формулы с использованием mathjs
 export function evaluateFormula(
   formula: string,
@@ -77,11 +82,36 @@ export function evaluateFormula(
   availableColumns: string[]
 ): number {
   try {
+    // Создаем маппинг: реальное имя -> безопасное имя
+    const fieldMapping: { [key: string]: string } = {};
+    const reverseMapping: { [key: string]: string } = {};
+    
+    availableColumns.forEach((column, index) => {
+      const safeName = createSafeFieldName(column, index);
+      fieldMapping[column] = safeName;
+      reverseMapping[safeName] = column;
+    });
+    
+    // Заменяем реальные названия полей на безопасные в формуле
+    let processedFormula = formula;
+    
+    // Сортируем по длине (от большего к меньшему), чтобы избежать частичных совпадений
+    const sortedColumns = [...availableColumns].sort((a, b) => b.length - a.length);
+    
+    sortedColumns.forEach(column => {
+      const safeName = fieldMapping[column];
+      // Экранируем специальные символы в названии колонки для регулярного выражения
+      const escapedColumn = column.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escapedColumn, 'g');
+      processedFormula = processedFormula.replace(regex, safeName);
+    });
+    
     // Подготовка данных для формулы
     const scope: any = {};
     
-    // Создаем массивы значений для каждой колонки
-    availableColumns.forEach(column => {
+    // Создаем массивы значений для каждой колонки с безопасными именами
+    availableColumns.forEach((column, index) => {
+      const safeName = createSafeFieldName(column, index);
       const values = filteredRows
         .map(row => {
           const val = row[column];
@@ -89,22 +119,42 @@ export function evaluateFormula(
         })
         .filter(val => val !== null && !isNaN(val as number));
       
-      scope[column] = values;
+      scope[safeName] = values;
     });
     
     // Добавляем агрегационные функции
-    scope.SUM = (arr: number[]) => arr.reduce((a, b) => a + b, 0);
-    scope.AVG = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    scope.COUNT = (arr: number[]) => arr.length;
-    scope.MIN = (arr: number[]) => arr.length > 0 ? Math.min(...arr) : 0;
-    scope.MAX = (arr: number[]) => arr.length > 0 ? Math.max(...arr) : 0;
+    scope.SUM = (arr: number[]) => {
+      if (!Array.isArray(arr)) return 0;
+      return arr.reduce((a, b) => a + b, 0);
+    };
+    
+    scope.AVG = (arr: number[]) => {
+      if (!Array.isArray(arr) || arr.length === 0) return 0;
+      return arr.reduce((a, b) => a + b, 0) / arr.length;
+    };
+    
+    scope.COUNT = (arr: number[]) => {
+      if (!Array.isArray(arr)) return 0;
+      return arr.length;
+    };
+    
+    scope.MIN = (arr: number[]) => {
+      if (!Array.isArray(arr) || arr.length === 0) return 0;
+      return Math.min(...arr);
+    };
+    
+    scope.MAX = (arr: number[]) => {
+      if (!Array.isArray(arr) || arr.length === 0) return 0;
+      return Math.max(...arr);
+    };
     
     // Вычисляем формулу
-    const result = math.evaluate(formula, scope);
+    const result = math.evaluate(processedFormula, scope);
     
     return typeof result === 'number' ? result : 0;
   } catch (error) {
     console.error('Ошибка вычисления формулы:', error);
+    console.error('Оригинальная формула:', formula);
     return 0;
   }
 }
