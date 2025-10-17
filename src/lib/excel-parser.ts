@@ -9,11 +9,24 @@ export async function parseExcelFile(file: File): Promise<{
   rows: any[];
 }[]> {
   const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  
+  // Определяем тип файла по расширению
+  const fileExtension = file.name.split('.').pop()?.toLowerCase();
+  
+  let workbook: XLSX.WorkBook;
+  
+  if (fileExtension === 'csv') {
+    // Для CSV файлов используем специальную обработку с UTF-8
+    const text = new TextDecoder('utf-8').decode(buffer);
+    workbook = XLSX.read(text, { type: 'string', raw: true });
+  } else {
+    // Для Excel файлов используем обычную обработку
+    workbook = XLSX.read(buffer, { type: 'buffer' });
+  }
   
   const sheets = workbook.SheetNames.map((sheetName) => {
     const worksheet = workbook.Sheets[sheetName];
-    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
     
     if (jsonData.length === 0) {
       return { sheetName, headers: [], rows: [] };
