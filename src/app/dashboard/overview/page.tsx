@@ -9,6 +9,7 @@ import GroupSummaryTable from '@/components/group-summary-table';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/lib/recharts';
 import { AlertCircle, BarChart3, Printer, ArrowLeft } from 'lucide-react';
 import { SheetData } from '@/types';
+import Link from 'next/link';
 
 interface Group {
   id: string;
@@ -170,9 +171,9 @@ export default function DashboardOverviewPage() {
         <p className="text-xl text-gray-600 mb-4">
           Нет загруженных данных
         </p>
-        <a href="/" className="text-blue-600 hover:underline">
+        <Link  href="/" className="text-blue-600 hover:underline">
           Загрузить данные
-        </a>
+        </Link>
       </div>
     );
   }
@@ -184,12 +185,12 @@ export default function DashboardOverviewPage() {
         <p className="text-xl text-gray-600 mb-4">
           Нет созданных групп показателей
         </p>
-        <a 
+        <Link
           href="/groups" 
           className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           Создать группу
-        </a>
+        </Link>
       </div>
     );
   }

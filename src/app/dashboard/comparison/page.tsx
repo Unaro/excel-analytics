@@ -6,6 +6,7 @@ import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/lib/recharts';
 import { AlertCircle, BarChart3 } from 'lucide-react';
 import { SheetData } from '@/types';
+import Link from 'next/link';
 
 interface Group {
   id: string;
@@ -190,12 +191,12 @@ export default function ComparisonPage() {
             : 'Нет созданных групп показателей'
           }
         </p>
-        <a 
+        <Link
           href={!sheets || sheets.length === 0 ? '/' : '/groups'}
           className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
         >
           {!sheets || sheets.length === 0 ? 'Загрузить данные' : 'Создать группу'}
-        </a>
+        </Link>
       </div>
     );
   }
