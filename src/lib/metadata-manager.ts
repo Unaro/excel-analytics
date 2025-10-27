@@ -1,8 +1,8 @@
-import { ColumnMetadata, DatasetMetadata, ColumnDataType } from '@/types';
+import { ColumnMetadata, DatasetMetadata, ColumnDataType, columnType } from '@/types';
 
 const METADATA_STORAGE_KEY = 'datasetMetadata';
 
-export function detectColumnType(values: (string | number | boolean | null)[]): 'number' | 'text' | 'mixed' {
+export function detectColumnType(values: (string | number | boolean | null)[]): columnType {
   const nonNullValues = values.filter(v => v !== null && v !== undefined && v !== '');
   
   if (nonNullValues.length === 0) return 'text';
@@ -15,7 +15,7 @@ export function detectColumnType(values: (string | number | boolean | null)[]): 
   return 'text';
 }
 
-export function suggestDataType(autoDetectedType: 'number' | 'text' | 'mixed'): ColumnDataType {
+export function suggestDataType(autoDetectedType: columnType): ColumnDataType {
   if (autoDetectedType === 'number') return 'numeric';
   return 'text';
 }

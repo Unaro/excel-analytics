@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { getData } from '../actions/excel';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import { Plus, Trash2, Filter, Hash, Type, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { getFormulaAllowedColumns } from '@/lib/metadata-manager';
 import { ExcelRow, FieldInfo, SheetData } from '@/types';
+import { HierarchyFilter } from '@/components/hierarchyFilter';
+import { getExcelData } from '@/lib/storage';
 
 interface FilterCondition {
   id: string;
@@ -30,6 +31,7 @@ interface Group {
 
 
 export default function GroupsPage() {
+  const [hierFilters, setHierFilters] = useState<Record<string,string>>({});
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,10 +59,13 @@ export default function GroupsPage() {
     formula: '',
   });
 
+  const hierarchyConfig = JSON.parse(localStorage.getItem('hierarchyConfig') || '[]') as string[];
+  
+  
 // В useEffect после загрузки данных:
 useEffect(() => {
   async function fetchData() {
-    const data = await getData();
+    const data = await getExcelData();
     if (data && data.length > 0) {
       setSheets(data);
       analyzeFields(data[0]);
@@ -286,7 +291,6 @@ const insertFieldIntoFormula = (fieldName: string) => {
                 </div>
                 </div>
             )}
-
             {/* Категориальные поля - НЕ доступны для формул */}
             {categoricalFields.length > 0 && (
                 <div>
@@ -445,6 +449,14 @@ const insertFieldIntoFormula = (fieldName: string) => {
             Показать панель полей
           </button>
         )}
+
+        <h1 className="text-3xl font-bold mb-6">Фильтрация по иерархии</h1>
+
+        <HierarchyFilter
+          data={sheets[0].rows}
+          config={hierarchyConfig}
+          onFilterChange={setHierFilters}
+        />
 
         <h1 className="text-3xl font-bold mb-6">Группы показателей с фильтрацией</h1>
 
@@ -611,8 +623,15 @@ const insertFieldIntoFormula = (fieldName: string) => {
         {/* Отображение созданных групп */}
         <div className="space-y-6">
           {groups.map((group) => {
-            const filteredData = applyFilters(sheets[0].rows, group.filters);
-
+            const filteredData = applyFilters(
+              sheets[0].rows,
+              group.filters.concat(
+                // Добавим иерархический фильтр
+                ...Object.entries(hierFilters)
+                  .filter(([col,val]) => val)
+                  .map(([column,value]) => ({ id:'', column, operator:'=', value }))
+              )
+            );
             return (
               <div key={group.id} className="bg-white rounded-lg shadow p-6">
                 <div className="flex justify-between items-start mb-4">
@@ -629,7 +648,6 @@ const insertFieldIntoFormula = (fieldName: string) => {
                     <Trash2 size={20} />
                   </button>
                 </div>
-
                 {/* Условия фильтрации */}
                 {group.filters.length > 0 && (
                   <div className="mb-4">

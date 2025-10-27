@@ -27,10 +27,12 @@ export interface SheetData {
 
 export type ColumnDataType = 'numeric' | 'categorical' | 'text' | 'date';
 
+export type columnType = 'number' | 'text' | 'mixed'
+
 export interface ColumnMetadata {
   name: string;
   dataType: ColumnDataType;
-  autoDetectedType: 'number' | 'text' | 'mixed';
+  autoDetectedType: columnType;
   description?: string;
   allowInFormulas: boolean;
 }
@@ -43,7 +45,7 @@ export interface DatasetMetadata {
 
 export interface FieldInfo {
   name: string;
-  type: 'number' | 'text' | 'mixed';
+  type: columnType;
   sampleValues: (string | number | boolean | null)[];
   numericCount: number;
   totalCount: number;

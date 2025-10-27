@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { getData } from '../actions/excel';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import KPICard from '@/components/kpi-card';
 import GroupSummaryTable from '@/components/group-summary-table';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/lib/recharts';
 import { AlertCircle, BarChart3, Printer } from 'lucide-react';
 import { SheetData } from '@/types';
+import { getExcelData } from '@/lib/storage';
 
 interface Group {
   id: string;
@@ -37,7 +37,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function fetchData() {
-      const data = await getData();
+      const data = await getExcelData();
       if (data) {
         setSheets(data);
       }

@@ -50,6 +50,8 @@ export default function HomePage() {
         setMessageType('error');
         setUploadedFile(null);
       } else {
+        localStorage.setItem('uploadedExcelData', JSON.stringify(result.data));
+
         setMessage(`Успешно загружено ${result.data?.length} листов из файла "${file.name}"`);
         setMessageType('success');
       }

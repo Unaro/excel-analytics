@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { getData } from '../actions/excel';
 import { Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, X, Filter } from 'lucide-react';
 import { ExcelRow, SheetData } from '@/types';
+import { getExcelData } from '@/lib/storage';
 
 export default function DataPage() {
 const [sheets, setSheets] = useState<SheetData[]>([]);
@@ -18,7 +18,7 @@ const [sheets, setSheets] = useState<SheetData[]>([]);
 
   useEffect(() => {
     async function fetchData() {
-      const data = await getData();
+      const data = await getExcelData();
       if (data) {
         setSheets(data);
       }

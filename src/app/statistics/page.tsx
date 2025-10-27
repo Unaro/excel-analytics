@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getData } from '../actions/excel';
 import { TrendingUp, TrendingDown, Users, FileText, BarChart3, Database } from 'lucide-react';
 import { SheetData, ExcelRow } from '@/types';
+import { getExcelData } from '@/lib/storage';
 
 interface ColumnStats {
   sum: number;
@@ -26,7 +26,7 @@ export default function StatisticsPage() {
 
   useEffect(() => {
     async function fetchData() {
-      const data = await getData();
+      const data = getExcelData();
       if (data) {
         setSheets(data);
         if (data[0]?.headers?.length > 0) {

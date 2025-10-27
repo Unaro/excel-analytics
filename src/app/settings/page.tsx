@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { clearData, getData } from '../actions/excel';
 import {
   createInitialMetadata,
   getMetadataForSheet,
@@ -9,6 +8,7 @@ import {
 } from '@/lib/metadata-manager';
 import { ColumnMetadata, ColumnDataType, SheetData, ExcelRow } from '@/types';
 import { Settings, Database, Hash, Type, Calendar, Tag, CheckCircle, AlertTriangle, Info, Trash2, AlertCircle } from 'lucide-react';
+import { clearExcelData, getExcelData } from '@/lib/storage';
 
 export default function SettingsPage() {
   const [sheets, setSheets] = useState<SheetData[]>([]);
@@ -24,7 +24,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     async function fetchData() {
-      const data = await getData();
+      const data = getExcelData();
       if (data && data.length > 0) {
         setSheets(data);
         loadMetadata(data[0].sheetName, data[0].headers, data[0].rows);
@@ -97,8 +97,8 @@ export default function SettingsPage() {
   };
   // Функции удаления данных
   const deleteUploadedData = async () => {
-    // Очищаем данные на сервере
-    await clearData();
+    // Очищаем данные
+    clearExcelData();
     
     // Очищаем метаданные
     localStorage.removeItem('datasetMetadata');
@@ -122,7 +122,7 @@ export default function SettingsPage() {
 
   const deleteAllData = async () => {
     // Удаляем данные на сервере
-    await clearData();
+    getExcelData();
     
     // Удаляем все данные из localStorage
     localStorage.removeItem('analyticsGroups');
