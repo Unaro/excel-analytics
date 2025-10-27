@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
-import { Plus, Trash2, Filter, Hash, Type, ChevronDown, ChevronUp, Info } from 'lucide-react';
-import { getFormulaAllowedColumns } from '@/lib/metadata-manager';
-import { ExcelRow, FieldInfo, SheetData } from '@/types';
-import { HierarchyFilter } from '@/components/hierarchyFilter';
 import { getExcelData } from '@/lib/storage';
+import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
+import { getFormulaAllowedColumns, getMetadataForSheet } from '@/lib/metadata-manager';
+import { Plus, Trash2, Filter, Hash, Type, ChevronDown, ChevronUp, Info, Save, Eye } from 'lucide-react';
+import { SheetData, FieldInfo, ExcelRow } from '@/types';
+import { HierarchyFilter } from '@/components/hierarchyFilter';
 
 interface FilterCondition {
   id: string;
@@ -26,12 +26,10 @@ interface Group {
   name: string;
   filters: FilterCondition[];
   indicators: Indicator[];
+  hierarchyFilters?: Record<string, string>; // Новое поле для иерархических фильтров
 }
 
-
-
 export default function GroupsPage() {
-  const [hierFilters, setHierFilters] = useState<Record<string,string>>({});
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,6 +43,7 @@ export default function GroupsPage() {
   const [newGroupName, setNewGroupName] = useState('');
   const [newFilters, setNewFilters] = useState<FilterCondition[]>([]);
   const [newIndicators, setNewIndicators] = useState<Indicator[]>([]);
+  const [hierarchyFilters, setHierarchyFilters] = useState<Record<string, string>>({});
 
   // Текущий фильтр
   const [currentFilter, setCurrentFilter] = useState({
@@ -59,24 +58,42 @@ export default function GroupsPage() {
     formula: '',
   });
 
-  const hierarchyConfig = JSON.parse(localStorage.getItem('hierarchyConfig') || '[]') as string[];
-  
-  
-// В useEffect после загрузки данных:
-useEffect(() => {
-  async function fetchData() {
-    const data = await getExcelData();
+  // Конфигурация иерархии
+  const [hierarchyConfig, setHierarchyConfig] = useState<string[]>([]);
+
+  useEffect(() => {
+    const data = getExcelData();
     if (data && data.length > 0) {
       setSheets(data);
       analyzeFields(data[0]);
+      
+      // Загрузить конфигурацию иерархии
+      const savedConfig = localStorage.getItem('hierarchyConfig');
+      if (savedConfig) {
+        const config = JSON.parse(savedConfig) as string[];
+        
+        // Фильтровать только категориальные поля
+        const metadata = getMetadataForSheet(data[0].sheetName);
+        const categoricalFields = metadata
+          ? metadata.columns
+              .filter(col => col.dataType === 'categorical')
+              .map(col => col.name)
+          : [];
+        
+        setHierarchyConfig(config.filter(col => categoricalFields.includes(col)));
+      }
     }
+    
+    // Загрузить сохраненные группы
+    const savedGroups = localStorage.getItem('analyticsGroups');
+    if (savedGroups) {
+      setGroups(JSON.parse(savedGroups));
+    }
+    
     setLoading(false);
-  }
-  fetchData();
-}, []);
+  }, []);
 
-//Фильтрация
-const analyzeFields = (sheet: SheetData) => {
+  const analyzeFields = (sheet: SheetData) => {
     const allowedColumns = getFormulaAllowedColumns(sheet.sheetName);
     
     const fields: FieldInfo[] = sheet.headers.map((header: string) => {
@@ -89,7 +106,6 @@ const analyzeFields = (sheet: SheetData) => {
       const numericCount = numericValues.length;
       const totalCount = values.filter((v) => v !== null && v !== undefined).length;
 
-      // Проверяем, разрешена ли колонка для формул
       const isAllowedInFormulas = allowedColumns.length > 0 ? allowedColumns.includes(header) : true;
       
       let type: 'number' | 'text' | 'mixed' = 'text';
@@ -158,36 +174,42 @@ const analyzeFields = (sheet: SheetData) => {
     setNewIndicators(newIndicators.filter(i => i.id !== id));
   };
 
-const createGroup = () => {
-if (newGroupName && newIndicators.length > 0) {
-    const newGroup = {
-    id: Date.now().toString(),
-    name: newGroupName,
-    filters: [...newFilters],
-    indicators: [...newIndicators],
-    };
-    
-    const updatedGroups = [...groups, newGroup];
-    setGroups(updatedGroups);
-    
-    // Сохраняем в localStorage для использования в дашборде
-    localStorage.setItem('analyticsGroups', JSON.stringify(updatedGroups));
-    
-    setNewGroupName('');
-    setNewFilters([]);
-    setNewIndicators([]);
-}
-};
+  const createGroup = () => {
+    if (newGroupName && newIndicators.length > 0) {
+      const newGroup: Group = {
+        id: Date.now().toString(),
+        name: newGroupName,
+        filters: [...newFilters],
+        indicators: [...newIndicators],
+        hierarchyFilters: { ...hierarchyFilters }, // Сохраняем иерархические фильтры
+      };
+      
+      const updatedGroups = [...groups, newGroup];
+      setGroups(updatedGroups);
+      
+      // Сохраняем в localStorage
+      localStorage.setItem('analyticsGroups', JSON.stringify(updatedGroups));
+      
+      // Сбрасываем форму
+      setNewGroupName('');
+      setNewFilters([]);
+      setNewIndicators([]);
+      setHierarchyFilters({});
+      
+      alert('✅ Группа успешно создана!');
+    }
+  };
 
-const deleteGroup = (id: string) => {
-const updatedGroups = groups.filter(g => g.id !== id);
-setGroups(updatedGroups);
+  const deleteGroup = (id: string) => {
+    if (confirm('Вы уверены, что хотите удалить эту группу?')) {
+      const updatedGroups = groups.filter(g => g.id !== id);
+      setGroups(updatedGroups);
+      localStorage.setItem('analyticsGroups', JSON.stringify(updatedGroups));
+    }
+  };
 
-// Обновляем localStorage
-localStorage.setItem('analyticsGroups', JSON.stringify(updatedGroups));
-};
-// Вставка поля в формулу
-const insertFieldIntoFormula = (fieldName: string) => {
+  // Вставка поля в формулу
+  const insertFieldIntoFormula = (fieldName: string) => {
     const input = formulaInputRef.current;
     if (input) {
       const start = input.selectionStart || 0;
@@ -200,7 +222,6 @@ const insertFieldIntoFormula = (fieldName: string) => {
       
       setCurrentIndicator({ ...currentIndicator, formula: newFormula });
       
-      // Возвращаем фокус и устанавливаем курсор
       setTimeout(() => {
         input.focus();
         input.setSelectionRange(start + fieldName.length, start + fieldName.length);
@@ -208,8 +229,98 @@ const insertFieldIntoFormula = (fieldName: string) => {
     }
   };
 
+  // Быстрые кнопки формул
+  const insertQuickFormula = (type: 'SUM' | 'AVG' | 'COUNT' | 'MIN' | 'MAX', field?: string) => {
+    if (!field && expandedField) {
+      field = expandedField;
+    }
+    if (field) {
+      const formula = `${type}(${field})`;
+      setCurrentIndicator({ ...currentIndicator, formula });
+    }
+  };
+
+  // Предпросмотр группы
+  const previewGroup = (group: Group) => {
+    if (!sheets || sheets.length === 0) return;
+
+    // Определяем самый глубокий уровень иерархии
+    const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
+      if (!hierarchyFilters || !hierarchyConfig.length) return null;
+
+      // Находим последний заполненный уровень
+      let deepestLevel = null;
+      for (let i = hierarchyConfig.length - 1; i >= 0; i--) {
+        const col = hierarchyConfig[i];
+        if (hierarchyFilters[col]) {
+          deepestLevel = { column: col, value: hierarchyFilters[col] };
+          break;
+        }
+      }
+      return deepestLevel;
+    };
+
+    // Получаем только самый глубокий фильтр из иерархии
+    const deepestFilter = getDeepestHierarchyFilter(group.hierarchyFilters);
+    
+    // Комбинируем обычные фильтры и единственный иерархический (самый глубокий)
+    const allFilters = [
+      ...group.filters,
+      ...(deepestFilter ? [{
+        id: `hier_deepest`,
+        column: deepestFilter.column,
+        operator: '=',
+        value: deepestFilter.value,
+      }] : []),
+    ];
+
+    const filteredData = applyFilters(sheets[0].rows, allFilters);
+    
+    const results = group.indicators.map(indicator => ({
+      name: indicator.name,
+      formula: indicator.formula,
+      value: evaluateFormula(indicator.formula, filteredData, sheets[0].headers),
+    }));
+
+    let message = `Группа: ${group.name}\n`;
+    message += `Строк после фильтрации: ${filteredData.length}\n\n`;
+    
+    if (group.hierarchyFilters && Object.keys(group.hierarchyFilters).length > 0) {
+      message += 'Иерархические фильтры:\n';
+      Object.entries(group.hierarchyFilters)
+        .filter(([, v]) => v)
+        .forEach(([k, v]) => {
+          const isDeepest = deepestFilter && deepestFilter.column === k;
+          message += `  ${k}: ${v}${isDeepest ? ' ✓ (применён)' : ''}\n`;
+        });
+      message += '\n';
+    }
+    
+    if (group.filters.length > 0) {
+      message += 'Дополнительные фильтры:\n';
+      group.filters.forEach(f => {
+        message += `  ${f.column} ${f.operator} ${f.value}\n`;
+      });
+      message += '\n';
+    }
+    
+    message += 'Результаты:\n';
+    results.forEach(r => {
+      message += `  ${r.name}: ${r.value.toFixed(2)}\n`;
+    });
+
+    alert(message);
+  };
+
   if (loading) {
-    return <div>Загрузка...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Загрузка...</p>
+        </div>
+      </div>
+    );
   }
 
   if (!sheets || sheets.length === 0) {
@@ -222,495 +333,489 @@ const insertFieldIntoFormula = (fieldName: string) => {
     );
   }
 
-    const numericFields = fieldsInfo.filter(f => 
+  const numericFields = fieldsInfo.filter(f => 
     f.isAllowedInFormulas && f.type === 'number'
-    );
+  );
 
-    const categoricalFields = fieldsInfo.filter(f => 
+  const categoricalFields = fieldsInfo.filter(f => 
     !f.isAllowedInFormulas && f.numericCount > 0
-    );
+  );
 
-    const textFields = fieldsInfo.filter(f => 
+  const textFields = fieldsInfo.filter(f => 
     (f.type === 'text' && f.isAllowedInFormulas) ||
     (!f.isAllowedInFormulas && f.numericCount === 0)
-    );
+  );
 
-    const mixedFields = fieldsInfo.filter(f => 
+  const mixedFields = fieldsInfo.filter(f => 
     f.type === 'mixed' && f.isAllowedInFormulas
-    );
+  );
+
   return (
-    <div className="flex gap-6">
-      {/* Боковая панель с полями */}
-      {showFieldsPanel && (
-        <div className="w-80 bg-white rounded-lg shadow-lg p-4 h-fit sticky top-4">
-            <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">Доступные поля</h2>
-                <button
-                onClick={() => setShowFieldsPanel(false)}
-                className="text-gray-500 hover:text-gray-700"
-                >
-                ✕
-                </button>
-            </div>
+    <div className="flex gap-6 max-w-7xl mx-auto">
+      {/* Основной контент */}
+      <div className="flex-1">
+        <h1 className="text-3xl font-bold mb-6">Группы показателей</h1>
 
-            <div className="space-y-4">
-            {/* Числовые поля - доступны для формул */}
-            {numericFields.length > 0 && (
-                <div>
-                <div className="flex items-center gap-2 text-sm font-medium text-green-700 mb-2">
-                    <Hash size={16} />
-                    <span>Числовые поля ({numericFields.length})</span>
-                </div>
-                <div className="space-y-1">
-                    {numericFields.map((field) => (
-                    <div key={field.name} className="border border-green-200 rounded">
-                        <button
-                        onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-green-50 rounded flex items-center justify-between"
-                        >
-                        <span className="font-mono text-xs truncate flex-1">{field.name}</span>
-                        {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </button>
-                        
-                        {expandedField === field.name && (
-                        <div className="px-3 py-2 bg-green-50 border-t border-green-200 text-xs space-y-1">
-                            <p><strong>Мин:</strong> {field.min?.toFixed(2)}</p>
-                            <p><strong>Макс:</strong> {field.max?.toFixed(2)}</p>
-                            <p><strong>Среднее:</strong> {field.avg?.toFixed(2)}</p>
-                            <p><strong>Значений:</strong> {field.numericCount}</p>
-                            <button
-                            onClick={() => insertFieldIntoFormula(field.name)}
-                            className="mt-2 w-full px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
-                            >
-                            Вставить в формулу
-                            </button>
-                        </div>
-                        )}
-                    </div>
-                    ))}
-                </div>
-                </div>
-            )}
-            {/* Категориальные поля - НЕ доступны для формул */}
-            {categoricalFields.length > 0 && (
-                <div>
-                <div className="flex items-center gap-2 text-sm font-medium text-orange-700 mb-2">
-                    <Info size={16} />
-                    <span>Категориальные поля ({categoricalFields.length})</span>
-                </div>
-                <div className="space-y-1">
-                    {categoricalFields.map((field) => (
-                    <div key={field.name} className="border border-orange-200 rounded bg-orange-50">
-                        <button
-                        onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-orange-100 rounded flex items-center justify-between"
-                        >
-                        <span className="font-mono text-xs truncate flex-1">{field.name}</span>
-                        {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </button>
-                        
-                        {expandedField === field.name && (
-                        <div className="px-3 py-2 bg-orange-100 border-t border-orange-200 text-xs space-y-1">
-                            <p><strong>Числовых значений:</strong> {field.numericCount} из {field.totalCount}</p>
-                            <div className="mt-2 p-2 bg-white rounded border border-orange-300">
-                            <p className="text-orange-800">
-                                ⚠️ Недоступно для формул (категориальный тип)
-                            </p>
-                            <p className="text-gray-600 mt-1">
-                                Используется для фильтрации и группировки
-                            </p>
-                            </div>
-                        </div>
-                        )}
-                    </div>
-                    ))}
-                </div>
-                </div>
-            )}
-
-            {/* Текстовые поля */}
-            {textFields.length > 0 && (
-                <div>
-                <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-2">
-                    <Type size={16} />
-                    <span>Текстовые поля ({textFields.length})</span>
-                </div>
-                <div className="space-y-1">
-                    {textFields.map((field) => (
-                    <div key={field.name} className="border border-blue-200 rounded">
-                        <button
-                        onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 rounded flex items-center justify-between"
-                        >
-                        <span className="font-mono text-xs truncate flex-1">{field.name}</span>
-                        {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </button>
-                        
-                        {expandedField === field.name && (
-                        <div className="px-3 py-2 bg-blue-50 border-t border-blue-200 text-xs space-y-1">
-                            <p><strong>Примеры значений:</strong></p>
-                            <ul className="list-disc list-inside text-gray-700 space-y-0.5">
-                            {field.sampleValues.slice(0, 3).map((val, idx) => (
-                                <li key={idx} className="truncate">{String(val)}</li>
-                            ))}
-                            </ul>
-                            <p className="mt-2"><strong>Всего:</strong> {field.totalCount} значений</p>
-                            {!field.isAllowedInFormulas && (
-                            <div className="mt-2 p-2 bg-yellow-100 rounded">
-                                <p className="text-yellow-800 text-xs">
-                                ⚠️ Недоступно для формул
-                                </p>
-                            </div>
-                            )}
-                        </div>
-                        )}
-                    </div>
-                    ))}
-                </div>
-                </div>
-            )}
-
-            {/* Смешанные поля */}
-            {mixedFields.length > 0 && (
-                <div>
-                <div className="flex items-center gap-2 text-sm font-medium text-purple-700 mb-2">
-                    <Info size={16} />
-                    <span>Смешанные поля ({mixedFields.length})</span>
-                </div>
-                <div className="space-y-1">
-                    {mixedFields.map((field) => (
-                    <div key={field.name} className="border border-purple-200 rounded">
-                        <button
-                        onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 rounded flex items-center justify-between"
-                        >
-                        <span className="font-mono text-xs truncate flex-1">{field.name}</span>
-                        {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        </button>
-                        
-                        {expandedField === field.name && (
-                        <div className="px-3 py-2 bg-purple-50 border-t border-purple-200 text-xs space-y-1">
-                            <p><strong>Числовых:</strong> {field.numericCount} из {field.totalCount}</p>
-                            {field.min !== undefined && field.isAllowedInFormulas && (
-                            <>
-                                <p><strong>Мин:</strong> {field.min.toFixed(2)}</p>
-                                <p><strong>Макс:</strong> {field.max?.toFixed(2)}</p>
-                                <button
-                                onClick={() => insertFieldIntoFormula(field.name)}
-                                className="mt-2 w-full px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs"
-                                >
-                                Вставить в формулу
-                                </button>
-                            </>
-                            )}
-                            {!field.isAllowedInFormulas && (
-                            <div className="mt-2 p-2 bg-yellow-100 rounded">
-                                <p className="text-yellow-800 text-xs">
-                                ⚠️ Недоступно для формул. Настройте в разделе &quot;Настройки&quot;
-                                </p>
-                            </div>
-                            )}
-                        </div>
-                        )}
-                    </div>
-                    ))}
-                </div>
-                </div>
-            )}
-            </div>
-
-
-          {/* Справка по формулам */}
-          <div className="mt-6 p-3 bg-gray-100 rounded text-xs">
-            <p className="font-semibold mb-2">Доступные функции:</p>
-            <ul className="space-y-1 text-gray-700">
-              <li><code className="bg-white px-1 rounded">SUM(поле)</code> - сумма</li>
-              <li><code className="bg-white px-1 rounded">AVG(поле)</code> - среднее</li>
-              <li><code className="bg-white px-1 rounded">COUNT(поле)</code> - количество</li>
-              <li><code className="bg-white px-1 rounded">MIN(поле)</code> - минимум</li>
-              <li><code className="bg-white px-1 rounded">MAX(поле)</code> - максимум</li>
-            </ul>
-            <p className="mt-2 text-gray-600">
-              Примеры: <br/>
-              <code className="bg-white px-1 rounded">AVG(Население) * 2</code><br/>
-              <code className="bg-white px-1 rounded">SUM(Доход) - SUM(Расход)</code>
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Основная область */}
-      <div className="flex-1 max-w-5xl">
-        {!showFieldsPanel && (
-          <button
-            onClick={() => setShowFieldsPanel(true)}
-            className="mb-4 px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm"
-          >
-            Показать панель полей
-          </button>
+        {/* Иерархический фильтр */}
+        {hierarchyConfig.length > 0 && (
+          <HierarchyFilter
+            data={sheets[0].rows}
+            config={hierarchyConfig}
+            onFilterChange={setHierarchyFilters}
+          />
         )}
 
-        <h1 className="text-3xl font-bold mb-6">Фильтрация по иерархии</h1>
-
-        <HierarchyFilter
-          data={sheets[0].rows}
-          config={hierarchyConfig}
-          onFilterChange={setHierFilters}
-        />
-
-        <h1 className="text-3xl font-bold mb-6">Группы показателей с фильтрацией</h1>
-
-        {/* Форма создания новой группы */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
+        {/* Форма создания группы */}
+        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Создать новую группу</h2>
-
+          
           {/* Название группы */}
           <div className="mb-4">
             <label className="block text-sm font-medium mb-2">Название группы</label>
             <input
               type="text"
-              placeholder="Например: Балаково жилищные показатели"
               value={newGroupName}
               onChange={(e) => setNewGroupName(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+              placeholder="Например: Саратовская область"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
-          {/* Фильтры */}
+          {/* Дополнительные фильтры */}
           <div className="mb-6">
-            <h3 className="text-lg font-medium mb-3 flex items-center gap-2">
+            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
               <Filter size={20} />
-              Условия фильтрации
+              Дополнительные фильтры
             </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
-              <select
-                value={currentFilter.column}
-                onChange={(e) => setCurrentFilter({ ...currentFilter, column: e.target.value })}
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              >
-                <option value="">Выберите колонку</option>
-                {availableHeaders.map((header: string) => (
-                  <option key={header} value={header}>
-                    {header}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={currentFilter.operator}
-                onChange={(e) => setCurrentFilter({ ...currentFilter, operator: e.target.value })}
-                className="px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="=">=</option>
-                <option value=">">&gt;</option>
-                <option value="<">&lt;</option>
-                <option value=">=">&gt;=</option>
-                <option value="<=">&lt;=</option>
-                <option value="!=">!=</option>
-                <option value="contains">содержит</option>
-              </select>
-
-              <input
-                type="text"
-                placeholder="Значение"
-                value={currentFilter.value}
-                onChange={(e) => setCurrentFilter({ ...currentFilter, value: e.target.value })}
-                className="px-3 py-2 border border-gray-300 rounded-lg"
-              />
-
-              <button
-                onClick={addFilter}
-                disabled={!currentFilter.column || !currentFilter.value}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
-              >
-                <Plus size={20} className="inline mr-1" />
-                Добавить
-              </button>
-            </div>
-
+            
+            {/* Текущие фильтры */}
             {newFilters.length > 0 && (
-              <div className="space-y-2">
-                {newFilters.map((filter) => (
-                  <div
-                    key={filter.id}
-                    className="flex items-center justify-between bg-blue-50 px-4 py-2 rounded-lg"
-                  >
+              <div className="space-y-2 mb-4">
+                {newFilters.map(filter => (
+                  <div key={filter.id} className="flex items-center gap-2 bg-gray-50 p-3 rounded">
                     <span className="text-sm">
-                      <strong>{filter.column}</strong> {filter.operator} <em>{filter.value}</em>
+                      <strong>{filter.column}</strong> {filter.operator} {filter.value}
                     </span>
                     <button
                       onClick={() => removeFilter(filter.id)}
-                      className="text-red-600 hover:text-red-800"
+                      className="ml-auto p-1 hover:bg-red-100 rounded"
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={16} className="text-red-600" />
                     </button>
                   </div>
                 ))}
               </div>
             )}
-          </div>
 
-          {/* Показатели с формулами */}
-          <div className="mb-6">
-            <h3 className="text-lg font-medium mb-3">Показатели (с формулами)</h3>
-
-            <div className="mb-3">
+            {/* Добавление нового фильтра */}
+            <div className="grid grid-cols-4 gap-2">
+              <select
+                value={currentFilter.column}
+                onChange={(e) => setCurrentFilter({ ...currentFilter, column: e.target.value })}
+                className="px-3 py-2 border rounded-lg"
+              >
+                <option value="">Выберите поле</option>
+                {availableHeaders.map(h => (
+                  <option key={h} value={h}>{h}</option>
+                ))}
+              </select>
+              
+              <select
+                value={currentFilter.operator}
+                onChange={(e) => setCurrentFilter({ ...currentFilter, operator: e.target.value })}
+                className="px-3 py-2 border rounded-lg"
+              >
+                <option value="=">=</option>
+                <option value=">">{'>'}</option>
+                <option value="<">{'<'}</option>
+                <option value=">=">{'>='}</option>
+                <option value="<=">{'<='}</option>
+                <option value="!=">!=</option>
+                <option value="contains">содержит</option>
+              </select>
+              
               <input
                 type="text"
-                placeholder="Название показателя (например: Средняя обеспеченность)"
+                value={currentFilter.value}
+                onChange={(e) => setCurrentFilter({ ...currentFilter, value: e.target.value })}
+                placeholder="Значение"
+                className="px-3 py-2 border rounded-lg"
+              />
+              
+              <button
+                onClick={addFilter}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+              >
+                <Plus size={16} />
+                Добавить
+              </button>
+            </div>
+          </div>
+
+          {/* Показатели */}
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <Hash size={20} />
+              Показатели (формулы)
+            </h3>
+
+            {/* Быстрые кнопки */}
+            {expandedField && numericFields.find(f => f.name === expandedField) && (
+              <div className="flex gap-2 mb-4 flex-wrap">
+                <button
+                  onClick={() => insertQuickFormula('SUM')}
+                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm"
+                >
+                  Σ SUM
+                </button>
+                <button
+                  onClick={() => insertQuickFormula('AVG')}
+                  className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm"
+                >
+                  μ AVG
+                </button>
+                <button
+                  onClick={() => insertQuickFormula('COUNT')}
+                  className="px-3 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 text-sm"
+                >
+                  # COUNT
+                </button>
+                <button
+                  onClick={() => insertQuickFormula('MIN')}
+                  className="px-3 py-1 bg-orange-100 text-orange-700 rounded hover:bg-orange-200 text-sm"
+                >
+                  MIN
+                </button>
+                <button
+                  onClick={() => insertQuickFormula('MAX')}
+                  className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm"
+                >
+                  MAX
+                </button>
+              </div>
+            )}
+            
+            {/* Текущие показатели */}
+            {newIndicators.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {newIndicators.map(indicator => (
+                  <div key={indicator.id} className="flex items-center gap-2 bg-gray-50 p-3 rounded">
+                    <div className="flex-1">
+                      <div className="font-semibold text-sm">{indicator.name}</div>
+                      <div className="text-xs text-gray-600 font-mono">{indicator.formula}</div>
+                    </div>
+                    <button
+                      onClick={() => removeIndicator(indicator.id)}
+                      className="p-1 hover:bg-red-100 rounded"
+                    >
+                      <Trash2 size={16} className="text-red-600" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Добавление нового показателя */}
+            <div className="space-y-2">
+              <input
+                type="text"
                 value={currentIndicator.name}
                 onChange={(e) => setCurrentIndicator({ ...currentIndicator, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg mb-2"
+                placeholder="Название показателя"
+                className="w-full px-3 py-2 border rounded-lg"
               />
-
+              
               <div className="flex gap-2">
                 <input
                   ref={formulaInputRef}
                   type="text"
-                  placeholder="Формула (например: AVG(Жилищ_обеспеченность_кв_м_чел))"
                   value={currentIndicator.formula}
                   onChange={(e) => setCurrentIndicator({ ...currentIndicator, formula: e.target.value })}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
+                  placeholder="Формула (например: SUM(Поле1) / AVG(Поле2))"
+                  className="flex-1 px-3 py-2 border rounded-lg font-mono text-sm"
                 />
+                
                 <button
                   onClick={addIndicator}
-                  disabled={!currentIndicator.name || !currentIndicator.formula}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400"
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
                 >
-                  <Plus size={20} className="inline mr-1" />
+                  <Plus size={16} />
                   Добавить
                 </button>
               </div>
-
-              <p className="text-xs text-gray-500 mt-1">
-                Кликните на поле слева, чтобы вставить его в формулу
-              </p>
             </div>
-
-            {newIndicators.length > 0 && (
-              <div className="space-y-2">
-                {newIndicators.map((indicator) => (
-                  <div
-                    key={indicator.id}
-                    className="flex items-center justify-between bg-purple-50 px-4 py-2 rounded-lg"
-                  >
-                    <div>
-                      <p className="font-medium text-sm">{indicator.name}</p>
-                      <p className="text-xs text-gray-600 font-mono">{indicator.formula}</p>
-                    </div>
-                    <button
-                      onClick={() => removeIndicator(indicator.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
 
+          {/* Кнопка создания */}
           <button
             onClick={createGroup}
             disabled={!newGroupName || newIndicators.length === 0}
-            className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 font-semibold"
+            className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold flex items-center justify-center gap-2"
           >
+            <Save size={20} />
             Создать группу
           </button>
         </div>
 
-        {/* Отображение созданных групп */}
-        <div className="space-y-6">
-          {groups.map((group) => {
-            const filteredData = applyFilters(
-              sheets[0].rows,
-              group.filters.concat(
-                // Добавим иерархический фильтр
-                ...Object.entries(hierFilters)
-                  .filter(([col,val]) => val)
-                  .map(([column,value]) => ({ id:'', column, operator:'=', value }))
-              )
-            );
-            return (
-              <div key={group.id} className="bg-white rounded-lg shadow p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <h3 className="text-xl font-semibold">{group.name}</h3>
-                    <p className="text-sm text-gray-600 mt-1">
-                      Строк после фильтрации: {filteredData.length} из {sheets[0].rows.length}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => deleteGroup(group.id)}
-                    className="text-red-600 hover:text-red-800"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-                {/* Условия фильтрации */}
-                {group.filters.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-sm font-medium mb-2">Условия фильтрации:</p>
-                    <div className="flex flex-wrap gap-2">
-                      {group.filters.map((filter) => (
-                        <span
-                          key={filter.id}
-                          className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs"
-                        >
-                          {filter.column} {filter.operator} {filter.value}
-                        </span>
-                      ))}
+        {/* Список созданных групп */}
+        {groups.length > 0 && (
+          <div className="bg-white rounded-lg shadow-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">Созданные группы ({groups.length})</h2>
+            
+            <div className="space-y-3">
+              {groups.map(group => (
+                <div key={group.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-lg">{group.name}</h3>
+                      
+                      {group.hierarchyFilters && Object.keys(group.hierarchyFilters).filter(k => group.hierarchyFilters![k]).length > 0 && (
+                        <div className="mt-2 text-sm">
+                          <span className="text-gray-600">Иерархия: </span>
+                          {Object.entries(group.hierarchyFilters)
+                            .filter(([, v]) => v)
+                            .map(([k, v]) => (
+                              <span key={k} className="inline-block bg-purple-100 text-purple-800 px-2 py-1 rounded mr-2 text-xs">
+                                {k}: {v}
+                              </span>
+                            ))}
+                        </div>
+                      )}
+                      
+                      <div className="mt-2 text-sm text-gray-600">
+                        <span>Фильтров: {group.filters.length}</span>
+                        <span className="mx-2">|</span>
+                        <span>Показателей: {group.indicators.length}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => previewGroup(group)}
+                        className="p-2 hover:bg-blue-100 rounded transition-colors"
+                        title="Предпросмотр"
+                      >
+                        <Eye size={18} className="text-blue-600" />
+                      </button>
+                      <button
+                        onClick={() => deleteGroup(group.id)}
+                        className="p-2 hover:bg-red-100 rounded transition-colors"
+                        title="Удалить"
+                      >
+                        <Trash2 size={18} className="text-red-600" />
+                      </button>
                     </div>
                   </div>
-                )}
-
-                {/* Таблица результатов */}
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="bg-gray-800 text-white">
-                        <th className="px-4 py-2 text-left font-semibold">Показатель</th>
-                        <th className="px-4 py-2 text-left font-semibold">Формула</th>
-                        <th className="px-4 py-2 text-right font-semibold">Результат</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {group.indicators.map((indicator, idx) => {
-                        const result = evaluateFormula(
-                          indicator.formula,
-                          filteredData,
-                          availableHeaders
-                        );
-
-                        return (
-                          <tr key={indicator.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-100'}>
-                            <td className="border border-gray-300 px-4 py-2 font-medium">
-                              {indicator.name}
-                            </td>
-                            <td className="border border-gray-300 px-4 py-2 font-mono text-sm text-gray-600">
-                              {indicator.formula}
-                            </td>
-                            <td className="border border-gray-300 px-4 py-2 text-right font-semibold text-blue-600">
-                              {result.toFixed(2)}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
                 </div>
-              </div>
-            );
-          })}
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
-          {groups.length === 0 && (
-            <div className="text-center py-12 text-gray-500">
-              Нет созданных групп. Создайте первую группу показателей.
+      {/* Боковая панель с полями */}
+      {showFieldsPanel && (
+        <div className="w-80 bg-white rounded-lg shadow-lg p-4 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold">Доступные поля</h3>
+            <button
+              onClick={() => setShowFieldsPanel(false)}
+              className="text-gray-400 hover:text-gray-600"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Числовые поля */}
+          {numericFields.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-green-700 mb-2">
+                <Hash size={16} />
+                <span>Числовые поля ({numericFields.length})</span>
+              </div>
+              <div className="space-y-1">
+                {numericFields.map((field) => (
+                  <div key={field.name} className="border border-green-200 rounded">
+                    <button
+                      onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-green-50 rounded flex items-center justify-between"
+                    >
+                      <span className="font-mono text-xs truncate flex-1">{field.name}</span>
+                      {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    
+                    {expandedField === field.name && (
+                      <div className="px-3 py-2 bg-green-50 border-t border-green-200 text-xs space-y-1">
+                        <p><strong>Мин:</strong> {field.min?.toFixed(2)}</p>
+                        <p><strong>Макс:</strong> {field.max?.toFixed(2)}</p>
+                        <p><strong>Среднее:</strong> {field.avg?.toFixed(2)}</p>
+                        <p><strong>Значений:</strong> {field.numericCount}</p>
+                        <button
+                          onClick={() => insertFieldIntoFormula(field.name)}
+                          className="mt-2 w-full px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
+                        >
+                          Вставить в формулу
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Смешанные поля - ДОБАВЛЕНО */}
+          {mixedFields.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-purple-700 mb-2">
+                <Info size={16} />
+                <span>Смешанные поля ({mixedFields.length})</span>
+              </div>
+              <div className="space-y-1">
+                {mixedFields.map((field) => (
+                  <div key={field.name} className="border border-purple-200 rounded">
+                    <button
+                      onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 rounded flex items-center justify-between"
+                    >
+                      <span className="font-mono text-xs truncate flex-1">{field.name}</span>
+                      {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    
+                    {expandedField === field.name && (
+                      <div className="px-3 py-2 bg-purple-50 border-t border-purple-200 text-xs space-y-1">
+                        <p><strong>Числовых:</strong> {field.numericCount} из {field.totalCount}</p>
+                        {field.min !== undefined && (
+                          <>
+                            <p><strong>Мин:</strong> {field.min.toFixed(2)}</p>
+                            <p><strong>Макс:</strong> {field.max?.toFixed(2)}</p>
+                            <p><strong>Среднее:</strong> {field.avg?.toFixed(2)}</p>
+                          </>
+                        )}
+                        <button
+                          onClick={() => insertFieldIntoFormula(field.name)}
+                          className="mt-2 w-full px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs"
+                        >
+                          Вставить в формулу
+                        </button>
+                        <div className="mt-2 p-2 bg-yellow-100 rounded">
+                          <p className="text-yellow-800 text-xs">
+                            ⚠️ Содержит нечисловые значения
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Категориальные поля */}
+          {categoricalFields.length > 0 && (
+            <div className="mb-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-orange-700 mb-2">
+                <Info size={16} />
+                <span>Категориальные ({categoricalFields.length})</span>
+              </div>
+              <div className="space-y-1">
+                {categoricalFields.map((field) => (
+                  <div key={field.name} className="border border-orange-200 rounded">
+                    <button
+                      onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-orange-50 rounded flex items-center justify-between"
+                    >
+                      <span className="font-mono text-xs truncate flex-1">{field.name}</span>
+                      {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    
+                    {expandedField === field.name && (
+                      <div className="px-3 py-2 bg-orange-50 border-t border-orange-200 text-xs space-y-1">
+                        <p><strong>Числовых значений:</strong> {field.numericCount} из {field.totalCount}</p>
+                        <p><strong>Примеры:</strong></p>
+                        <ul className="list-disc list-inside text-gray-700 space-y-0.5">
+                          {field.sampleValues.slice(0, 3).map((val, idx) => (
+                            <li key={idx} className="truncate">{String(val)}</li>
+                          ))}
+                        </ul>
+                        <div className="mt-2 p-2 bg-white rounded border border-orange-300">
+                          <p className="text-orange-800 text-xs">
+                            ⚠️ Недоступно для формул
+                          </p>
+                          <p className="text-gray-600 text-xs mt-1">
+                            Используется для фильтрации
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Текстовые поля */}
+          {textFields.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-2">
+                <Type size={16} />
+                <span>Текстовые ({textFields.length})</span>
+              </div>
+              <div className="space-y-1">
+                {textFields.map((field) => (
+                  <div key={field.name} className="border border-blue-200 rounded">
+                    <button
+                      onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 rounded flex items-center justify-between"
+                    >
+                      <span className="font-mono text-xs truncate flex-1">{field.name}</span>
+                      {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    
+                    {expandedField === field.name && (
+                      <div className="px-3 py-2 bg-blue-50 border-t border-blue-200 text-xs space-y-1">
+                        <p><strong>Примеры значений:</strong></p>
+                        <ul className="list-disc list-inside text-gray-700 space-y-0.5">
+                          {field.sampleValues.slice(0, 3).map((val, idx) => (
+                            <li key={idx} className="truncate">{String(val)}</li>
+                          ))}
+                        </ul>
+                        <p className="mt-2"><strong>Всего:</strong> {field.totalCount} значений</p>
+                        {!field.isAllowedInFormulas && (
+                          <div className="mt-2 p-2 bg-yellow-100 rounded">
+                            <p className="text-yellow-800 text-xs">
+                              ⚠️ Недоступно для формул
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Если нет полей для формул */}
+          {numericFields.length === 0 && mixedFields.length === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              <Info size={48} className="mx-auto mb-2 text-gray-300" />
+              <p className="text-sm">Нет доступных числовых полей</p>
+              <p className="text-xs mt-1">Настройте типы данных в разделе Настройки</p>
             </div>
           )}
         </div>
-      </div>
+      )}
+
+
+      {!showFieldsPanel && (
+        <button
+          onClick={() => setShowFieldsPanel(true)}
+          className="fixed right-4 top-20 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700"
+        >
+          Показать поля
+        </button>
+      )}
     </div>
   );
 }

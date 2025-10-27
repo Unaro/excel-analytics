@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
+import { getExcelData } from '@/lib/storage';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import KPICard from '@/components/kpi-card';
 import GroupSummaryTable from '@/components/group-summary-table';
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/lib/recharts';
 import { AlertCircle, BarChart3, Printer } from 'lucide-react';
 import { SheetData } from '@/types';
-import { getExcelData } from '@/lib/storage';
 
 interface Group {
   id: string;
@@ -23,6 +23,7 @@ interface Group {
     name: string;
     formula: string;
   }>;
+  hierarchyFilters?: Record<string, string>;
 }
 
 interface ChartDataPoint {
@@ -34,28 +35,61 @@ export default function DashboardPage() {
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hierarchyConfig, setHierarchyConfig] = useState<string[]>([]);
 
   useEffect(() => {
-    async function fetchData() {
-      const data = await getExcelData();
-      if (data) {
-        setSheets(data);
-      }
-      setLoading(false);
+    const data = getExcelData();
+    if (data) {
+      setSheets(data);
     }
-    fetchData();
 
     const savedGroups = localStorage.getItem('analyticsGroups');
     if (savedGroups) {
       setGroups(JSON.parse(savedGroups));
     }
+
+    const savedConfig = localStorage.getItem('hierarchyConfig');
+    if (savedConfig) {
+      setHierarchyConfig(JSON.parse(savedConfig));
+    }
+
+    setLoading(false);
   }, []);
+
+  // Функция получения самого глубокого фильтра
+  const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
+    if (!hierarchyFilters || !hierarchyConfig.length) return null;
+
+    let deepestLevel = null;
+    for (let i = hierarchyConfig.length - 1; i >= 0; i--) {
+      const col = hierarchyConfig[i];
+      if (hierarchyFilters[col]) {
+        deepestLevel = { column: col, value: hierarchyFilters[col] };
+        break;
+      }
+    }
+    return deepestLevel;
+  };
 
   const groupResults = useMemo(() => {
     if (!sheets || sheets.length === 0 || groups.length === 0) return [];
 
     return groups.map((group) => {
-      const filteredData = applyFilters(sheets[0].rows, group.filters);
+      // Получаем самый глубокий фильтр из иерархии
+      const deepestFilter = getDeepestHierarchyFilter(group.hierarchyFilters);
+      
+      // Комбинируем фильтры
+      const allFilters = [
+        ...group.filters,
+        ...(deepestFilter ? [{
+          id: 'hier_deepest',
+          column: deepestFilter.column,
+          operator: '=',
+          value: deepestFilter.value,
+        }] : []),
+      ];
+
+      const filteredData = applyFilters(sheets[0].rows, allFilters);
       
       const indicators = group.indicators.map((indicator) => ({
         name: indicator.name,
@@ -67,11 +101,13 @@ export default function DashboardPage() {
         groupId: group.id,
         groupName: group.name,
         filters: group.filters,
+        hierarchyFilters: group.hierarchyFilters,
+        deepestFilter,
         indicators,
         rowCount: filteredData.length,
       };
     });
-  }, [sheets, groups]);
+  }, [sheets, groups, hierarchyConfig]);
 
   const chartData = useMemo(() => {
     return groupResults.map((result) => {
@@ -325,6 +361,16 @@ export default function DashboardPage() {
               />
               {result.groupName}
             </h3>
+
+            {/* Показываем активный иерархический фильтр */}
+            {result.deepestFilter && (
+              <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded text-xs">
+                <p className="text-purple-900 font-semibold">
+                  🔍 {result.deepestFilter.column}: {result.deepestFilter.value}
+                </p>
+              </div>
+            )}
+
             <div className="space-y-3">
               {result.indicators.map((indicator) => (
                 <div key={indicator.name} className="border-l-4 pl-3" style={{ borderColor: COLORS[index % COLORS.length] }}>
