@@ -9,7 +9,6 @@ const menuItems = [
   { href: '/data', label: 'Данные', icon: Table },
   { href: '/groups', label: 'Группы показателей', icon: Layers },
   { href: '/dashboard', label: 'Дашборд', icon: BarChart3 },
-  { href: '/statistics', label: 'Статистика', icon: BarChart3 },
   { href: '/settings', label: 'Настройки', icon: Settings },
   { href: '/settings/hierarchy', label: 'Иерархия', icon: Settings },
 ];

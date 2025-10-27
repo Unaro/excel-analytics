@@ -7,10 +7,11 @@ import {
   saveMetadata,
 } from '@/lib/metadata-manager';
 import { ColumnMetadata, ColumnDataType, SheetData, ExcelRow } from '@/types';
-import { Settings, Database, Hash, Type, Calendar, Tag, CheckCircle, AlertTriangle, Info, Trash2, AlertCircle } from 'lucide-react';
+import { GitBranch, FileSpreadsheet, Layers, Settings, Database, Hash, Type, Calendar, Tag, CheckCircle, AlertTriangle, Info, Trash2, AlertCircle, FileText } from 'lucide-react';
 import { clearExcelData, getExcelData } from '@/lib/storage';
 
 export default function SettingsPage() {
+
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [selectedSheet, setSelectedSheet] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -21,6 +22,8 @@ export default function SettingsPage() {
   const [showDeleteDataModal, setShowDeleteDataModal] = useState(false);
   const [showDeleteGroupsModal, setShowDeleteGroupsModal] = useState(false);
   const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [showDeleteHierarchyModal, setShowDeleteHierarchyModal] = useState(false);
+  const [showDeleteMetadataModal, setShowDeleteMetadataModal] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -119,14 +122,26 @@ export default function SettingsPage() {
     // Можно перезагрузить страницу для обновления
     window.location.reload();
   };
+  const deleteHierarchyConfig = () => {
+    localStorage.removeItem('hierarchyConfig');
+    setShowDeleteHierarchyModal(false);
+    alert('✅ Конфигурация иерархии успешно сброшена!');
+  };
 
-  const deleteAllData = async () => {
-    // Удаляем данные на сервере
-    getExcelData();
-    
-    // Удаляем все данные из localStorage
+  const deleteMetadata = () => {
+    localStorage.removeItem('datasetMetadata');
+    setShowDeleteMetadataModal(false);
+    alert('✅ Метаданные типов данных успешно сброшены!');
+    // Перезагрузка для пересоздания метаданных
+    window.location.reload();
+  };
+
+  const deleteAllData = () => {
+    // Удаляем ВСЕ данные из localStorage
+    clearExcelData();
     localStorage.removeItem('analyticsGroups');
     localStorage.removeItem('datasetMetadata');
+    localStorage.removeItem('hierarchyConfig');
     
     setShowDeleteAllModal(false);
     
@@ -192,7 +207,10 @@ export default function SettingsPage() {
 
           {/* Опасная зона доступна всегда */}
           <DangerZone
+            onDeleteData={() => setShowDeleteDataModal(true)}
             onDeleteGroups={() => setShowDeleteGroupsModal(true)}
+            onDeleteHierarchy={() => setShowDeleteHierarchyModal(true)}
+            onDeleteMetadata={() => setShowDeleteMetadataModal(true)}
             onDeleteAll={() => setShowDeleteAllModal(true)}
             hasData={false}
           />
@@ -216,6 +234,25 @@ export default function SettingsPage() {
           message="Это действие удалит ВСЕ данные: загруженные файлы, группы показателей и настройки. Это действие необратимо!"
           confirmText="Удалить всё"
           isDangerous
+        />
+
+        <ConfirmationModal
+          isOpen={showDeleteHierarchyModal}
+          onClose={() => setShowDeleteHierarchyModal(false)}
+          onConfirm={deleteHierarchyConfig}
+          title="Сбросить настройки иерархии?"
+          message="Это действие удалит настроенную структуру категориальных полей. Данные и группы показателей останутся нетронутыми."
+          confirmText="Сбросить"
+        />
+
+        {/* Модальное окно удаления метаданных */}
+        <ConfirmationModal
+          isOpen={showDeleteMetadataModal}
+          onClose={() => setShowDeleteMetadataModal(false)}
+          onConfirm={deleteMetadata}
+          title="Сбросить метаданные типов?"
+          message="Это действие удалит все настройки типов данных колонок. Типы будут определены автоматически при следующей загрузке."
+          confirmText="Сбросить"
         />
       </div>
     );
@@ -427,6 +464,8 @@ export default function SettingsPage() {
       <DangerZone
         onDeleteData={() => setShowDeleteDataModal(true)}
         onDeleteGroups={() => setShowDeleteGroupsModal(true)}
+        onDeleteHierarchy={() => setShowDeleteHierarchyModal(true)}
+        onDeleteMetadata={() => setShowDeleteMetadataModal(true)}
         onDeleteAll={() => setShowDeleteAllModal(true)}
         hasData={true}
       />
@@ -464,94 +503,270 @@ export default function SettingsPage() {
 }
 
 // Компонент "Опасная зона"
+// Компонент "Опасная зона" - обновленная версия
 function DangerZone({ 
   onDeleteData, 
   onDeleteGroups, 
+  onDeleteHierarchy,
+  onDeleteMetadata,
   onDeleteAll,
   hasData 
 }: { 
   onDeleteData?: () => void;
   onDeleteGroups: () => void;
+  onDeleteHierarchy: () => void;
+  onDeleteMetadata: () => void;
   onDeleteAll: () => void;
   hasData: boolean;
 }) {
+  if (!hasData) return null
+ 
   return (
-    <div className="bg-red-50 border-2 border-red-300 rounded-lg p-6">
-      <div className="flex items-center gap-3 mb-4">
-        <AlertCircle className="text-red-600" size={24} />
-        <h2 className="text-2xl font-bold text-red-900">Опасная зона</h2>
+    <div className="bg-gradient-to-br from-red-50 to-orange-50 border-2 border-red-300 rounded-xl p-8 shadow-lg">
+      <div className="flex items-center gap-3 mb-6">
+        <div className="bg-red-600 p-3 rounded-full">
+          <AlertCircle className="text-white" size={28} />
+        </div>
+        <div>
+          <h2 className="text-2xl font-bold text-red-900">Опасная зона</h2>
+          <p className="text-red-700 text-sm">Действия в этом разделе необратимы</p>
+        </div>
       </div>
-      
-      <p className="text-red-800 mb-6">
-        Действия в этом разделе необратимы. Пожалуйста, будьте осторожны.
-      </p>
+
+      {/* Статистика хранилища */}
+      <div className="mb-6 p-4 bg-white rounded-lg border border-red-200">
+        <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+          <Database size={18} />
+          Текущее состояние хранилища
+        </h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="text-center p-2 bg-gray-50 rounded">
+            <p className="text-xs text-gray-600">Данные Excel</p>
+            <p className="text-lg font-bold text-gray-900">
+              {localStorage.getItem('uploadedExcelData') ? '✓' : '✗'}
+            </p>
+          </div>
+          <div className="text-center p-2 bg-gray-50 rounded">
+            <p className="text-xs text-gray-600">Группы показателей</p>
+            <p className="text-lg font-bold text-gray-900">
+              {JSON.parse(localStorage.getItem('analyticsGroups') || '[]').length}
+            </p>
+          </div>
+          <div className="text-center p-2 bg-gray-50 rounded">
+            <p className="text-xs text-gray-600">Метаданные</p>
+            <p className="text-lg font-bold text-gray-900">
+              {localStorage.getItem('datasetMetadata') ? '✓' : '✗'}
+            </p>
+          </div>
+          <div className="text-center p-2 bg-gray-50 rounded">
+            <p className="text-xs text-gray-600">Иерархия</p>
+            <p className="text-lg font-bold text-gray-900">
+              {JSON.parse(localStorage.getItem('hierarchyConfig') || '[]').length}
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="space-y-4">
+        {/* Удаление данных Excel */}
         {hasData && onDeleteData && (
-          <div className="bg-white rounded-lg p-4 border border-red-200">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 mb-1">
-                  Удалить загруженные данные
-                </h3>
-                <p className="text-sm text-gray-600">
-                  Удалить все данные из загруженного Excel файла. Группы и настройки сохранятся.
-                </p>
+          <div className="bg-white rounded-lg border-2 border-orange-300 hover:border-orange-400 transition-all">
+            <div className="p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="text-orange-600" size={20} />
+                    <h3 className="font-bold text-gray-900">Удалить загруженные данные</h3>
+                  </div>
+                  <p className="text-sm text-gray-600 mb-2">
+                    Удаляет все данные из загруженного Excel/CSV файла
+                  </p>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                      uploadedExcelData
+                    </span>
+                    <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                      Группы сохранятся
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={onDeleteData}
+                  className="px-5 py-2.5 bg-white border-2 border-orange-600 text-orange-600 rounded-lg hover:bg-orange-600 hover:text-white transition-all font-semibold flex items-center gap-2 whitespace-nowrap shadow-sm"
+                >
+                  <Trash2 size={18} />
+                  Удалить
+                </button>
               </div>
-              <button
-                onClick={onDeleteData}
-                className="ml-4 px-4 py-2 bg-white border-2 border-red-600 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap"
-              >
-                <Trash2 size={16} />
-                Удалить данные
-              </button>
             </div>
           </div>
         )}
 
-        <div className="bg-white rounded-lg p-4 border border-red-200">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-900 mb-1">
-                Удалить все группы показателей
-              </h3>
-              <p className="text-sm text-gray-600">
-                Удалить все созданные группы с настроенными фильтрами и формулами.
-              </p>
+        {/* Удаление групп показателей */}
+        <div className="bg-white rounded-lg border-2 border-orange-300 hover:border-orange-400 transition-all">
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <Layers className="text-orange-600" size={20} />
+                  <h3 className="font-bold text-gray-900">Удалить группы показателей</h3>
+                </div>
+                <p className="text-sm text-gray-600 mb-2">
+                  Удаляет все созданные группы с фильтрами и формулами
+                </p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                    analyticsGroups
+                  </span>
+                  <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                    Данные сохранятся
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={onDeleteGroups}
+                className="px-5 py-2.5 bg-white border-2 border-orange-600 text-orange-600 rounded-lg hover:bg-orange-600 hover:text-white transition-all font-semibold flex items-center gap-2 whitespace-nowrap shadow-sm"
+              >
+                <Trash2 size={18} />
+                Удалить
+              </button>
             </div>
-            <button
-              onClick={onDeleteGroups}
-              className="ml-4 px-4 py-2 bg-white border-2 border-red-600 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-colors flex items-center gap-2 whitespace-nowrap"
-            >
-              <Trash2 size={16} />
-              Удалить группы
-            </button>
           </div>
         </div>
 
-        <div className="bg-white rounded-lg p-4 border-2 border-red-600">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <h3 className="font-semibold text-red-900 mb-1">
-                Удалить ВСЁ
-              </h3>
-              <p className="text-sm text-red-800">
-                <strong>Опасно!</strong> Удалить все данные, группы показателей и настройки. Это действие нельзя отменить.
-              </p>
+        {/* Удаление конфигурации иерархии */}
+        <div className="bg-white rounded-lg border-2 border-orange-300 hover:border-orange-400 transition-all">
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <GitBranch className="text-orange-600" size={20} />
+                  <h3 className="font-bold text-gray-900">Сбросить настройки иерархии</h3>
+                </div>
+                <p className="text-sm text-gray-600 mb-2">
+                  Удаляет настроенную структуру категориальных полей
+                </p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                    hierarchyConfig
+                  </span>
+                  <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                    Данные и группы сохранятся
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={onDeleteHierarchy}
+                className="px-5 py-2.5 bg-white border-2 border-orange-600 text-orange-600 rounded-lg hover:bg-orange-600 hover:text-white transition-all font-semibold flex items-center gap-2 whitespace-nowrap shadow-sm"
+              >
+                <Trash2 size={18} />
+                Сбросить
+              </button>
             </div>
-            <button
-              onClick={onDeleteAll}
-              className="ml-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2 whitespace-nowrap font-semibold"
-            >
-              <Trash2 size={16} />
-              Удалить всё
-            </button>
+          </div>
+        </div>
+
+        {/* Удаление метаданных */}
+        <div className="bg-white rounded-lg border-2 border-orange-300 hover:border-orange-400 transition-all">
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <Settings className="text-orange-600" size={20} />
+                  <h3 className="font-bold text-gray-900">Сбросить метаданные типов</h3>
+                </div>
+                <p className="text-sm text-gray-600 mb-2">
+                  Удаляет настройки типов данных колонок (будут определены автоматически)
+                </p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="bg-orange-100 text-orange-800 px-2 py-1 rounded">
+                    datasetMetadata
+                  </span>
+                  <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                    Данные и группы сохранятся
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={onDeleteMetadata}
+                className="px-5 py-2.5 bg-white border-2 border-orange-600 text-orange-600 rounded-lg hover:bg-orange-600 hover:text-white transition-all font-semibold flex items-center gap-2 whitespace-nowrap shadow-sm"
+              >
+                <Trash2 size={18} />
+                Сбросить
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ПОЛНОЕ УДАЛЕНИЕ */}
+        <div className="bg-gradient-to-br from-red-100 to-red-200 rounded-lg border-3 border-red-600 shadow-xl">
+          <div className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-red-600 p-1.5 rounded">
+                    <AlertTriangle className="text-white" size={20} />
+                  </div>
+                  <h3 className="font-bold text-red-900 text-lg">Удалить ВСЁ</h3>
+                </div>
+                <p className="text-sm text-red-800 mb-3 font-medium">
+                  <strong>⚠️ КРИТИЧЕСКИ ОПАСНО!</strong> Полностью очищает всё хранилище приложения
+                </p>
+                <div className="flex flex-wrap gap-2 text-xs mb-3">
+                  <span className="bg-red-200 text-red-900 px-2 py-1 rounded font-semibold">
+                    uploadedExcelData
+                  </span>
+                  <span className="bg-red-200 text-red-900 px-2 py-1 rounded font-semibold">
+                    analyticsGroups
+                  </span>
+                  <span className="bg-red-200 text-red-900 px-2 py-1 rounded font-semibold">
+                    hierarchyConfig
+                  </span>
+                  <span className="bg-red-200 text-red-900 px-2 py-1 rounded font-semibold">
+                    datasetMetadata
+                  </span>
+                </div>
+                <div className="bg-white border-2 border-red-400 rounded p-3 text-sm text-red-900">
+                  <p className="font-semibold mb-1">Это действие:</p>
+                  <ul className="list-disc list-inside space-y-1 text-xs">
+                    <li>Удалит все загруженные данные</li>
+                    <li>Удалит все группы показателей</li>
+                    <li>Сбросит конфигурацию иерархии</li>
+                    <li>Удалит настройки типов данных</li>
+                    <li><strong>Это действие НЕОБРАТИМО</strong></li>
+                  </ul>
+                </div>
+              </div>
+              <button
+                onClick={onDeleteAll}
+                className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-bold flex items-center gap-2 whitespace-nowrap shadow-lg hover:shadow-xl border-2 border-red-800"
+              >
+                <AlertTriangle size={20} />
+                Удалить всё
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Предупреждающее сообщение */}
+      <div className="mt-6 p-4 bg-yellow-50 border-2 border-yellow-400 rounded-lg">
+        <div className="flex items-start gap-3">
+          <Info className="text-yellow-700 flex-shrink-0 mt-0.5" size={20} />
+          <div className="text-sm text-yellow-800">
+            <p className="font-semibold mb-1">Перед удалением рекомендуем:</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Экспортировать важные данные в CSV</li>
+              <li>Сохранить настройки групп показателей</li>
+              <li>Записать конфигурацию иерархии</li>
+            </ul>
           </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 // Компонент модального окна подтверждения
 function ConfirmationModal({

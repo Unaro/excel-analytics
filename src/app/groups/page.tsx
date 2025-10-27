@@ -45,6 +45,13 @@ export default function GroupsPage() {
   const [newIndicators, setNewIndicators] = useState<Indicator[]>([]);
   const [hierarchyFilters, setHierarchyFilters] = useState<Record<string, string>>({});
 
+  // Состояния для ускорения ввода
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [autocompleteOptions, setAutocompleteOptions] = useState<string[]>([]);
+  const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
+  const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
+  const [formulaHistory, setFormulaHistory] = useState<string[]>([]);
+
   // Текущий фильтр
   const [currentFilter, setCurrentFilter] = useState({
     column: '',
@@ -60,6 +67,13 @@ export default function GroupsPage() {
 
   // Конфигурация иерархии
   const [hierarchyConfig, setHierarchyConfig] = useState<string[]>([]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('formulaHistory');
+    if (saved) {
+      setFormulaHistory(JSON.parse(saved));
+    }
+  }, []);
 
   useEffect(() => {
     const data = getExcelData();
@@ -211,22 +225,29 @@ export default function GroupsPage() {
   // Вставка поля в формулу
   const insertFieldIntoFormula = (fieldName: string) => {
     const input = formulaInputRef.current;
-    if (input) {
-      const start = input.selectionStart || 0;
-      const end = input.selectionEnd || 0;
-      const currentFormula = currentIndicator.formula;
-      const newFormula = 
-        currentFormula.substring(0, start) + 
-        fieldName + 
-        currentFormula.substring(end);
-      
-      setCurrentIndicator({ ...currentIndicator, formula: newFormula });
-      
-      setTimeout(() => {
-        input.focus();
-        input.setSelectionRange(start + fieldName.length, start + fieldName.length);
-      }, 0);
+    if (!input) {
+      setCurrentIndicator({ 
+        ...currentIndicator, 
+        formula: currentIndicator.formula + fieldName 
+      });
+      return;
     }
+
+    const start = input.selectionStart || 0;
+    const end = input.selectionEnd || 0;
+    const currentFormula = currentIndicator.formula;
+    
+    const newFormula = 
+      currentFormula.substring(0, start) + 
+      fieldName + 
+      currentFormula.substring(end);
+    
+    setCurrentIndicator({ ...currentIndicator, formula: newFormula });
+    
+    setTimeout(() => {
+      input.focus();
+      input.setSelectionRange(start + fieldName.length, start + fieldName.length);
+    }, 0);
   };
 
   // Быстрые кнопки формул
@@ -311,6 +332,174 @@ export default function GroupsPage() {
 
     alert(message);
   };
+
+  const handleFormulaChange = (value: string) => {
+  setCurrentIndicator({ ...currentIndicator, formula: value });
+
+  // Проверяем, нужно ли показать автодополнение
+  const cursorPosition = formulaInputRef.current?.selectionStart || 0;
+  const textBeforeCursor = value.substring(0, cursorPosition);
+  
+  // Ищем последнее слово перед курсором
+  const lastWord = textBeforeCursor.split(/[\s()+\-*/,]/).pop() || '';
+  
+  if (lastWord.length >= 2) {
+    // Фильтруем доступные поля
+    const matchingFields = numericFields
+      .filter(f => f.name.toLowerCase().includes(lastWord.toLowerCase()))
+      .map(f => f.name)
+      .slice(0, 5);
+
+    // Добавляем функции
+    const functions = ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX'];
+    const matchingFunctions = functions.filter(fn => 
+      fn.toLowerCase().includes(lastWord.toLowerCase())
+    );
+
+    const options = [...matchingFunctions, ...matchingFields];
+    
+    if (options.length > 0) {
+      setAutocompleteOptions(options);
+      setSelectedAutocompleteIndex(0);
+      setShowAutocomplete(true);
+      
+      // Позиционируем подсказку
+      if (formulaInputRef.current) {
+        const rect = formulaInputRef.current.getBoundingClientRect();
+        setAutocompletePosition({
+          top: rect.bottom + window.scrollY,
+          left: rect.left + window.scrollX,
+        });
+      }
+    } else {
+      setShowAutocomplete(false);
+    }
+  } else {
+    setShowAutocomplete(false);
+  }
+};
+
+// Обработчик клавиш для автодополнения
+const handleFormulaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  if (!showAutocomplete) return;
+
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault();
+      setSelectedAutocompleteIndex(prev => 
+        Math.min(prev + 1, autocompleteOptions.length - 1)
+      );
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      setSelectedAutocompleteIndex(prev => Math.max(prev - 1, 0));
+      break;
+    case 'Enter':
+    case 'Tab':
+      e.preventDefault();
+      insertAutocomplete(autocompleteOptions[selectedAutocompleteIndex]);
+      break;
+    case 'Escape':
+      setShowAutocomplete(false);
+      break;
+  }
+};
+
+// Вставка из автодополнения
+const insertAutocomplete = (text: string) => {
+  const input = formulaInputRef.current;
+  if (!input) return;
+
+  const cursorPosition = input.selectionStart || 0;
+  const currentFormula = currentIndicator.formula;
+  const textBeforeCursor = currentFormula.substring(0, cursorPosition);
+  const textAfterCursor = currentFormula.substring(cursorPosition);
+  
+  // Находим начало последнего слова
+  const lastWordStart = textBeforeCursor.split(/[\s()+\-*/,]/).pop() || '';
+  const startPosition = cursorPosition - lastWordStart.length;
+  
+  // Формируем новую формулу
+  const newFormula = 
+    currentFormula.substring(0, startPosition) + 
+    text + 
+    textAfterCursor;
+  
+  setCurrentIndicator({ ...currentIndicator, formula: newFormula });
+  setShowAutocomplete(false);
+  
+  // Устанавливаем курсор после вставленного текста
+  setTimeout(() => {
+    input.focus();
+    const newPosition = startPosition + text.length;
+    input.setSelectionRange(newPosition, newPosition);
+  }, 0);
+};
+
+// Быстрая вставка функции с полем
+const insertQuickFormulaWithField = (func: string, fieldName: string) => {
+  const input = formulaInputRef.current;
+  if (!input) {
+    // Если инпут недоступен, просто добавляем в конец
+    const formula = currentIndicator.formula 
+      ? `${currentIndicator.formula} ${func}(${fieldName})`
+      : `${func}(${fieldName})`;
+    setCurrentIndicator({ ...currentIndicator, formula });
+    return;
+  }
+
+  const cursorPosition = input.selectionStart || 0;
+  const currentFormula = currentIndicator.formula;
+  const textToInsert = `${func}(${fieldName})`;
+  
+  // Вставляем в позицию курсора
+  const newFormula = 
+    currentFormula.substring(0, cursorPosition) + 
+    textToInsert + 
+    currentFormula.substring(cursorPosition);
+  
+  setCurrentIndicator({ ...currentIndicator, formula: newFormula });
+  
+  // Устанавливаем курсор после вставленного текста
+  setTimeout(() => {
+    input.focus();
+    const newPosition = cursorPosition + textToInsert.length;
+    input.setSelectionRange(newPosition, newPosition);
+  }, 0);
+};
+
+// Шаблоны формул
+const formulaTemplates = [
+  { name: 'Сумма', template: 'SUM(поле)', icon: 'Σ' },
+  { name: 'Среднее', template: 'AVG(поле)', icon: 'μ' },
+  { name: 'Процент', template: '(SUM(поле1) / SUM(поле2)) * 100', icon: '%' },
+  { name: 'Разница', template: 'SUM(поле1) - SUM(поле2)', icon: '−' },
+  { name: 'Соотношение', template: 'SUM(поле1) / SUM(поле2)', icon: '÷' },
+];
+
+// Сохранение формулы в историю
+const addIndicatorWithHistory = () => {
+  if (currentIndicator.name && currentIndicator.formula) {
+    const updatedIndicators: Indicator[] = [
+      ...newIndicators,
+      {
+        id: Date.now().toString(),
+        ...currentIndicator,
+      },
+    ];
+    setNewIndicators(updatedIndicators);
+    
+    // Добавляем в историю
+    const newHistory = [
+      currentIndicator.formula, 
+      ...formulaHistory.filter(f => f !== currentIndicator.formula)
+    ].slice(0, 10);
+    setFormulaHistory(newHistory);
+    localStorage.setItem('formulaHistory', JSON.stringify(newHistory));
+    
+    setCurrentIndicator({ name: '', formula: '' });
+  }
+};
 
   if (loading) {
     return (
@@ -459,54 +648,140 @@ export default function GroupsPage() {
               Показатели (формулы)
             </h3>
 
-            {/* Быстрые кнопки */}
+            {/* Шаблоны формул */}
+            <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+              <p className="text-sm font-medium text-gray-700 mb-2">⚡ Быстрые шаблоны:</p>
+              <div className="flex flex-wrap gap-2">
+                {formulaTemplates.map((template) => (
+                  <button
+                    key={template.name}
+                    onClick={() => setCurrentIndicator({ ...currentIndicator, formula: template.template })}
+                    className="px-3 py-2 bg-white border-2 border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-all text-sm font-medium flex items-center gap-2"
+                  >
+                    <span className="text-lg">{template.icon}</span>
+                    {template.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-xs font-medium text-gray-600 mb-2">Операторы:</p>
+              <div className="flex flex-wrap gap-2">
+                {['+', '-', '*', '/', '(', ')', ','].map((op) => (
+                  <button
+                    key={op}
+                    onClick={() => {
+                      const input = formulaInputRef.current;
+                      if (!input) return;
+                      
+                      const cursorPosition = input.selectionStart || 0;
+                      const currentFormula = currentIndicator.formula;
+                      
+                      const newFormula = 
+                        currentFormula.substring(0, cursorPosition) + 
+                        op + 
+                        currentFormula.substring(cursorPosition);
+                      
+                      setCurrentIndicator({ ...currentIndicator, formula: newFormula });
+                      
+                      setTimeout(() => {
+                        input.focus();
+                        input.setSelectionRange(cursorPosition + 1, cursorPosition + 1);
+                      }, 0);
+                    }}
+                    className="px-3 py-1 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-100 hover:border-gray-400 transition-all text-sm font-mono"
+                  >
+                    {op}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Быстрые кнопки с полями */}
             {expandedField && numericFields.find(f => f.name === expandedField) && (
-              <div className="flex gap-2 mb-4 flex-wrap">
-                <button
-                  onClick={() => insertQuickFormula('SUM')}
-                  className="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm"
-                >
-                  Σ SUM
-                </button>
-                <button
-                  onClick={() => insertQuickFormula('AVG')}
-                  className="px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 text-sm"
-                >
-                  μ AVG
-                </button>
-                <button
-                  onClick={() => insertQuickFormula('COUNT')}
-                  className="px-3 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 text-sm"
-                >
-                  # COUNT
-                </button>
-                <button
-                  onClick={() => insertQuickFormula('MIN')}
-                  className="px-3 py-1 bg-orange-100 text-orange-700 rounded hover:bg-orange-200 text-sm"
-                >
-                  MIN
-                </button>
-                <button
-                  onClick={() => insertQuickFormula('MAX')}
-                  className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm"
-                >
-                  MAX
-                </button>
+              <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                <p className="text-sm font-medium text-gray-700 mb-2">
+                  🎯 Быстрая вставка для поля: <strong>{expandedField}</strong>
+                </p>
+                <p className="text-xs text-gray-500 mb-2">
+                  💡 Функция будет вставлена в позицию курсора
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={() => insertQuickFormulaWithField('SUM', expandedField)}
+                    className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium transition-all hover:scale-105"
+                    title="Вставить SUM в позицию курсора"
+                  >
+                    Σ Сумма
+                  </button>
+                  <button
+                    onClick={() => insertQuickFormulaWithField('AVG', expandedField)}
+                    className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium transition-all hover:scale-105"
+                    title="Вставить AVG в позицию курсора"
+                  >
+                    μ Среднее
+                  </button>
+                  <button
+                    onClick={() => insertQuickFormulaWithField('COUNT', expandedField)}
+                    className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-medium transition-all hover:scale-105"
+                    title="Вставить COUNT в позицию курсора"
+                  >
+                    # Количество
+                  </button>
+                  <button
+                    onClick={() => insertQuickFormulaWithField('MIN', expandedField)}
+                    className="px-3 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 text-sm font-medium transition-all hover:scale-105"
+                    title="Вставить MIN в позицию курсора"
+                  >
+                    MIN
+                  </button>
+                  <button
+                    onClick={() => insertQuickFormulaWithField('MAX', expandedField)}
+                    className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium transition-all hover:scale-105"
+                    title="Вставить MAX в позицию курсора"
+                  >
+                    MAX
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* История формул */}
+            {formulaHistory.length > 0 && (
+              <div className="mb-4">
+                <details className="group">
+                  <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-blue-600 flex items-center gap-2">
+                    <span>📜 История формул ({formulaHistory.length})</span>
+                    <ChevronDown className="group-open:rotate-180 transition-transform" size={16} />
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    {formulaHistory.map((formula, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setCurrentIndicator({ ...currentIndicator, formula })}
+                        className="w-full text-left px-3 py-2 bg-gray-50 hover:bg-blue-50 rounded text-xs font-mono border border-gray-200 hover:border-blue-300 transition-colors"
+                      >
+                        {formula}
+                      </button>
+                    ))}
+                  </div>
+                </details>
               </div>
             )}
             
             {/* Текущие показатели */}
             {newIndicators.length > 0 && (
               <div className="space-y-2 mb-4">
-                {newIndicators.map(indicator => (
-                  <div key={indicator.id} className="flex items-center gap-2 bg-gray-50 p-3 rounded">
+                {newIndicators.map((indicator) => (
+                  <div key={indicator.id} className="flex items-center gap-2 bg-gradient-to-r from-gray-50 to-blue-50 p-3 rounded border border-gray-200">
                     <div className="flex-1">
                       <div className="font-semibold text-sm">{indicator.name}</div>
                       <div className="text-xs text-gray-600 font-mono">{indicator.formula}</div>
                     </div>
                     <button
                       onClick={() => removeIndicator(indicator.id)}
-                      className="p-1 hover:bg-red-100 rounded"
+                      className="p-1 hover:bg-red-100 rounded transition-colors"
                     >
                       <Trash2 size={16} className="text-red-600" />
                     </button>
@@ -516,35 +791,61 @@ export default function GroupsPage() {
             )}
 
             {/* Добавление нового показателя */}
-            <div className="space-y-2">
+            <div className="space-y-2 relative">
               <input
                 type="text"
                 value={currentIndicator.name}
                 onChange={(e) => setCurrentIndicator({ ...currentIndicator, name: e.target.value })}
-                placeholder="Название показателя"
-                className="w-full px-3 py-2 border rounded-lg"
+                placeholder="Название показателя (например: Средний возраст)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               
-              <div className="flex gap-2">
+              <div className="relative">
                 <input
                   ref={formulaInputRef}
                   type="text"
                   value={currentIndicator.formula}
-                  onChange={(e) => setCurrentIndicator({ ...currentIndicator, formula: e.target.value })}
-                  placeholder="Формула (например: SUM(Поле1) / AVG(Поле2))"
-                  className="flex-1 px-3 py-2 border rounded-lg font-mono text-sm"
+                  onChange={(e) => handleFormulaChange(e.target.value)}
+                  onKeyDown={handleFormulaKeyDown}
+                  placeholder="Формула (начните печатать для подсказок...)"
+                  className="w-full px-3 py-2 border-2 border-blue-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
                 
-                <button
-                  onClick={addIndicator}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-                >
-                  <Plus size={16} />
-                  Добавить
-                </button>
+                {/* Автодополнение */}
+                {showAutocomplete && (
+                  <div 
+                    className="absolute z-50 mt-1 w-full bg-white border-2 border-blue-300 rounded-lg shadow-xl max-h-60 overflow-y-auto"
+                  >
+                    {autocompleteOptions.map((option, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => insertAutocomplete(option)}
+                        className={`w-full text-left px-4 py-2 text-sm font-mono hover:bg-blue-50 transition-colors ${
+                          idx === selectedAutocompleteIndex ? 'bg-blue-100' : ''
+                        }`}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Подсказка */}
+                <div className="mt-1 text-xs text-gray-500">
+                  💡 Используйте Tab или Enter для автодополнения, ↑↓ для навигации
+                </div>
               </div>
+              
+              <button
+                onClick={addIndicatorWithHistory}
+                className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 font-semibold"
+              >
+                <Plus size={16} />
+                Добавить показатель
+              </button>
             </div>
           </div>
+
 
           {/* Кнопка создания */}
           <button
