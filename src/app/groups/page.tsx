@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react';
 import { getExcelData } from '@/lib/storage';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import { getFormulaAllowedColumns, getMetadataForSheet } from '@/lib/metadata-manager';
-import { Plus, Trash2, Filter, Hash, Type, ChevronDown, ChevronUp, Info, Save, Eye } from 'lucide-react';
+import { Plus, Trash2, Filter, Hash, Type, ChevronDown, ChevronUp, Info, Save, Eye, AlertCircle } from 'lucide-react';
 import { SheetData, FieldInfo, ExcelRow } from '@/types';
 import { HierarchyFilter } from '@/components/hierarchyFilter';
 
@@ -29,6 +29,14 @@ interface Group {
   hierarchyFilters?: Record<string, string>; // Новое поле для иерархических фильтров
 }
 
+interface SavedIndicator {
+  id: string;
+  name: string;
+  formula: string;
+  createdAt: number;
+  usageCount: number;
+}
+
 export default function GroupsPage() {
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
@@ -50,7 +58,10 @@ export default function GroupsPage() {
   const [autocompleteOptions, setAutocompleteOptions] = useState<string[]>([]);
   const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
   const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
-  const [formulaHistory, setFormulaHistory] = useState<string[]>([]);
+  
+  // Сохраненные показатели
+  const [savedIndicators, setSavedIndicators] = useState<SavedIndicator[]>([]);
+  const [showIndicatorLibrary, setShowIndicatorLibrary] = useState(false);
 
   // Текущий фильтр
   const [currentFilter, setCurrentFilter] = useState({
@@ -69,9 +80,9 @@ export default function GroupsPage() {
   const [hierarchyConfig, setHierarchyConfig] = useState<string[]>([]);
 
   useEffect(() => {
-    const saved = localStorage.getItem('formulaHistory');
+    const saved = localStorage.getItem('indicatorLibrary');
     if (saved) {
-      setFormulaHistory(JSON.parse(saved));
+      setSavedIndicators(JSON.parse(saved));
     }
   }, []);
 
@@ -489,16 +500,82 @@ const addIndicatorWithHistory = () => {
     ];
     setNewIndicators(updatedIndicators);
     
-    // Добавляем в историю
-    const newHistory = [
-      currentIndicator.formula, 
-      ...formulaHistory.filter(f => f !== currentIndicator.formula)
-    ].slice(0, 10);
-    setFormulaHistory(newHistory);
-    localStorage.setItem('formulaHistory', JSON.stringify(newHistory));
+    // Сохраняем в библиотеку
+    saveIndicatorToLibrary(currentIndicator);
     
     setCurrentIndicator({ name: '', formula: '' });
   }
+};
+
+const saveIndicatorToLibrary = (indicator: { name: string; formula: string }) => {
+  // Проверяем, есть ли уже такой показатель
+  const existing = savedIndicators.find(
+    i => i.name.trim().toLowerCase() === indicator.name.trim().toLowerCase()
+  );
+
+  let updatedLibrary: SavedIndicator[];
+  
+  if (existing) {
+    // Обновляем существующий - увеличиваем счётчик использования
+    updatedLibrary = savedIndicators.map(i => 
+      i.id === existing.id 
+        ? { ...i, formula: indicator.formula, usageCount: i.usageCount + 1 }
+        : i
+    );
+  } else {
+    // Добавляем новый
+    const newIndicator: SavedIndicator = {
+      id: Date.now().toString(),
+      name: indicator.name,
+      formula: indicator.formula,
+      createdAt: Date.now(),
+      usageCount: 1,
+    };
+    updatedLibrary = [newIndicator, ...savedIndicators];
+  }
+
+  setSavedIndicators(updatedLibrary);
+  localStorage.setItem('indicatorLibrary', JSON.stringify(updatedLibrary));
+};
+
+// Функция использования показателя из библиотеки
+const useIndicatorFromLibrary = (indicator: SavedIndicator) => {
+  // Проверяем, нет ли уже такого показателя в текущей группе
+  const alreadyExists = newIndicators.some(
+    i => i.name.trim().toLowerCase() === indicator.name.trim().toLowerCase()
+  );
+
+  if (alreadyExists) {
+    alert(`⚠️ Показатель "${indicator.name}" уже добавлен в эту группу`);
+    return;
+  }
+
+  // Сразу добавляем в показатели группы
+  const newIndicator: Indicator = {
+    id: Date.now().toString(),
+    name: indicator.name,
+    formula: indicator.formula,
+  };
+
+  setNewIndicators([...newIndicators, newIndicator]);
+  
+  // Увеличиваем счётчик использования
+  const updated = savedIndicators.map(i =>
+    i.id === indicator.id ? { ...i, usageCount: i.usageCount + 1 } : i
+  );
+  setSavedIndicators(updated);
+  localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
+  
+  // Показываем уведомление
+  // Можно добавить toast-уведомление, пока используем console
+  console.log(`✓ Показатель "${indicator.name}" добавлен`);
+};
+
+// Функция удаления из библиотеки
+const removeFromLibrary = (id: string) => {
+  const updated = savedIndicators.filter(i => i.id !== id);
+  setSavedIndicators(updated);
+  localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
 };
 
   if (loading) {
@@ -649,23 +726,20 @@ const addIndicatorWithHistory = () => {
             </h3>
 
             {/* Шаблоны формул */}
-            <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200">
+            <div className="mb-2 p-3 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200 flex-row">
               <p className="text-sm font-medium text-gray-700 mb-2">⚡ Быстрые шаблоны:</p>
               <div className="flex flex-wrap gap-2">
                 {formulaTemplates.map((template) => (
                   <button
                     key={template.name}
                     onClick={() => setCurrentIndicator({ ...currentIndicator, formula: template.template })}
-                    className="px-3 py-2 bg-white border-2 border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-all text-sm font-medium flex items-center gap-2"
+                    className="px-2 py-1 bg-white border-1 text-blue-500 rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-all text-sm font-medium flex items-center gap-1"
                   >
                     <span className="text-lg">{template.icon}</span>
                     {template.name}
                   </button>
                 ))}
               </div>
-            </div>
-
-            <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
               <p className="text-xs font-medium text-gray-600 mb-2">Операторы:</p>
               <div className="flex flex-wrap gap-2">
                 {['+', '-', '*', '/', '(', ')', ','].map((op) => (
@@ -747,26 +821,144 @@ const addIndicatorWithHistory = () => {
               </div>
             )}
 
-            {/* История формул */}
-            {formulaHistory.length > 0 && (
+           {/* Библиотека показателей */}
+            {savedIndicators.length > 0 && (
               <div className="mb-4">
-                <details className="group">
-                  <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-blue-600 flex items-center gap-2">
-                    <span>📜 История формул ({formulaHistory.length})</span>
-                    <ChevronDown className="group-open:rotate-180 transition-transform" size={16} />
-                  </summary>
-                  <div className="mt-2 space-y-1">
-                    {formulaHistory.map((formula, idx) => (
+                <button
+                  onClick={() => setShowIndicatorLibrary(!showIndicatorLibrary)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-50 to-blue-50 border-1 border-blue-200 rounded-lg hover:border-purple-300 transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-blue-500 font-semibold">
+                      📚 Библиотека показателей ({savedIndicators.length})
+                    </span>
+                    {showIndicatorLibrary && savedIndicators.length > 0 && (
                       <button
-                        key={idx}
-                        onClick={() => setCurrentIndicator({ ...currentIndicator, formula })}
-                        className="w-full text-left px-3 py-2 bg-gray-50 hover:bg-blue-50 rounded text-xs font-mono border border-gray-200 hover:border-blue-300 transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Добавляем все показатели, которые ещё не добавлены
+                          const toAdd = savedIndicators.filter(
+                            si => !newIndicators.some(
+                              ni => ni.name.trim().toLowerCase() === si.name.trim().toLowerCase()
+                            )
+                          );
+                          
+                          if (toAdd.length === 0) {
+                            alert('Все показатели уже добавлены');
+                            return;
+                          }
+                          
+                          const newInds = toAdd.map(indicator => ({
+                            id: `${Date.now()}_${Math.random()}`,
+                            name: indicator.name,
+                            formula: indicator.formula,
+                          }));
+                          
+                          setNewIndicators([...newIndicators, ...newInds]);
+                          
+                          // Обновляем счётчики
+                          const updated = savedIndicators.map(si => {
+                            if (toAdd.some(ta => ta.id === si.id)) {
+                              return { ...si, usageCount: si.usageCount + 1 };
+                            }
+                            return si;
+                          });
+                          setSavedIndicators(updated);
+                          localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
+                          
+                          alert(`✓ Добавлено ${toAdd.length} показателей`);
+                        }}
+                        className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs font-medium transition-colors"
                       >
-                        {formula}
+                        + Добавить все
                       </button>
-                    ))}
+                    )}
                   </div>
-                </details>
+                  <ChevronDown 
+                    className={`transition-transform ${showIndicatorLibrary ? 'rotate-180' : ''}`} 
+                    size={20} 
+                  />
+                </button>
+
+
+                {showIndicatorLibrary && (
+                <div className="mt-2 space-y-2 max-h-80 overflow-y-auto">
+                  {savedIndicators
+                    .sort((a, b) => b.usageCount - a.usageCount)
+                    .map((indicator) => {
+                      // Проверяем, добавлен ли уже этот показатель
+                      const isAdded = newIndicators.some(
+                        i => i.name.trim().toLowerCase() === indicator.name.trim().toLowerCase()
+                      );
+                      
+                      return (
+                        <div
+                          key={indicator.id}
+                          className={`group p-3 bg-white border-1 rounded-lg transition-all ${
+                            isAdded 
+                              ? 'border-green-300 bg-green-50' 
+                              : 'border-gray-200 hover:border-purple-300 hover:shadow-md'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <h4 className="font-semibold text-gray-900 truncate">
+                                  {indicator.name}
+                                </h4>
+                                <div className="flex items-center gap-1">
+                                  <span className="flex-shrink-0 bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-medium">
+                                    {indicator.usageCount}x
+                                  </span>
+                                  {isAdded && (
+                                    <span className="flex-shrink-0 bg-green-600 text-white px-2 py-0.5 rounded-full text-xs font-medium">
+                                      ✓ Добавлен
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <p className="text-xs font-mono text-gray-600 bg-gray-50 px-2 py-1 rounded truncate">
+                                {indicator.formula}
+                              </p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                Создан: {new Date(indicator.createdAt).toLocaleDateString('ru-RU')}
+                              </p>
+                            </div>
+                            
+                            <div className="flex gap-1">
+                              <button
+                                onClick={() => useIndicatorFromLibrary(indicator)}
+                                disabled={isAdded}
+                                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                                  isAdded
+                                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                                }`}
+                                title={isAdded ? 'Уже добавлен' : 'Добавить в группу'}
+                              >
+                                {isAdded ? '✓ Добавлен' : '+ Добавить'}
+                              </button>
+                              <button
+                                onClick={() => removeFromLibrary(indicator.id)}
+                                className="p-1.5 hover:bg-red-100 rounded transition-colors"
+                                title="Удалить из библиотеки"
+                              >
+                                <Trash2 size={16} className="text-red-800" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+                
+
+                <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-800">
+                  💡 <strong>Совет:</strong> Используйте показатели из библиотеки для создания групп с одинаковыми показателями. 
+                  Это позволит сравнивать их в режиме "Сравнение" на дашборде.
+                </div>
               </div>
             )}
             
@@ -800,6 +992,19 @@ const addIndicatorWithHistory = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               
+              {/* Предупреждение о дубликатах */}
+              {currentIndicator.name && savedIndicators.some(
+                i => i.name.trim().toLowerCase() === currentIndicator.name.trim().toLowerCase()
+              ) && (
+                <div className="flex items-center gap-2 text-sm text-orange-600 bg-orange-50 px-3 py-2 rounded">
+                  <AlertCircle size={16} />
+                  <span>
+                    Показатель с таким именем уже есть в библиотеке. 
+                    При добавлении будет обновлена формула.
+                  </span>
+                </div>
+              )}
+              
               <div className="relative">
                 <input
                   ref={formulaInputRef}
@@ -832,7 +1037,7 @@ const addIndicatorWithHistory = () => {
                 
                 {/* Подсказка */}
                 <div className="mt-1 text-xs text-gray-500">
-                  💡 Используйте Tab или Enter для автодополнения, ↑↓ для навигации
+                  Используйте Tab или Enter для автодополнения, ↑↓ для навигации
                 </div>
               </div>
               

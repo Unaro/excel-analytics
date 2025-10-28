@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { getExcelData } from '@/lib/storage';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/lib/recharts';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieLabel, PieLabelRenderProps } from '@/lib/recharts';
 import { AlertCircle, BarChart3 } from 'lucide-react';
 import { SheetData } from '@/types';
 import Link from 'next/link';
@@ -332,7 +332,7 @@ export default function ComparisonPage() {
                 Сравнение по группам
               </h2>
               <ResponsiveContainer width="100%" height={350}>
-                <BarChart data={comparisonData}>
+                <BarChart data={comparisonData.map(data => ({name: data.name, value: data.value.toFixed(1)}))}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
                   <YAxis />
@@ -356,7 +356,7 @@ export default function ComparisonPage() {
                         cx="50%"
                         cy="50%"
                         labelLine={false}
-                        label
+                        label={(entry: PieLabelRenderProps) => typeof entry.value === 'number' ? `${entry.name} : ${entry.value.toFixed(0)}` : String(entry.value)}
                         outerRadius={100}
                         fill="#8884d8"
                         dataKey="value"
@@ -366,7 +366,7 @@ export default function ComparisonPage() {
                         ))}
                     </Pie>
                     <Tooltip 
-                        formatter={(value: number) => value.toFixed(2)}
+                        formatter={(value: number) => value.toFixed(1)}
                     />
                     <Legend />
                     </PieChart>

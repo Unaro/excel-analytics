@@ -105,9 +105,9 @@ export function HierarchyFilter({ data, config, onFilterChange }: HierarchyFilte
   }
 
   return (
-    <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-6 mb-6 border-2 border-purple-200">
-      <h3 className="text-lg font-semibold text-purple-900 mb-4 flex items-center gap-2">
-        🔍 Иерархический фильтр
+    <div className="bg-gradient-to-r from-purple-50 to-green-50 rounded-lg p-6 mb-4 border-1 border-purple-200">
+      <h3 className="text-lg font-semibold text-purple-900 mb-2 flex items-center gap-2">
+        Иерархический фильтр
       </h3>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -132,7 +132,7 @@ export function HierarchyFilter({ data, config, onFilterChange }: HierarchyFilte
                   w-full px-3 py-2 border rounded-lg transition-all
                   ${isDisabled 
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' 
-                    : 'bg-white border-purple-300 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 hover:border-purple-400'
+                    : 'bg-white border-purple-300 focus:ring-1 focus:ring-purple-500 focus:border-purple-500 hover:border-purple-400'
                   }
                   ${currentValue ? 'font-semibold text-purple-900' : 'text-gray-600'}
                 `}
@@ -165,7 +165,7 @@ export function HierarchyFilter({ data, config, onFilterChange }: HierarchyFilte
 
       {/* Показываем путь выбора */}
       {Object.keys(selections).filter(k => selections[k]).length > 0 && (
-        <div className="mt-4 pt-4 border-t border-purple-200">
+        <div className="mt-2 pt-2 border-t border-purple-200">
           <p className="text-sm text-gray-600 mb-2">Выбранный путь:</p>
           <div className="flex items-center gap-2 flex-wrap">
             {config.map((col, idx) => {
