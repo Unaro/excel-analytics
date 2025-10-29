@@ -24,6 +24,7 @@ import BarChart from '@/components/charts/BarChart';
 import LineChart from '@/components/charts/LineChart';
 import PieChart from '@/components/charts/PieChart';
 import SummaryTable from '@/components/dashboard/SummaryTable';
+import { ChartDataPoint } from '@/types/dashboard';
 
 interface Group {
   id: string;
@@ -175,11 +176,13 @@ export default function OverviewPage() {
   }, [groupResults]);
 
   // Данные для графиков - с выбранными показателями
-  const chartData = useMemo(() => {
+  const chartData = useMemo<ChartDataPoint[]>(() => {
     if (groupResults.length === 0 || selectedIndicators.length === 0) return [];
 
     return groupResults.map(group => {
-      const dataPoint: Record<string, string | number> = { name: group.groupName };
+      const dataPoint: ChartDataPoint = { 
+        name: group.groupName 
+      };
       
       selectedIndicators.forEach(indicatorName => {
         const indicator = group.indicators.find(i => i.name === indicatorName);
@@ -189,6 +192,7 @@ export default function OverviewPage() {
       return dataPoint;
     });
   }, [groupResults, selectedIndicators]);
+
 
   // Переключение выбора показателя
   const toggleIndicatorSelection = (name: string) => {
@@ -455,10 +459,13 @@ export default function OverviewPage() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                       <ChartWrapper title={`${selectedIndicators[0]} - Круговая диаграмма`}>
                         <PieChart 
-                          data={chartData.map(d => ({
-                            name: d.name,
-                            value: d[selectedIndicators[0]]
-                          }))} 
+                          data={chartData.map(d => {
+                            const value = d[selectedIndicators[0]];
+                            return {
+                              name: d.name,
+                              value: typeof value === 'number' ? value : 0 
+                            };
+                          })} 
                           height={350}
                         />
                       </ChartWrapper>
