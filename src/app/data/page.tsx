@@ -4,9 +4,10 @@ import { useEffect, useState, useMemo } from 'react';
 import { Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, X, Filter } from 'lucide-react';
 import { ExcelRow, SheetData } from '@/types';
 import { getExcelData } from '@/lib/storage';
+import Loader from '@/components/loader';
 
 export default function DataPage() {
-const [sheets, setSheets] = useState<SheetData[]>([]);
+  const [sheets, setSheets] = useState<SheetData[]>([]);
   const [selectedSheet, setSelectedSheet] = useState(0);
   const [loading, setLoading] = useState(true);
   
@@ -18,7 +19,7 @@ const [sheets, setSheets] = useState<SheetData[]>([]);
 
   useEffect(() => {
     async function fetchData() {
-      const data = await getExcelData();
+      const data = getExcelData();
       if (data) {
         setSheets(data);
       }
@@ -116,12 +117,7 @@ const [sheets, setSheets] = useState<SheetData[]>([]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Загрузка данных...</p>
-        </div>
-      </div>
+      <Loader />
     );
   }
 

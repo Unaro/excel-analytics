@@ -7,6 +7,7 @@ import { getFormulaAllowedColumns, getMetadataForSheet } from '@/lib/metadata-ma
 import { Plus, Trash2, Filter, Hash, Type, ChevronDown, ChevronUp, Info, Save, Eye, AlertCircle } from 'lucide-react';
 import { SheetData, FieldInfo, ExcelRow } from '@/types';
 import { HierarchyFilter } from '@/components/hierarchyFilter';
+import Loader from '@/components/loader';
 
 interface FilterCondition {
   id: string;
@@ -592,12 +593,7 @@ const removeFromLibrary = (id: string) => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Загрузка...</p>
-        </div>
-      </div>
+      <Loader />
     );
   }
 
@@ -836,9 +832,9 @@ const removeFromLibrary = (id: string) => {
            {/* Библиотека показателей */}
             {savedIndicators.length > 0 && (
               <div className="mb-4">
-                <button
+                <div
                   onClick={() => setShowIndicatorLibrary(!showIndicatorLibrary)}
-                  className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-50 to-blue-50 border-1 border-blue-200 rounded-lg hover:border-purple-300 transition-all"
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gradient-to-r hover:from-purple-50 border-1 border-blue-200 rounded-lg hover:to-blue-50 transition-all"
                 >
                   <div className="flex items-center gap-3">
                     <span className="text-blue-500 font-semibold">
@@ -860,7 +856,7 @@ const removeFromLibrary = (id: string) => {
                     className={`transition-transform ${showIndicatorLibrary ? 'rotate-180' : ''}`} 
                     size={20} 
                   />
-                </button>
+                </div>
 
 
                 {showIndicatorLibrary && (
@@ -882,8 +878,8 @@ const removeFromLibrary = (id: string) => {
                               : 'border-gray-200 hover:border-purple-300 hover:shadow-md'
                           }`}
                         >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-1">
+                            <div className="flex-1">
                               <div className="flex items-center gap-2 mb-1">
                                 <h4 className="font-semibold text-gray-900 truncate">
                                   {indicator.name}

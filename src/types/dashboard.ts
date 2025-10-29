@@ -30,3 +30,8 @@ interface DashboardWidget {
   indicators: string[];    // Названия выбранных показателей
   layout: { x: number; y: number; w: number; h: number }; // Grid layout
 }
+
+export interface ChartDataPoint {
+  name: string;
+  [key: string]: string | number;
+}

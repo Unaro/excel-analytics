@@ -15,9 +15,9 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body>
-        <div className="flex">
+        <div className="flex ">
           <Sidebar />
-          <main className="ml-64 flex-1 p-8 bg-gray-50 min-h-screen">
+          <main className="flex-1 bg-gray-50 h-screen overflow-scroll p-5">
             {children}
           </main>
         </div>

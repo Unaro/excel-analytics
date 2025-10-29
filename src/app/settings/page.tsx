@@ -9,6 +9,7 @@ import {
 import { ColumnMetadata, ColumnDataType, SheetData, ExcelRow } from '@/types';
 import { GitBranch, FileSpreadsheet, Layers, Settings, Database, Hash, Type, Calendar, Tag, CheckCircle, AlertTriangle, Info, Trash2, AlertCircle, FileText } from 'lucide-react';
 import { clearExcelData, getExcelData } from '@/lib/storage';
+import Loader from '@/components/loader';
 
 export default function SettingsPage() {
 
@@ -177,12 +178,7 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Загрузка настроек...</p>
-        </div>
-      </div>
+      <Loader />
     );
   }
 

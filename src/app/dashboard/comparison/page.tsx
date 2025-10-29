@@ -7,6 +7,11 @@ import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Toolti
 import { AlertCircle, BarChart3 } from 'lucide-react';
 import { SheetData } from '@/types';
 import Link from 'next/link';
+import Loader from '@/components/loader';
+import Piechart from '@/components/piechart';
+import Barchart from '@/components/barchart';
+import ChartCard from '@/components/chartcard';
+import Linechart from '@/components/linechart';
 
 interface Group {
   id: string;
@@ -116,13 +121,6 @@ export default function ComparisonPage() {
       });
   }, [sheets, groups, selectedGroupIds, hierarchyConfig]);
 
-  // Получаем все уникальные показатели
-  const allIndicators = useMemo(() => {
-    const indicators = new Set<string>();
-    groups.forEach(g => g.indicators.forEach(i => indicators.add(i.name)));
-    return Array.from(indicators);
-  }, [groups]);
-
   // Данные для графиков
   const comparisonData = useMemo(() => {
     if (!selectedIndicator) return [];
@@ -172,12 +170,7 @@ export default function ComparisonPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Загрузка...</p>
-        </div>
-      </div>
+      <Loader />
     );
   }
 
@@ -308,19 +301,7 @@ export default function ComparisonPage() {
         <div className="space-y-6">
           {/* Карточки с числами */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {comparisonData.map((item, index) => (
-              <div 
-                key={index}
-                className="bg-white rounded-lg shadow-lg p-4 border-l-4 hover:shadow-xl transition-shadow"
-                style={{ borderColor: COLORS[index % COLORS.length] }}
-              >
-                <p className="text-sm text-gray-600 mb-1">{item.name}</p>
-                <p className="text-3xl font-bold" style={{ color: COLORS[index % COLORS.length] }}>
-                  {item.value.toFixed(2)}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">{selectedIndicator}</p>
-              </div>
-            ))}
+            {comparisonData.map((item, index) => <ChartCard indicator={selectedIndicator} color={COLORS[index % COLORS.length]} key={index} name={item.name} value={item.value.toFixed(2)} />)}
           </div>
 
           {/* Графики */}
@@ -328,50 +309,21 @@ export default function ComparisonPage() {
             {/* Столбчатая диаграмма */}
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                <BarChart3 size={24} className="text-green-600" />
                 Сравнение по группам
               </h2>
-              <ResponsiveContainer width="100%" height={350}>
-                <BarChart data={comparisonData.map(data => ({name: data.name, value: data.value.toFixed(1)}))}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" name={selectedIndicator}>
-                    {comparisonData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <Barchart data={comparisonData} indicators={selectedIndicator} />
             </div>
 
             {/* Круговая диаграмма */}
                 <div className="bg-white rounded-lg shadow-lg p-6">
-                <h2 className="text-xl font-semibold mb-4">Распределение</h2>
-                <ResponsiveContainer width="100%" height={350}>
-                    <PieChart>
-                    <Pie
-                        data={comparisonData}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={(entry: PieLabelRenderProps) => typeof entry.value === 'number' ? `${entry.name} : ${entry.value.toFixed(0)}` : String(entry.value)}
-                        outerRadius={100}
-                        fill="#8884d8"
-                        dataKey="value"
-                    >
-                        {comparisonData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                    </Pie>
-                    <Tooltip 
-                        formatter={(value: number) => value.toFixed(1)}
-                    />
-                    <Legend />
-                    </PieChart>
-                </ResponsiveContainer>
+                  <h2 className="text-xl font-semibold mb-4">Распределение</h2>
+                  <Piechart data={comparisonData} />
                 </div>
+          </div>
+
+          <div className="bg-white rounded-lg shadow-lg p-6 lg:col-span-2 print-break-inside-avoid">
+            <h2 className="text-xl font-semibold mb-4">Динамика показателей ({selectedIndicator})</h2>
+            <Linechart data={comparisonData} indicators={selectedIndicator} />
           </div>
 
           {/* Таблица сравнения */}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Users, FileText, BarChart3, Database } from 'lucide-react';
 import { SheetData, ExcelRow } from '@/types';
 import { getExcelData } from '@/lib/storage';
+import Loader from '@/components/loader';
 
 interface ColumnStats {
   sum: number;
@@ -39,7 +40,7 @@ export default function StatisticsPage() {
   }, []);
 
   if (loading) {
-    return <div>Загрузка...</div>;
+    return <Loader />;
   }
 
   if (!sheets || sheets.length === 0) {

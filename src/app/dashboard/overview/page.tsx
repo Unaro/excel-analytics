@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { getExcelData } from '@/lib/storage';
+import { COLORS, getExcelData } from '@/lib/storage';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import KPICard from '@/components/kpi-card';
 import GroupSummaryTable from '@/components/group-summary-table';
@@ -10,6 +10,12 @@ import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Cart
 import { AlertCircle, BarChart3, Printer, ArrowLeft } from 'lucide-react';
 import { SheetData } from '@/types';
 import Link from 'next/link';
+import Loader from '@/components/loader';
+import Linechart from '@/components/linechart';
+import { ChartDataPoint } from '@/types/dashboard';
+import Barchart from '@/components/barchart';
+import Piechart from '@/components/piechart';
+import DetailedCard from '@/components/detailcard';
 
 interface Group {
   id: string;
@@ -27,13 +33,6 @@ interface Group {
   }>;
   hierarchyFilters?: Record<string, string>;
 }
-
-interface ChartDataPoint {
-  name: string;
-  [key: string]: string | number;
-}
-
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
 
 export default function DashboardOverviewPage() {
   const router = useRouter();
@@ -155,12 +154,7 @@ export default function DashboardOverviewPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Загрузка обзора...</p>
-        </div>
-      </div>
+      <Loader title='Загрузка обзора...'/>
     );
   }
 
@@ -251,42 +245,8 @@ export default function DashboardOverviewPage() {
       </div>
 
       {/* Детальные карточки по группам */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-        {groupResults.map((result, index) => (
-          <div key={result.groupId} className="bg-white rounded-lg shadow-lg p-6 print-break-inside-avoid">
-            <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <div
-                className="w-4 h-4 rounded-full"
-                style={{ backgroundColor: COLORS[index % COLORS.length] }}
-              />
-              {result.groupName}
-            </h3>
-
-            {result.deepestFilter && (
-              <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded text-xs">
-                <p className="text-purple-900 font-semibold">
-                  🔍 {result.deepestFilter.column}: {result.deepestFilter.value}
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {result.indicators.map((indicator) => (
-                <div key={indicator.name} className="border-l-4 pl-3" style={{ borderColor: COLORS[index % COLORS.length] }}>
-                  <p className="text-sm text-gray-600">{indicator.name}</p>
-                  <p className="text-2xl font-bold text-gray-800">
-                    {indicator.value.toFixed(2)}
-                  </p>
-                </div>
-              ))}
-              <div className="pt-2 border-t border-gray-200">
-                <p className="text-xs text-gray-500">
-                  На основе {result.rowCount} записей
-                </p>
-              </div>
-            </div>
-          </div>
-        ))}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
+        {groupResults.map((result, index) => <DetailedCard data={result} key={index} idx={index} />)}
       </div>
 
       {/* Графики */}
@@ -294,65 +254,19 @@ export default function DashboardOverviewPage() {
         {/* Столбчатая диаграмма */}
         <div className="bg-white rounded-lg shadow-lg p-6 print-break-inside-avoid">
           <h2 className="text-xl font-semibold mb-4">Сравнение показателей</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {allIndicatorNames.map((name, idx) => (
-                <Bar key={name} dataKey={name} fill={COLORS[idx % COLORS.length]} />
-              ))}
-            </BarChart>
-          </ResponsiveContainer>
+          <Barchart data={chartData} indicators={allIndicatorNames}/>
         </div>
 
         {/* Круговая диаграмма */}
         <div className="bg-white rounded-lg shadow-lg p-6 print-break-inside-avoid">
           <h2 className="text-xl font-semibold mb-4">Распределение (первый показатель)</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-              <Pie
-                data={pieChartData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={(entry) => entry.name}
-                outerRadius={80}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {pieChartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+          <Piechart data={pieChartData} />
         </div>
 
         {/* Линейный график */}
         <div className="bg-white rounded-lg shadow-lg p-6 lg:col-span-2 print-break-inside-avoid">
           <h2 className="text-xl font-semibold mb-4">Динамика показателей</h2>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              {allIndicatorNames.map((name, idx) => (
-                <Line 
-                  key={name} 
-                  type="monotone" 
-                  dataKey={name} 
-                  stroke={COLORS[idx % COLORS.length]}
-                  strokeWidth={2}
-                />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
+          <Linechart data={chartData} indicators={allIndicatorNames} />
         </div>
       </div>
 
