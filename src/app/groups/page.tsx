@@ -26,6 +26,7 @@ import {
   Layers,
 } from 'lucide-react';
 import { SheetData, ExcelRow } from '@/types';
+import Link from 'next/link';
 
 interface Filter {
   id: string;
@@ -703,7 +704,7 @@ const previewResults = useMemo(() => {
       <div className="text-center py-12">
         <AlertCircle size={48} className="mx-auto text-yellow-500 mb-4" />
         <p className="text-xl text-gray-600 mb-4">Нет загруженных данных</p>
-        <a href="/" className="text-blue-600 hover:underline">Загрузить данные</a>
+        <Link href="/" className="text-blue-600 hover:underline">Загрузить данные</Link>
       </div>
     );
   }
@@ -1322,7 +1323,7 @@ const previewResults = useMemo(() => {
                     {/* Подсказка */}
                     <div className="mt-4 p-3 bg-white border border-purple-300 rounded-lg text-xs text-purple-800">
                       <strong>💡 Совет:</strong> Используйте показатели из библиотеки для создания групп с одинаковыми показателями. 
-                      Это позволит сравнивать их в режиме "Сравнение" на дашборде.
+                      Это позволит сравнивать их в режиме &quot;Сравнение&quot; на дашборде.
                     </div>
                   </div>
                 )}
