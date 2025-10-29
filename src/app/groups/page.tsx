@@ -1,15 +1,33 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { getExcelData } from '@/lib/storage';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
-import { getFormulaAllowedColumns, getMetadataForSheet } from '@/lib/metadata-manager';
-import { Plus, Trash2, Filter, Hash, Type, ChevronDown, ChevronUp, Info, Save, Eye, AlertCircle } from 'lucide-react';
-import { SheetData, FieldInfo, ExcelRow } from '@/types';
 import { HierarchyFilter } from '@/components/hierarchyFilter';
-import Loader from '@/components/loader';
+import { 
+  Plus, 
+  Trash2, 
+  Filter, 
+  Hash, 
+  ChevronDown, 
+  Save, 
+  Eye, 
+  AlertCircle,
+  Copy,
+  Edit2,
+  CheckCircle,
+  Search,
+  Download,
+  Upload,
+  FolderOpen,
+  Sparkles,
+  TrendingUp,
+  X,
+  Layers,
+} from 'lucide-react';
+import { SheetData, ExcelRow } from '@/types';
 
-interface FilterCondition {
+interface Filter {
   id: string;
   column: string;
   operator: string;
@@ -25,9 +43,12 @@ interface Indicator {
 interface Group {
   id: string;
   name: string;
-  filters: FilterCondition[];
+  description?: string;
+  filters: Filter[];
   indicators: Indicator[];
-  hierarchyFilters?: Record<string, string>; // Новое поле для иерархических фильтров
+  hierarchyFilters?: Record<string, string>;
+  createdAt: number;
+  updatedAt: number;
 }
 
 interface SavedIndicator {
@@ -40,1266 +61,1733 @@ interface SavedIndicator {
 
 export default function GroupsPage() {
   const [sheets, setSheets] = useState<SheetData[]>([]);
-  const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fieldsInfo, setFieldsInfo] = useState<FieldInfo[]>([]);
-  const [showFieldsPanel, setShowFieldsPanel] = useState(true);
-  const [expandedField, setExpandedField] = useState<string | null>(null);
+  const [hierarchyConfig, setHierarchyConfig] = useState<string[]>([]);
 
-  const formulaInputRef = useRef<HTMLInputElement>(null);
-
-  // Новая группа
-  const [newGroupName, setNewGroupName] = useState('');
-  const [newFilters, setNewFilters] = useState<FilterCondition[]>([]);
-  const [newIndicators, setNewIndicators] = useState<Indicator[]>([]);
-  const [hierarchyFilters, setHierarchyFilters] = useState<Record<string, string>>({});
-
-  // Состояния для ускорения ввода
-  const [showAutocomplete, setShowAutocomplete] = useState(false);
-  const [autocompleteOptions, setAutocompleteOptions] = useState<string[]>([]);
-  const [autocompletePosition, setAutocompletePosition] = useState({ top: 0, left: 0 });
-  const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
   
-  // Сохраненные показатели
-  const [savedIndicators, setSavedIndicators] = useState<SavedIndicator[]>([]);
-  const [showIndicatorLibrary, setShowIndicatorLibrary] = useState(false);
 
-  // Текущий фильтр
-  const [currentFilter, setCurrentFilter] = useState({
+  // Состояния для групп
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+
+  // Состояния для текущей группы
+  const [currentGroup, setCurrentGroup] = useState<Partial<Group>>({
+    name: '',
+    description: '',
+    filters: [],
+    indicators: [],
+    hierarchyFilters: {},
+  });
+
+  // Состояния для фильтров
+  const [currentFilter, setCurrentFilter] = useState<Partial<Filter>>({
     column: '',
     operator: '=',
     value: '',
   });
 
-  // Текущий индикатор
-  const [currentIndicator, setCurrentIndicator] = useState({
+  // Состояния для показателей
+  const [currentIndicator, setCurrentIndicator] = useState<Partial<Indicator>>({
     name: '',
     formula: '',
   });
+  const [savedIndicators, setSavedIndicators] = useState<SavedIndicator[]>([]);
+  const [showIndicatorLibrary, setShowIndicatorLibrary] = useState(false);
 
-  // Конфигурация иерархии
-  const [hierarchyConfig, setHierarchyConfig] = useState<string[]>([]);
+  // Состояния для автодополнения
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [autocompleteOptions, setAutocompleteOptions] = useState<string[]>([]);
+  const [selectedAutocompleteIndex, setSelectedAutocompleteIndex] = useState(0);
+  
+  const formulaInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const saved = localStorage.getItem('indicatorLibrary');
-    if (saved) {
-      setSavedIndicators(JSON.parse(saved));
+  // Состояния UI
+  const [showPreview, setShowPreview] = useState(false);
+  const [expandedSections, setExpandedSections] = useState({
+    filters: true,
+    hierarchy: true,
+    indicators: true,
+    preview: false,
+  });
+
+  const [showFieldsPanel, setShowFieldsPanel] = useState(false);
+  const [fieldSearchTerm, setFieldSearchTerm] = useState('');
+
+  const [indicatorSearchTerm, setIndicatorSearchTerm] = useState('');
+  const [indicatorSortBy, setIndicatorSortBy] = useState<'usage' | 'name' | 'date'>('usage');
+
+
+  // Фильтрация и сортировка показателей библиотеки
+  const sortedAndFilteredIndicators = useMemo(() => {
+    let filtered = savedIndicators;
+
+    // Фильтрация по поиску
+    if (indicatorSearchTerm) {
+      const term = indicatorSearchTerm.toLowerCase();
+      filtered = filtered.filter(ind =>
+        ind.name.toLowerCase().includes(term) ||
+        ind.formula.toLowerCase().includes(term)
+      );
     }
-  }, []);
 
+    // Сортировка
+    const sorted = [...filtered].sort((a, b) => {
+      switch (indicatorSortBy) {
+        case 'usage':
+          return b.usageCount - a.usageCount;
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'date':
+          return b.createdAt - a.createdAt;
+        default:
+          return 0;
+      }
+    });
+
+    return sorted;
+  }, [savedIndicators, indicatorSearchTerm, indicatorSortBy]);
+
+
+  // Загрузка данных
   useEffect(() => {
     const data = getExcelData();
-    if (data && data.length > 0) {
+    if (data) {
       setSheets(data);
-      analyzeFields(data[0]);
-      
-      // Загрузить конфигурацию иерархии
-      const savedConfig = localStorage.getItem('hierarchyConfig');
-      if (savedConfig) {
-        const config = JSON.parse(savedConfig) as string[];
-        
-        // Фильтровать только категориальные поля
-        const metadata = getMetadataForSheet(data[0].sheetName);
-        const categoricalFields = metadata
-          ? metadata.columns
-              .filter(col => col.dataType === 'categorical')
-              .map(col => col.name)
-          : [];
-        
-        setHierarchyConfig(config.filter(col => categoricalFields.includes(col)));
-      }
     }
-    
-    // Загрузить сохраненные группы
+
     const savedGroups = localStorage.getItem('analyticsGroups');
     if (savedGroups) {
       setGroups(JSON.parse(savedGroups));
     }
-    
+
+    const savedConfig = localStorage.getItem('hierarchyConfig');
+    if (savedConfig) {
+      setHierarchyConfig(JSON.parse(savedConfig));
+    }
+
+    const savedInds = localStorage.getItem('indicatorLibrary');
+    if (savedInds) {
+      setSavedIndicators(JSON.parse(savedInds));
+    }
+
     setLoading(false);
   }, []);
 
-  const analyzeFields = (sheet: SheetData) => {
-    const allowedColumns = getFormulaAllowedColumns(sheet.sheetName);
-    
-    const fields: FieldInfo[] = sheet.headers.map((header: string) => {
-      const values = sheet.rows.map((row: ExcelRow) => row[header]);
-      const numericValues = values
-        .map((v) => parseFloat(String(v)))
-        .filter((v: number) => !isNaN(v));
-
-      const sampleValues = values.filter((v) => v !== null && v !== undefined).slice(0, 5);
-      const numericCount = numericValues.length;
-      const totalCount = values.filter((v) => v !== null && v !== undefined).length;
-
-      const isAllowedInFormulas = allowedColumns.length > 0 ? allowedColumns.includes(header) : true;
-      
-      let type: 'number' | 'text' | 'mixed' = 'text';
-      if (isAllowedInFormulas && numericCount === totalCount && numericCount > 0) {
-        type = 'number';
-      } else if (numericCount > 0 && numericCount < totalCount) {
-        type = 'mixed';
-      }
-
-      let stats: { min?: number; max?: number; avg?: number } = {};
-      if (numericValues.length > 0 && isAllowedInFormulas) {
-        stats = {
-          min: Math.min(...numericValues),
-          max: Math.max(...numericValues),
-          avg: numericValues.reduce((a, b) => a + b, 0) / numericValues.length,
-        };
-      }
-
-      return {
-        name: header,
-        type,
-        sampleValues,
-        numericCount,
-        totalCount,
-        isAllowedInFormulas,
-        ...stats,
-      };
-    });
-
-    setFieldsInfo(fields);
+  // Сохранение групп
+  const saveGroups = (updatedGroups: Group[]) => {
+    setGroups(updatedGroups);
+    localStorage.setItem('analyticsGroups', JSON.stringify(updatedGroups));
   };
 
-  const availableHeaders = sheets[0]?.headers || [];
+  // Числовые поля для формул
+  const numericFields = useMemo(() => {
+    if (!sheets || sheets.length === 0) return [];
+    const sheet = sheets[0];
+    const sampleRow = sheet.rows[0];
+    if (!sampleRow) return [];
 
+    return sheet.headers
+      .filter((header) => typeof sampleRow[header] === 'number')
+      .map((name) => ({ name }));
+  }, [sheets]);
+
+
+  const filteredNumericFields = useMemo(() => {
+    if (!fieldSearchTerm) return numericFields;
+    const term = fieldSearchTerm.toLowerCase();
+    return numericFields.filter(f => f.name.toLowerCase().includes(term));
+  }, [numericFields, fieldSearchTerm]);
+
+
+  // Фильтрация групп по поиску
+  const filteredGroups = useMemo(() => {
+    if (!searchTerm) return groups;
+    const term = searchTerm.toLowerCase();
+    return groups.filter(g => 
+      g.name.toLowerCase().includes(term) ||
+      g.description?.toLowerCase().includes(term) ||
+      g.indicators.some(i => i.name.toLowerCase().includes(term))
+    );
+  }, [groups, searchTerm]);
+
+  // Предпросмотр результатов текущей группы
+const previewResults = useMemo(() => {
+  if (!sheets || sheets.length === 0 || !showPreview) return null;
+  if (currentGroup.indicators?.length === 0) return null;
+
+  // Получаем глубочайший фильтр иерархии
+  const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
+    if (!hierarchyFilters || !hierarchyConfig.length) return null;
+
+    let deepestLevel = null;
+    for (let i = hierarchyConfig.length - 1; i >= 0; i--) {
+      const col = hierarchyConfig[i];
+      if (hierarchyFilters[col]) {
+        deepestLevel = { column: col, value: hierarchyFilters[col] };
+        break;
+      }
+    }
+    return deepestLevel;
+  };
+
+  const deepestFilter = getDeepestHierarchyFilter(currentGroup.hierarchyFilters);
+
+  // Объединяем все фильтры
+  const allFilters = [
+    ...(currentGroup.filters || []),
+    ...(deepestFilter ? [{
+      id: 'hier_deepest',
+      column: deepestFilter.column,
+      operator: '=',
+      value: deepestFilter.value,
+    }] : []),
+  ];
+
+  const filteredData = applyFilters(sheets[0].rows, allFilters);
+  
+  const results = (currentGroup.indicators || []).map((indicator) => {
+    try {
+      const value = evaluateFormula(indicator.formula, filteredData, sheets[0].headers);
+      return {
+        name: indicator.name,
+        value,
+        error: null,
+      };
+    } catch (error) {
+      return {
+        name: indicator.name,
+        value: 0,
+        error: error instanceof Error ? error.message : 'Ошибка вычисления',
+      };
+    }
+  });
+
+  return {
+    rowCount: filteredData.length,
+    results,
+    hasHierarchyFilter: !!deepestFilter,
+    hierarchyFilterInfo: deepestFilter ? `${deepestFilter.column}: ${deepestFilter.value}` : null,
+  };
+}, [sheets, currentGroup, showPreview, hierarchyConfig]);
+
+  // Функция создания/обновления группы
+  const saveCurrentGroup = () => {
+    if (!currentGroup.name) {
+      alert('Введите название группы');
+      return;
+    }
+
+    if (!currentGroup.indicators || currentGroup.indicators.length === 0) {
+      alert('Добавьте хотя бы один показатель');
+      return;
+    }
+
+    const now = Date.now();
+    const group: Group = {
+      id: editingGroupId || Date.now().toString(),
+      name: currentGroup.name,
+      description: currentGroup.description || '',
+      filters: currentGroup.filters || [],
+      indicators: currentGroup.indicators || [],
+      hierarchyFilters: currentGroup.hierarchyFilters || {},
+      createdAt: editingGroupId 
+        ? groups.find(g => g.id === editingGroupId)?.createdAt || now
+        : now,
+      updatedAt: now,
+    };
+
+    if (editingGroupId) {
+      saveGroups(groups.map(g => g.id === editingGroupId ? group : g));
+      setEditingGroupId(null);
+    } else {
+      saveGroups([...groups, group]);
+    }
+
+    // Сброс формы
+    setCurrentGroup({
+      name: '',
+      description: '',
+      filters: [],
+      indicators: [],
+      hierarchyFilters: {},
+    });
+  };
+
+  // Функция редактирования группы
+  const editGroup = (group: Group) => {
+    setCurrentGroup(group);
+    setEditingGroupId(group.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Функция дублирования группы
+  const duplicateGroup = (group: Group) => {
+    const newGroup: Group = {
+      ...group,
+      id: Date.now().toString(),
+      name: `${group.name} (копия)`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    saveGroups([...groups, newGroup]);
+  };
+
+  // Функция удаления группы
+  const deleteGroup = (id: string) => {
+    if (confirm('Вы уверены, что хотите удалить эту группу?')) {
+      saveGroups(groups.filter(g => g.id !== id));
+    }
+  };
+
+  // Отмена редактирования
+  const cancelEdit = () => {
+    setEditingGroupId(null);
+    setCurrentGroup({
+      name: '',
+      description: '',
+      filters: [],
+      indicators: [],
+      hierarchyFilters: {},
+    });
+  };
+  // Функции для фильтров
   const addFilter = () => {
     if (currentFilter.column && currentFilter.value) {
-      setNewFilters([
-        ...newFilters,
-        {
-          id: Date.now().toString(),
-          ...currentFilter,
-        },
-      ]);
+      const newFilter: Filter = {
+        id: Date.now().toString(),
+        column: currentFilter.column,
+        operator: currentFilter.operator || '=',
+        value: currentFilter.value,
+      };
+      setCurrentGroup({
+        ...currentGroup,
+        filters: [...(currentGroup.filters || []), newFilter],
+      });
       setCurrentFilter({ column: '', operator: '=', value: '' });
     }
   };
 
   const removeFilter = (id: string) => {
-    setNewFilters(newFilters.filter(f => f.id !== id));
+    setCurrentGroup({
+      ...currentGroup,
+      filters: currentGroup.filters?.filter((f) => f.id !== id),
+    });
+  };
+
+  // Функции для показателей
+  const addIndicatorWithHistory = () => {
+    if (currentIndicator.name && currentIndicator.formula) {
+      const newIndicator: Indicator = {
+        id: Date.now().toString(),
+        name: currentIndicator.name,
+        formula: currentIndicator.formula,
+      };
+      
+      setCurrentGroup({
+        ...currentGroup,
+        indicators: [...(currentGroup.indicators || []), newIndicator],
+      });
+      
+      // Сохраняем в библиотеку
+      saveIndicatorToLibrary(currentIndicator as { name: string; formula: string });
+      
+      setCurrentIndicator({ name: '', formula: '' });
+    }
   };
 
   const removeIndicator = (id: string) => {
-    setNewIndicators(newIndicators.filter(i => i.id !== id));
+    setCurrentGroup({
+      ...currentGroup,
+      indicators: currentGroup.indicators?.filter((i) => i.id !== id),
+    });
   };
 
-  const createGroup = () => {
-    if (newGroupName && newIndicators.length > 0) {
-      const newGroup: Group = {
+  // Библиотека показателей
+  const saveIndicatorToLibrary = (indicator: { name: string; formula: string }) => {
+    const existing = savedIndicators.find(
+      i => i.name.trim().toLowerCase() === indicator.name.trim().toLowerCase()
+    );
+
+    let updatedLibrary: SavedIndicator[];
+    
+    if (existing) {
+      updatedLibrary = savedIndicators.map(i => 
+        i.id === existing.id 
+          ? { ...i, formula: indicator.formula, usageCount: i.usageCount + 1 }
+          : i
+      );
+    } else {
+      const newIndicator: SavedIndicator = {
         id: Date.now().toString(),
-        name: newGroupName,
-        filters: [...newFilters],
-        indicators: [...newIndicators],
-        hierarchyFilters: { ...hierarchyFilters }, // Сохраняем иерархические фильтры
+        name: indicator.name,
+        formula: indicator.formula,
+        createdAt: Date.now(),
+        usageCount: 1,
       };
-      
-      const updatedGroups = [...groups, newGroup];
-      setGroups(updatedGroups);
-      
-      // Сохраняем в localStorage
-      localStorage.setItem('analyticsGroups', JSON.stringify(updatedGroups));
-      
-      // Сбрасываем форму
-      setNewGroupName('');
-      setNewFilters([]);
-      setNewIndicators([]);
-      setHierarchyFilters({});
-      
-      alert('✅ Группа успешно создана!');
+      updatedLibrary = [newIndicator, ...savedIndicators];
     }
+
+    setSavedIndicators(updatedLibrary);
+    localStorage.setItem('indicatorLibrary', JSON.stringify(updatedLibrary));
   };
 
-  const deleteGroup = (id: string) => {
-    if (confirm('Вы уверены, что хотите удалить эту группу?')) {
-      const updatedGroups = groups.filter(g => g.id !== id);
-      setGroups(updatedGroups);
-      localStorage.setItem('analyticsGroups', JSON.stringify(updatedGroups));
-    }
-  };
+  const addIndicatorFromLibrary = (indicator: SavedIndicator) => {
+    const alreadyExists = currentGroup.indicators?.some(
+      i => i.name.trim().toLowerCase() === indicator.name.trim().toLowerCase()
+    );
 
-  // Вставка поля в формулу
-  const insertFieldIntoFormula = (fieldName: string) => {
-    const input = formulaInputRef.current;
-    if (!input) {
-      setCurrentIndicator({ 
-        ...currentIndicator, 
-        formula: currentIndicator.formula + fieldName 
-      });
+    if (alreadyExists) {
+      alert(`⚠️ Показатель "${indicator.name}" уже добавлен в эту группу`);
       return;
     }
 
-    const start = input.selectionStart || 0;
-    const end = input.selectionEnd || 0;
-    const currentFormula = currentIndicator.formula;
+    const newIndicator: Indicator = {
+      id: Date.now().toString(),
+      name: indicator.name,
+      formula: indicator.formula,
+    };
+
+    setCurrentGroup({
+      ...currentGroup,
+      indicators: [...(currentGroup.indicators || []), newIndicator],
+    });
+    
+    const updated = savedIndicators.map(i =>
+      i.id === indicator.id ? { ...i, usageCount: i.usageCount + 1 } : i
+    );
+    setSavedIndicators(updated);
+    localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
+  };
+
+  const removeFromLibrary = (id: string) => {
+    const updated = savedIndicators.filter(i => i.id !== id);
+    setSavedIndicators(updated);
+    localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
+  };
+
+  const addAllIndicatorsFromLibrary = () => {
+    const toAdd = savedIndicators.filter(
+      si => !(currentGroup.indicators || []).some(
+        ni => ni.name.trim().toLowerCase() === si.name.trim().toLowerCase()
+      )
+    );
+    
+    if (toAdd.length === 0) {
+      alert('Все показатели уже добавлены');
+      return;
+    }
+    
+    const newInds: Indicator[] = toAdd.map(indicator => ({
+      id: `${Date.now()}_${Math.random()}`,
+      name: indicator.name,
+      formula: indicator.formula,
+    }));
+    
+    setCurrentGroup({
+      ...currentGroup,
+      indicators: [...(currentGroup.indicators || []), ...newInds],
+    });
+    
+    const updated = savedIndicators.map(si => {
+      if (toAdd.some(ta => ta.id === si.id)) {
+        return { ...si, usageCount: si.usageCount + 1 };
+      }
+      return si;
+    });
+    setSavedIndicators(updated);
+    localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
+    
+    alert(`✓ Добавлено ${toAdd.length} показателей`);
+  };
+
+  // Автодополнение формул
+  const handleFormulaChange = (value: string) => {
+    setCurrentIndicator({ ...currentIndicator, formula: value });
+
+    const cursorPos = formulaInputRef.current?.selectionStart || 0;
+    const textBeforeCursor = value.substring(0, cursorPos);
+    const match = textBeforeCursor.match(/[A-ZА-Яa-zа-я0-9_]*$/);
+
+    if (match && match[0].length > 0) {
+      const searchTerm = match[0];
+      const functions = ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX'];
+      
+      // ТОЛЬКО числовые поля
+      const fields = numericFields.map((f) => f.name);
+      
+      const options = [...functions, ...fields].filter((opt) =>
+        opt.toUpperCase().includes(searchTerm.toUpperCase())
+      );
+
+      if (options.length > 0) {
+        setAutocompleteOptions(options);
+        setShowAutocomplete(true);
+        setSelectedAutocompleteIndex(0);
+      } else {
+        setShowAutocomplete(false);
+      }
+    } else {
+      setShowAutocomplete(false);
+    }
+  };
+
+
+  const insertAutocomplete = (option: string) => {
+    const input = formulaInputRef.current;
+    if (!input) return;
+
+    const cursorPos = input.selectionStart || 0;
+    const textBefore = currentIndicator.formula?.substring(0, cursorPos) || '';
+    const textAfter = currentIndicator.formula?.substring(cursorPos) || '';
+    
+    const match = textBefore.match(/[A-Z_]*$/);
+    const matchLength = match ? match[0].length : 0;
     
     const newFormula = 
-      currentFormula.substring(0, start) + 
-      fieldName + 
-      currentFormula.substring(end);
+      textBefore.substring(0, textBefore.length - matchLength) + 
+      option + 
+      textAfter;
+
+    setCurrentIndicator({ ...currentIndicator, formula: newFormula });
+    setShowAutocomplete(false);
+
+    setTimeout(() => {
+      const newPos = cursorPos - matchLength + option.length;
+      input.focus();
+      input.setSelectionRange(newPos, newPos);
+    }, 0);
+  };
+
+  const handleFormulaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showAutocomplete) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedAutocompleteIndex((prev) =>
+        prev < autocompleteOptions.length - 1 ? prev + 1 : 0
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedAutocompleteIndex((prev) =>
+        prev > 0 ? prev - 1 : autocompleteOptions.length - 1
+      );
+    } else if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault();
+      insertAutocomplete(autocompleteOptions[selectedAutocompleteIndex]);
+    } else if (e.key === 'Escape') {
+      setShowAutocomplete(false);
+    }
+  };
+
+  const insertQuickFormulaWithField = (func: string, fieldName: string) => {
+    const input = formulaInputRef.current;
+    const textToInsert = `${func}(${fieldName})`;
+    
+    if (!input) {
+      const formula = currentIndicator.formula 
+        ? `${currentIndicator.formula} ${textToInsert}`
+        : textToInsert;
+      setCurrentIndicator({ ...currentIndicator, formula });
+      return;
+    }
+
+    const cursorPosition = input.selectionStart || 0;
+    const currentFormula = currentIndicator.formula || '';
+    
+    // Находим начало текущего слова
+    const textBeforeCursor = currentFormula.substring(0, cursorPosition);
+    const match = textBeforeCursor.match(/[A-ZА-Яa-zа-я0-9_]*$/);
+    const wordStart = match ? cursorPosition - match[0].length : cursorPosition;
+    
+    // Заменяем частично введённое слово или вставляем в позицию курсора
+    const newFormula = 
+      currentFormula.substring(0, wordStart) + 
+      textToInsert + 
+      currentFormula.substring(cursorPosition);
     
     setCurrentIndicator({ ...currentIndicator, formula: newFormula });
     
     setTimeout(() => {
       input.focus();
-      input.setSelectionRange(start + fieldName.length, start + fieldName.length);
+      const newPosition = wordStart + textToInsert.length;
+      input.setSelectionRange(newPosition, newPosition);
     }, 0);
   };
 
-  // Предпросмотр группы
-  const previewGroup = (group: Group) => {
-    if (!sheets || sheets.length === 0) return;
 
-    // Определяем самый глубокий уровень иерархии
-    const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
-      if (!hierarchyFilters || !hierarchyConfig.length) return null;
-
-      // Находим последний заполненный уровень
-      let deepestLevel = null;
-      for (let i = hierarchyConfig.length - 1; i >= 0; i--) {
-        const col = hierarchyConfig[i];
-        if (hierarchyFilters[col]) {
-          deepestLevel = { column: col, value: hierarchyFilters[col] };
-          break;
-        }
-      }
-      return deepestLevel;
-    };
-
-    // Получаем только самый глубокий фильтр из иерархии
-    const deepestFilter = getDeepestHierarchyFilter(group.hierarchyFilters);
-    
-    // Комбинируем обычные фильтры и единственный иерархический (самый глубокий)
-    const allFilters = [
-      ...group.filters,
-      ...(deepestFilter ? [{
-        id: `hier_deepest`,
-        column: deepestFilter.column,
-        operator: '=',
-        value: deepestFilter.value,
-      }] : []),
-    ];
-
-    const filteredData = applyFilters(sheets[0].rows, allFilters);
-    
-    const results = group.indicators.map(indicator => ({
-      name: indicator.name,
-      formula: indicator.formula,
-      value: evaluateFormula(indicator.formula, filteredData, sheets[0].headers),
-    }));
-
-    let message = `Группа: ${group.name}\n`;
-    message += `Строк после фильтрации: ${filteredData.length}\n\n`;
-    
-    if (group.hierarchyFilters && Object.keys(group.hierarchyFilters).length > 0) {
-      message += 'Иерархические фильтры:\n';
-      Object.entries(group.hierarchyFilters)
-        .filter(([, v]) => v)
-        .forEach(([k, v]) => {
-          const isDeepest = deepestFilter && deepestFilter.column === k;
-          message += `  ${k}: ${v}${isDeepest ? ' ✓ (применён)' : ''}\n`;
-        });
-      message += '\n';
-    }
-    
-    if (group.filters.length > 0) {
-      message += 'Дополнительные фильтры:\n';
-      group.filters.forEach(f => {
-        message += `  ${f.column} ${f.operator} ${f.value}\n`;
+  const insertFieldIntoFormula = (fieldName: string) => {
+    const input = formulaInputRef.current;
+    if (!input) {
+      setCurrentIndicator({ 
+        ...currentIndicator, 
+        formula: (currentIndicator.formula || '') + fieldName 
       });
-      message += '\n';
+      return;
     }
-    
-    message += 'Результаты:\n';
-    results.forEach(r => {
-      message += `  ${r.name}: ${r.value.toFixed(2)}\n`;
-    });
 
-    alert(message);
+    const cursorPos = input.selectionStart || 0;
+    const currentFormula = currentIndicator.formula || '';
+    
+    // Находим начало текущего слова (где начинается ввод)
+    const textBeforeCursor = currentFormula.substring(0, cursorPos);
+    const match = textBeforeCursor.match(/[A-ZА-Яa-zа-я0-9_]*$/);
+    const wordStart = match ? cursorPos - match[0].length : cursorPos;
+    
+    // Заменяем частично введённое слово
+    const newFormula = 
+      currentFormula.substring(0, wordStart) + 
+      fieldName + 
+      currentFormula.substring(cursorPos);
+    
+    setCurrentIndicator({ ...currentIndicator, formula: newFormula });
+    
+    setTimeout(() => {
+      input.focus();
+      const newPosition = wordStart + fieldName.length;
+      input.setSelectionRange(newPosition, newPosition);
+    }, 0);
   };
 
-  const handleFormulaChange = (value: string) => {
-  setCurrentIndicator({ ...currentIndicator, formula: value });
 
-  // Проверяем, нужно ли показать автодополнение
-  const cursorPosition = formulaInputRef.current?.selectionStart || 0;
-  const textBeforeCursor = value.substring(0, cursorPosition);
-  
-  // Ищем последнее слово перед курсором
-  const lastWord = textBeforeCursor.split(/[\s()+\-*/,]/).pop() || '';
-  
-  if (lastWord.length >= 2) {
-    // Фильтруем доступные поля
-    const matchingFields = numericFields
-      .filter(f => f.name.toLowerCase().includes(lastWord.toLowerCase()))
-      .map(f => f.name)
-      .slice(0, 5);
+  // Экспорт/импорт конфигурации
+  const exportGroups = () => {
+    const dataStr = JSON.stringify(groups, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `groups_${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+  };
 
-    // Добавляем функции
-    const functions = ['SUM', 'AVG', 'COUNT', 'MIN', 'MAX'];
-    const matchingFunctions = functions.filter(fn => 
-      fn.toLowerCase().includes(lastWord.toLowerCase())
-    );
+  const importGroups = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    const options = [...matchingFunctions, ...matchingFields];
-    
-    if (options.length > 0) {
-      setAutocompleteOptions(options);
-      setSelectedAutocompleteIndex(0);
-      setShowAutocomplete(true);
-      
-      // Позиционируем подсказку
-      if (formulaInputRef.current) {
-        const rect = formulaInputRef.current.getBoundingClientRect();
-        setAutocompletePosition({
-          top: rect.bottom + window.scrollY,
-          left: rect.left + window.scrollX,
-        });
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target?.result as string);
+        if (Array.isArray(imported)) {
+          saveGroups([...groups, ...imported]);
+          alert(`✓ Импортировано ${imported.length} групп`);
+        }
+      } catch (error) {
+        alert('Ошибка импорта файла');
       }
-    } else {
-      setShowAutocomplete(false);
-    }
-  } else {
-    setShowAutocomplete(false);
-  }
-};
-
-// Обработчик клавиш для автодополнения
-const handleFormulaKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-  if (!showAutocomplete) return;
-
-  switch (e.key) {
-    case 'ArrowDown':
-      e.preventDefault();
-      setSelectedAutocompleteIndex(prev => 
-        Math.min(prev + 1, autocompleteOptions.length - 1)
-      );
-      break;
-    case 'ArrowUp':
-      e.preventDefault();
-      setSelectedAutocompleteIndex(prev => Math.max(prev - 1, 0));
-      break;
-    case 'Enter':
-    case 'Tab':
-      e.preventDefault();
-      insertAutocomplete(autocompleteOptions[selectedAutocompleteIndex]);
-      break;
-    case 'Escape':
-      setShowAutocomplete(false);
-      break;
-  }
-};
-
-// Вставка из автодополнения
-const insertAutocomplete = (text: string) => {
-  const input = formulaInputRef.current;
-  if (!input) return;
-
-  const cursorPosition = input.selectionStart || 0;
-  const currentFormula = currentIndicator.formula;
-  const textBeforeCursor = currentFormula.substring(0, cursorPosition);
-  const textAfterCursor = currentFormula.substring(cursorPosition);
-  
-  // Находим начало последнего слова
-  const lastWordStart = textBeforeCursor.split(/[\s()+\-*/,]/).pop() || '';
-  const startPosition = cursorPosition - lastWordStart.length;
-  
-  // Формируем новую формулу
-  const newFormula = 
-    currentFormula.substring(0, startPosition) + 
-    text + 
-    textAfterCursor;
-  
-  setCurrentIndicator({ ...currentIndicator, formula: newFormula });
-  setShowAutocomplete(false);
-  
-  // Устанавливаем курсор после вставленного текста
-  setTimeout(() => {
-    input.focus();
-    const newPosition = startPosition + text.length;
-    input.setSelectionRange(newPosition, newPosition);
-  }, 0);
-};
-
-// Быстрая вставка функции с полем
-const insertQuickFormulaWithField = (func: string, fieldName: string) => {
-  const input = formulaInputRef.current;
-  if (!input) {
-    // Если инпут недоступен, просто добавляем в конец
-    const formula = currentIndicator.formula 
-      ? `${currentIndicator.formula} ${func}(${fieldName})`
-      : `${func}(${fieldName})`;
-    setCurrentIndicator({ ...currentIndicator, formula });
-    return;
-  }
-
-  const cursorPosition = input.selectionStart || 0;
-  const currentFormula = currentIndicator.formula;
-  const textToInsert = `${func}(${fieldName})`;
-  
-  // Вставляем в позицию курсора
-  const newFormula = 
-    currentFormula.substring(0, cursorPosition) + 
-    textToInsert + 
-    currentFormula.substring(cursorPosition);
-  
-  setCurrentIndicator({ ...currentIndicator, formula: newFormula });
-  
-  // Устанавливаем курсор после вставленного текста
-  setTimeout(() => {
-    input.focus();
-    const newPosition = cursorPosition + textToInsert.length;
-    input.setSelectionRange(newPosition, newPosition);
-  }, 0);
-};
-
-// Шаблоны формул
-const formulaTemplates = [
-  { name: 'Сумма', template: 'SUM(поле)', icon: 'Σ' },
-  { name: 'Среднее', template: 'AVG(поле)', icon: 'μ' },
-  { name: 'Процент', template: '(SUM(поле1) / SUM(поле2)) * 100', icon: '%' },
-  { name: 'Разница', template: 'SUM(поле1) - SUM(поле2)', icon: '−' },
-  { name: 'Соотношение', template: 'SUM(поле1) / SUM(поле2)', icon: '÷' },
-];
-
-// Сохранение формулы в историю
-const addIndicatorWithHistory = () => {
-  if (currentIndicator.name && currentIndicator.formula) {
-    const updatedIndicators: Indicator[] = [
-      ...newIndicators,
-      {
-        id: Date.now().toString(),
-        ...currentIndicator,
-      },
-    ];
-    setNewIndicators(updatedIndicators);
-    
-    // Сохраняем в библиотеку
-    saveIndicatorToLibrary(currentIndicator);
-    
-    setCurrentIndicator({ name: '', formula: '' });
-  }
-};
-
-const saveIndicatorToLibrary = (indicator: { name: string; formula: string }) => {
-  // Проверяем, есть ли уже такой показатель
-  const existing = savedIndicators.find(
-    i => i.name.trim().toLowerCase() === indicator.name.trim().toLowerCase()
-  );
-
-  let updatedLibrary: SavedIndicator[];
-  
-  if (existing) {
-    // Обновляем существующий - увеличиваем счётчик использования
-    updatedLibrary = savedIndicators.map(i => 
-      i.id === existing.id 
-        ? { ...i, formula: indicator.formula, usageCount: i.usageCount + 1 }
-        : i
-    );
-  } else {
-    // Добавляем новый
-    const newIndicator: SavedIndicator = {
-      id: Date.now().toString(),
-      name: indicator.name,
-      formula: indicator.formula,
-      createdAt: Date.now(),
-      usageCount: 1,
     };
-    updatedLibrary = [newIndicator, ...savedIndicators];
-  }
-
-  setSavedIndicators(updatedLibrary);
-  localStorage.setItem('indicatorLibrary', JSON.stringify(updatedLibrary));
-};
-
-// Функция использования показателя из библиотеки
-const addIndicatorFromLibrary = (indicator: SavedIndicator) => {
-  // Проверяем, нет ли уже такого показателя в текущей группе
-  const alreadyExists = newIndicators.some(
-    i => i.name.trim().toLowerCase() === indicator.name.trim().toLowerCase()
-  );
-
-  if (alreadyExists) {
-    alert(`⚠️ Показатель "${indicator.name}" уже добавлен в эту группу`);
-    return;
-  }
-
-  // Сразу добавляем в показатели группы
-  const newIndicator: Indicator = {
-    id: Date.now().toString(),
-    name: indicator.name,
-    formula: indicator.formula,
+    reader.readAsText(file);
   };
 
-  setNewIndicators([...newIndicators, newIndicator]);
-  
-  // Увеличиваем счётчик использования
-  const updated = savedIndicators.map(i =>
-    i.id === indicator.id ? { ...i, usageCount: i.usageCount + 1 } : i
-  );
-  setSavedIndicators(updated);
-  localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
-  
-  // Показываем уведомление
-  // Можно добавить toast-уведомление, пока используем console
-  console.log(`✓ Показатель "${indicator.name}" добавлен`);
-};
-
-
-const addAllIndicatorsFromLibrary = () => {
-  // Добавляем все показатели, которые ещё не добавлены
-  const toAdd = savedIndicators.filter(
-    si => !newIndicators.some(
-      ni => ni.name.trim().toLowerCase() === si.name.trim().toLowerCase()
-    )
-  );
-  
-  if (toAdd.length === 0) {
-    alert('Все показатели уже добавлены');
-    return;
-  }
-  
-  const newInds: Indicator[] = toAdd.map(indicator => ({
-    id: `${Date.now()}_${Math.random()}`,
-    name: indicator.name,
-    formula: indicator.formula,
-  }));
-  
-  setNewIndicators([...newIndicators, ...newInds]);
-  
-  // Обновляем счётчики
-  const updated = savedIndicators.map(si => {
-    if (toAdd.some(ta => ta.id === si.id)) {
-      return { ...si, usageCount: si.usageCount + 1 };
-    }
-    return si;
-  });
-  setSavedIndicators(updated);
-  localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
-  
-  alert(`✓ Добавлено ${toAdd.length} показателей`);
-};
-
-
-// Функция удаления из библиотеки
-const removeFromLibrary = (id: string) => {
-  const updated = savedIndicators.filter(i => i.id !== id);
-  setSavedIndicators(updated);
-  localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
-};
-
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
   if (loading) {
     return (
-      <Loader />
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Загрузка...</p>
+        </div>
+      </div>
     );
   }
 
   if (!sheets || sheets.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-xl text-gray-600">
-          Нет загруженных данных. Загрузите Excel файл на главной странице.
-        </p>
+        <AlertCircle size={48} className="mx-auto text-yellow-500 mb-4" />
+        <p className="text-xl text-gray-600 mb-4">Нет загруженных данных</p>
+        <a href="/" className="text-blue-600 hover:underline">Загрузить данные</a>
       </div>
     );
   }
 
-  const numericFields = fieldsInfo.filter(f => 
-    f.isAllowedInFormulas && f.type === 'number'
-  );
-
-  const categoricalFields = fieldsInfo.filter(f => 
-    !f.isAllowedInFormulas && f.numericCount > 0
-  );
-
-  const textFields = fieldsInfo.filter(f => 
-    (f.type === 'text' && f.isAllowedInFormulas) ||
-    (!f.isAllowedInFormulas && f.numericCount === 0)
-  );
-
-  const mixedFields = fieldsInfo.filter(f => 
-    f.type === 'mixed' && f.isAllowedInFormulas
-  );
-
   return (
-    <div className="flex gap-6 max-w-7xl mx-auto">
-      {/* Основной контент */}
-      <div className="flex-1">
-        <h1 className="text-3xl font-bold mb-6">Группы показателей</h1>
+    <div className="max-w-7xl mx-auto">
+      {/* Заголовок */}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold mb-2">Групповые показатели</h1>
+        <p className="text-gray-600">
+          Создавайте группы с фильтрами и вычисляемыми показателями
+        </p>
+      </div>
 
-        {/* Иерархический фильтр */}
-        {hierarchyConfig.length > 0 && (
-          <HierarchyFilter
-            data={sheets[0].rows}
-            config={hierarchyConfig}
-            onFilterChange={setHierarchyFilters}
-          />
-        )}
-
-        {/* Форма создания группы */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4">Создать новую группу</h2>
-          
-          {/* Название группы */}
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-2">Название группы</label>
-            <input
-              type="text"
-              value={newGroupName}
-              onChange={(e) => setNewGroupName(e.target.value)}
-              placeholder="Например: Саратовская область"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
+      {/* Панель управления существующими группами */}
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <FolderOpen size={24} className="text-blue-600" />
+              Мои группы ({groups.length})
+            </h2>
           </div>
 
-          {/* Дополнительные фильтры */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <Filter size={20} />
-              Дополнительные фильтры
-            </h3>
-            
-            {/* Текущие фильтры */}
-            {newFilters.length > 0 && (
-              <div className="space-y-2 mb-4">
-                {newFilters.map(filter => (
-                  <div key={filter.id} className="flex items-center gap-2 bg-gray-50 p-3 rounded">
-                    <span className="text-sm">
-                      <strong>{filter.column}</strong> {filter.operator} {filter.value}
-                    </span>
-                    <button
-                      onClick={() => removeFilter(filter.id)}
-                      className="ml-auto p-1 hover:bg-red-100 rounded"
-                    >
-                      <Trash2 size={16} className="text-red-600" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Добавление нового фильтра */}
-            <div className="grid grid-cols-4 gap-2">
-              <select
-                value={currentFilter.column}
-                onChange={(e) => setCurrentFilter({ ...currentFilter, column: e.target.value })}
-                className="px-3 py-2 border rounded-lg"
-              >
-                <option value="">Выберите поле</option>
-                {availableHeaders.map(h => (
-                  <option key={h} value={h}>{h}</option>
-                ))}
-              </select>
-              
-              <select
-                value={currentFilter.operator}
-                onChange={(e) => setCurrentFilter({ ...currentFilter, operator: e.target.value })}
-                className="px-3 py-2 border rounded-lg"
-              >
-                <option value="=">=</option>
-                <option value=">">{'>'}</option>
-                <option value="<">{'<'}</option>
-                <option value=">=">{'>='}</option>
-                <option value="<=">{'<='}</option>
-                <option value="!=">!=</option>
-                <option value="contains">содержит</option>
-              </select>
-              
+          <div className="flex flex-wrap gap-2">
+            {/* Поиск */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
               <input
                 type="text"
-                value={currentFilter.value}
-                onChange={(e) => setCurrentFilter({ ...currentFilter, value: e.target.value })}
-                placeholder="Значение"
-                className="px-3 py-2 border rounded-lg"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Поиск групп..."
+                className="pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
-              
+            </div>
+
+            {/* Переключатель вида */}
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
               <button
-                onClick={addFilter}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
+                onClick={() => setViewMode('grid')}
+                className={`px-3 py-1.5 rounded transition-colors ${
+                  viewMode === 'grid' ? 'bg-white shadow' : 'hover:bg-gray-200'
+                }`}
               >
-                <Plus size={16} />
-                Добавить
+                <Hash size={18} />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1.5 rounded transition-colors ${
+                  viewMode === 'list' ? 'bg-white shadow' : 'hover:bg-gray-200'
+                }`}
+              >
+                <Filter size={18} />
               </button>
             </div>
-          </div>
 
-          {/* Показатели */}
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <Hash size={20} />
-              Показатели (формулы)
-            </h3>
+            {/* Экспорт */}
+            <button
+              onClick={exportGroups}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 transition-colors"
+            >
+              <Download size={18} />
+              Экспорт
+            </button>
 
-            {/* Шаблоны формул */}
-            <div className="mb-2 p-3 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-200 flex-row">
-              <p className="text-sm font-medium text-gray-700 mb-2">⚡ Быстрые шаблоны:</p>
-              <div className="flex flex-wrap gap-2">
-                {formulaTemplates.map((template) => (
-                  <button
-                    key={template.name}
-                    onClick={() => setCurrentIndicator({ ...currentIndicator, formula: template.template })}
-                    className="px-2 py-1 bg-white border-1 text-blue-500 rounded-lg hover:bg-blue-50 hover:border-blue-400 transition-all text-sm font-medium flex items-center gap-1"
-                  >
-                    <span className="text-lg">{template.icon}</span>
-                    {template.name}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs font-medium text-gray-600 mb-2">Операторы:</p>
-              <div className="flex flex-wrap gap-2">
-                {['+', '-', '*', '/', '(', ')', ','].map((op) => (
-                  <button
-                    key={op}
-                    onClick={() => {
-                      const input = formulaInputRef.current;
-                      if (!input) return;
-                      
-                      const cursorPosition = input.selectionStart || 0;
-                      const currentFormula = currentIndicator.formula;
-                      
-                      const newFormula = 
-                        currentFormula.substring(0, cursorPosition) + 
-                        op + 
-                        currentFormula.substring(cursorPosition);
-                      
-                      setCurrentIndicator({ ...currentIndicator, formula: newFormula });
-                      
-                      setTimeout(() => {
-                        input.focus();
-                        input.setSelectionRange(cursorPosition + 1, cursorPosition + 1);
-                      }, 0);
-                    }}
-                    className="px-3 py-1 bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-100 hover:border-gray-400 transition-all text-sm font-mono"
-                  >
-                    {op}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Быстрые кнопки с полями */}
-            {expandedField && numericFields.find(f => f.name === expandedField) && (
-              <div className="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
-                <p className="text-sm font-medium text-gray-700 mb-2">
-                  🎯 Быстрая вставка для поля: <strong>{expandedField}</strong>
-                </p>
-                <p className="text-xs text-gray-500 mb-2">
-                  💡 Функция будет вставлена в позицию курсора
-                </p>
-                <div className="flex gap-2 flex-wrap">
-                  <button
-                    onClick={() => insertQuickFormulaWithField('SUM', expandedField)}
-                    className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium transition-all hover:scale-105"
-                    title="Вставить SUM в позицию курсора"
-                  >
-                    Σ Сумма
-                  </button>
-                  <button
-                    onClick={() => insertQuickFormulaWithField('AVG', expandedField)}
-                    className="px-3 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm font-medium transition-all hover:scale-105"
-                    title="Вставить AVG в позицию курсора"
-                  >
-                    μ Среднее
-                  </button>
-                  <button
-                    onClick={() => insertQuickFormulaWithField('COUNT', expandedField)}
-                    className="px-3 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 text-sm font-medium transition-all hover:scale-105"
-                    title="Вставить COUNT в позицию курсора"
-                  >
-                    # Количество
-                  </button>
-                  <button
-                    onClick={() => insertQuickFormulaWithField('MIN', expandedField)}
-                    className="px-3 py-2 bg-orange-600 text-white rounded hover:bg-orange-700 text-sm font-medium transition-all hover:scale-105"
-                    title="Вставить MIN в позицию курсора"
-                  >
-                    MIN
-                  </button>
-                  <button
-                    onClick={() => insertQuickFormulaWithField('MAX', expandedField)}
-                    className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium transition-all hover:scale-105"
-                    title="Вставить MAX в позицию курсора"
-                  >
-                    MAX
-                  </button>
-                </div>
-              </div>
-            )}
-
-           {/* Библиотека показателей */}
-            {savedIndicators.length > 0 && (
-              <div className="mb-4">
-                <div
-                  onClick={() => setShowIndicatorLibrary(!showIndicatorLibrary)}
-                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gradient-to-r hover:from-purple-50 border-1 border-blue-200 rounded-lg hover:to-blue-50 transition-all"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="text-blue-500 font-semibold">
-                      📚 Библиотека показателей ({savedIndicators.length})
-                    </span>
-                    {showIndicatorLibrary && savedIndicators.length > 0 && (
-                      <button
-                        onClick={(e) => {    
-                          e.stopPropagation();
-                          addAllIndicatorsFromLibrary();
-                        }}
-                        className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs font-medium transition-colors"
-                      >
-                        + Добавить все
-                      </button>
-                    )}
-                  </div>
-                  <ChevronDown 
-                    className={`transition-transform ${showIndicatorLibrary ? 'rotate-180' : ''}`} 
-                    size={20} 
-                  />
-                </div>
-
-
-                {showIndicatorLibrary && (
-                <div className="mt-2 space-y-2 max-h-80 overflow-y-auto">
-                  {savedIndicators
-                    .sort((a, b) => b.usageCount - a.usageCount)
-                    .map((indicator) => {
-                      // Проверяем, добавлен ли уже этот показатель
-                      const isAdded = newIndicators.some(
-                        i => i.name.trim().toLowerCase() === indicator.name.trim().toLowerCase()
-                      );
-                      
-                      return (
-                        <div
-                          key={indicator.id}
-                          className={`group p-3 bg-white border-1 rounded-lg transition-all ${
-                            isAdded 
-                              ? 'border-green-300 bg-green-50' 
-                              : 'border-gray-200 hover:border-purple-300 hover:shadow-md'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-1">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <h4 className="font-semibold text-gray-900 truncate">
-                                  {indicator.name}
-                                </h4>
-                                <div className="flex items-center gap-1">
-                                  <span className="flex-shrink-0 bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-medium">
-                                    {indicator.usageCount}x
-                                  </span>
-                                  {isAdded && (
-                                    <span className="flex-shrink-0 bg-green-600 text-white px-2 py-0.5 rounded-full text-xs font-medium">
-                                      ✓ Добавлен
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <p className="text-xs font-mono text-gray-600 bg-gray-50 px-2 py-1 rounded truncate">
-                                {indicator.formula}
-                              </p>
-                              <p className="text-xs text-gray-400 mt-1">
-                                Создан: {new Date(indicator.createdAt).toLocaleDateString('ru-RU')}
-                              </p>
-                            </div>
-                            
-                            <div className="flex gap-1">
-                              <button
-                                onClick={() => addIndicatorFromLibrary(indicator)}
-                                disabled={isAdded}
-                                className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                                  isAdded
-                                    ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                    : 'bg-purple-600 text-white hover:bg-purple-700'
-                                }`}
-                                title={isAdded ? 'Уже добавлен' : 'Добавить в группу'}
-                              >
-                                {isAdded ? '✓ Добавлен' : '+ Добавить'}
-                              </button>
-                              <button
-                                onClick={() => removeFromLibrary(indicator.id)}
-                                className="p-1.5 hover:bg-red-100 rounded transition-colors"
-                                title="Удалить из библиотеки"
-                              >
-                                <Trash2 size={16} className="text-red-800" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              )}
-
-                
-
-                <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-800">
-                  💡 <strong>Совет:</strong> Используйте показатели из библиотеки для создания групп с одинаковыми показателями. 
-                  Это позволит сравнивать их в режиме &quot;Сравнение&quot; на дашборде.
-                </div>
-              </div>
-            )}
-            
-            {/* Текущие показатели */}
-            {newIndicators.length > 0 && (
-              <div className="space-y-2 mb-4">
-                {newIndicators.map((indicator) => (
-                  <div key={indicator.id} className="flex items-center gap-2 bg-gradient-to-r from-gray-50 to-blue-50 p-3 rounded border border-gray-200">
-                    <div className="flex-1">
-                      <div className="font-semibold text-sm">{indicator.name}</div>
-                      <div className="text-xs text-gray-600 font-mono">{indicator.formula}</div>
-                    </div>
-                    <button
-                      onClick={() => removeIndicator(indicator.id)}
-                      className="p-1 hover:bg-red-100 rounded transition-colors"
-                    >
-                      <Trash2 size={16} className="text-red-600" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Добавление нового показателя */}
-            <div className="space-y-2 relative">
+            {/* Импорт */}
+            <label className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2 cursor-pointer transition-colors">
+              <Upload size={18} />
+              Импорт
               <input
-                type="text"
-                value={currentIndicator.name}
-                onChange={(e) => setCurrentIndicator({ ...currentIndicator, name: e.target.value })}
-                placeholder="Название показателя (например: Средний возраст)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                type="file"
+                accept=".json"
+                onChange={importGroups}
+                className="hidden"
               />
-              
-              {/* Предупреждение о дубликатах */}
-              {currentIndicator.name && savedIndicators.some(
-                i => i.name.trim().toLowerCase() === currentIndicator.name.trim().toLowerCase()
-              ) && (
-                <div className="flex items-center gap-2 text-sm text-orange-600 bg-orange-50 px-3 py-2 rounded">
-                  <AlertCircle size={16} />
-                  <span>
-                    Показатель с таким именем уже есть в библиотеке. 
-                    При добавлении будет обновлена формула.
-                  </span>
-                </div>
-              )}
-              
-              <div className="relative">
-                <input
-                  ref={formulaInputRef}
-                  type="text"
-                  value={currentIndicator.formula}
-                  onChange={(e) => handleFormulaChange(e.target.value)}
-                  onKeyDown={handleFormulaKeyDown}
-                  placeholder="Формула (начните печатать для подсказок...)"
-                  className="w-full px-3 py-2 border-2 border-blue-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                />
-                
-                {/* Автодополнение */}
-                {showAutocomplete && (
-                  <div 
-                    className="absolute z-50 mt-1 w-full bg-white border-2 border-blue-300 rounded-lg shadow-xl max-h-60 overflow-y-auto"
-                  >
-                    {autocompleteOptions.map((option, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => insertAutocomplete(option)}
-                        className={`w-full text-left px-4 py-2 text-sm font-mono hover:bg-blue-50 transition-colors ${
-                          idx === selectedAutocompleteIndex ? 'bg-blue-100' : ''
-                        }`}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                
-                {/* Подсказка */}
-                <div className="mt-1 text-xs text-gray-500">
-                  Используйте Tab или Enter для автодополнения, ↑↓ для навигации
-                </div>
-              </div>
-              
-              <button
-                onClick={addIndicatorWithHistory}
-                className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center justify-center gap-2 font-semibold"
-              >
-                <Plus size={16} />
-                Добавить показатель
-              </button>
-            </div>
+            </label>
           </div>
-
-
-          {/* Кнопка создания */}
-          <button
-            onClick={createGroup}
-            disabled={!newGroupName || newIndicators.length === 0}
-            className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold flex items-center justify-center gap-2"
-          >
-            <Save size={20} />
-            Создать группу
-          </button>
         </div>
 
-        {/* Список созданных групп */}
-        {groups.length > 0 && (
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Созданные группы ({groups.length})</h2>
-            
-            <div className="space-y-3">
-              {groups.map(group => (
-                <div key={group.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg">{group.name}</h3>
-                      
-                      {group.hierarchyFilters && Object.keys(group.hierarchyFilters).filter(k => group.hierarchyFilters![k]).length > 0 && (
-                        <div className="mt-2 text-sm">
-                          <span className="text-gray-600">Иерархия: </span>
-                          {Object.entries(group.hierarchyFilters)
-                            .filter(([, v]) => v)
-                            .map(([k, v]) => (
-                              <span key={k} className="inline-block bg-purple-100 text-purple-800 px-2 py-1 rounded mr-2 text-xs">
-                                {k}: {v}
-                              </span>
-                            ))}
-                        </div>
-                      )}
-                      
-                      <div className="mt-2 text-sm text-gray-600">
-                        <span>Фильтров: {group.filters.length}</span>
-                        <span className="mx-2">|</span>
-                        <span>Показателей: {group.indicators.length}</span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => previewGroup(group)}
-                        className="p-2 hover:bg-blue-100 rounded transition-colors"
-                        title="Предпросмотр"
-                      >
-                        <Eye size={18} className="text-blue-600" />
-                      </button>
-                      <button
-                        onClick={() => deleteGroup(group.id)}
-                        className="p-2 hover:bg-red-100 rounded transition-colors"
-                        title="Удалить"
-                      >
-                        <Trash2 size={18} className="text-red-600" />
-                      </button>
-                    </div>
+        {/* Список групп */}
+        {filteredGroups.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            <Sparkles size={48} className="mx-auto mb-3 text-gray-300" />
+            <p className="text-lg">
+              {searchTerm ? 'Группы не найдены' : 'Нет созданных групп'}
+            </p>
+            <p className="text-sm mt-1">Создайте первую группу ниже</p>
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredGroups.map((group) => (
+              <div
+                key={group.id}
+                className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-lg p-4 border-2 border-blue-200 hover:border-blue-400 hover:shadow-lg transition-all"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg text-gray-900 mb-1">
+                      {group.name}
+                    </h3>
+                    {group.description && (
+                      <p className="text-sm text-gray-600">{group.description}</p>
+                    )}
                   </div>
                 </div>
-              ))}
-            </div>
+
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Filter size={16} className="text-blue-600" />
+                    <span className="text-gray-700">
+                      {group.filters.length} фильтров
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <TrendingUp size={16} className="text-green-600" />
+                    <span className="text-gray-700">
+                      {group.indicators.length} показателей
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    Обновлено: {new Date(group.updatedAt).toLocaleDateString('ru-RU')}
+                  </div>
+                </div>
+
+                {/* Показатели */}
+                <div className="mb-4 p-2 bg-white rounded border border-gray-200">
+                  <p className="text-xs text-gray-600 mb-1 font-semibold">Показатели:</p>
+                  <div className="space-y-1">
+                    {group.indicators.slice(0, 3).map((ind) => (
+                      <div key={ind.id} className="text-xs text-gray-700 truncate">
+                        • {ind.name}
+                      </div>
+                    ))}
+                    {group.indicators.length > 3 && (
+                      <div className="text-xs text-gray-500">
+                        +{group.indicators.length - 3} ещё...
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Действия */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => editGroup(group)}
+                    className="flex-1 px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-1 text-sm transition-colors"
+                  >
+                    <Edit2 size={14} />
+                    Изменить
+                  </button>
+                  <button
+                    onClick={() => duplicateGroup(group)}
+                    className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
+                    title="Дублировать"
+                  >
+                    <Copy size={16} />
+                  </button>
+                  <button
+                    onClick={() => deleteGroup(group.id)}
+                    className="px-3 py-2 bg-red-100 text-red-600 hover:bg-red-200 rounded transition-colors"
+                    title="Удалить"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {filteredGroups.map((group) => (
+              <div
+                key={group.id}
+                className="bg-white rounded-lg p-4 border border-gray-200 hover:border-blue-400 hover:shadow-md transition-all"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <h3 className="font-bold text-gray-900">{group.name}</h3>
+                    <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                      <span>{group.filters.length} фильтров</span>
+                      <span>{group.indicators.length} показателей</span>
+                      <span className="text-xs">
+                        {new Date(group.updatedAt).toLocaleDateString('ru-RU')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => editGroup(group)}
+                      className="px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition-colors"
+                    >
+                      Изменить
+                    </button>
+                    <button
+                      onClick={() => duplicateGroup(group)}
+                      className="p-1.5 bg-gray-200 hover:bg-gray-300 rounded transition-colors"
+                    >
+                      <Copy size={16} />
+                    </button>
+                    <button
+                      onClick={() => deleteGroup(group.id)}
+                      className="p-1.5 bg-red-100 text-red-600 hover:bg-red-200 rounded transition-colors"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Боковая панель с полями */}
-      {showFieldsPanel && (
-        <div className="w-80 bg-white rounded-lg shadow-lg p-4 sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold">Доступные поля</h3>
+      {/* Форма создания/редактирования группы */}
+      <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold flex items-center gap-2">
+            {editingGroupId ? (
+              <>
+                <Edit2 size={28} className="text-blue-600" />
+                Редактирование группы
+              </>
+            ) : (
+              <>
+                <Plus size={28} className="text-green-600" />
+                Создание новой группы
+              </>
+            )}
+          </h2>
+          {editingGroupId && (
             <button
-              onClick={() => setShowFieldsPanel(false)}
-              className="text-gray-400 hover:text-gray-600"
+              onClick={cancelEdit}
+              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center gap-2 transition-colors"
             >
-              ✕
+              <X size={18} />
+              Отменить
             </button>
+          )}
+        </div>
+
+        {/* Название и описание */}
+        <div className="mb-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Название группы *
+            </label>
+            <input
+              type="text"
+              value={currentGroup.name || ''}
+              onChange={(e) => setCurrentGroup({ ...currentGroup, name: e.target.value })}
+              placeholder="Например: Саратовская область"
+              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
           </div>
-
-          {/* Числовые поля */}
-          {numericFields.length > 0 && (
-            <div className="mb-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-green-700 mb-2">
-                <Hash size={16} />
-                <span>Числовые поля ({numericFields.length})</span>
-              </div>
-              <div className="space-y-1">
-                {numericFields.map((field) => (
-                  <div key={field.name} className="border border-green-200 rounded">
-                    <button
-                      onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-green-50 rounded flex items-center justify-between"
-                    >
-                      <span className="font-mono text-xs truncate flex-1">{field.name}</span>
-                      {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                    
-                    {expandedField === field.name && (
-                      <div className="px-3 py-2 bg-green-50 border-t border-green-200 text-xs space-y-1">
-                        <p><strong>Мин:</strong> {field.min?.toFixed(2)}</p>
-                        <p><strong>Макс:</strong> {field.max?.toFixed(2)}</p>
-                        <p><strong>Среднее:</strong> {field.avg?.toFixed(2)}</p>
-                        <p><strong>Значений:</strong> {field.numericCount}</p>
-                        <button
-                          onClick={() => insertFieldIntoFormula(field.name)}
-                          className="mt-2 w-full px-2 py-1 bg-green-600 text-white rounded hover:bg-green-700 text-xs"
-                        >
-                          Вставить в формулу
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Описание (необязательно)
+            </label>
+            <textarea
+              value={currentGroup.description || ''}
+              onChange={(e) => setCurrentGroup({ ...currentGroup, description: e.target.value })}
+              placeholder="Краткое описание группы..."
+              className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              rows={2}
+            />
+          </div>
+        </div>
+        
+        {/* Секция фильтров */}
+        <div className="mb-6">
+          <button
+            onClick={() => toggleSection('filters')}
+            className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg hover:border-blue-300 transition-all"
+          >
+            <div className="flex items-center gap-2">
+              <Filter size={20} className="text-blue-600" />
+              <span className="font-semibold text-gray-900">
+                Фильтры по колонкам ({currentGroup.filters?.length || 0})
+              </span>
             </div>
-          )}
+            <ChevronDown
+              className={`text-blue-600 transition-transform ${expandedSections.filters ? 'rotate-180' : ''}`}
+              size={20}
+            />
+          </button>
 
-          {/* Смешанные поля - ДОБАВЛЕНО */}
-          {mixedFields.length > 0 && (
-            <div className="mb-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-purple-700 mb-2">
-                <Info size={16} />
-                <span>Смешанные поля ({mixedFields.length})</span>
-              </div>
-              <div className="space-y-1">
-                {mixedFields.map((field) => (
-                  <div key={field.name} className="border border-purple-200 rounded">
-                    <button
-                      onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-purple-50 rounded flex items-center justify-between"
+          {expandedSections.filters && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+              {/* Добавленные фильтры */}
+              {currentGroup.filters && currentGroup.filters.length > 0 && (
+                <div className="mb-4 space-y-2">
+                  {currentGroup.filters.map((filter) => (
+                    <div
+                      key={filter.id}
+                      className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200"
                     >
-                      <span className="font-mono text-xs truncate flex-1">{field.name}</span>
-                      {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                    
-                    {expandedField === field.name && (
-                      <div className="px-3 py-2 bg-purple-50 border-t border-purple-200 text-xs space-y-1">
-                        <p><strong>Числовых:</strong> {field.numericCount} из {field.totalCount}</p>
-                        {field.min !== undefined && (
-                          <>
-                            <p><strong>Мин:</strong> {field.min.toFixed(2)}</p>
-                            <p><strong>Макс:</strong> {field.max?.toFixed(2)}</p>
-                            <p><strong>Среднее:</strong> {field.avg?.toFixed(2)}</p>
-                          </>
-                        )}
-                        <button
-                          onClick={() => insertFieldIntoFormula(field.name)}
-                          className="mt-2 w-full px-2 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs"
-                        >
-                          Вставить в формулу
-                        </button>
-                        <div className="mt-2 p-2 bg-yellow-100 rounded">
-                          <p className="text-yellow-800 text-xs">
-                            ⚠️ Содержит нечисловые значения
-                          </p>
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-gray-900">{filter.column}</span>
+                        <span className="text-gray-500">{filter.operator}</span>
+                        <span className="text-blue-600">{filter.value}</span>
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+                      <button
+                        onClick={() => removeFilter(filter.id)}
+                        className="p-1 hover:bg-red-100 rounded transition-colors"
+                      >
+                        <Trash2 size={16} className="text-red-600" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-          {/* Категориальные поля */}
-          {categoricalFields.length > 0 && (
-            <div className="mb-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-orange-700 mb-2">
-                <Info size={16} />
-                <span>Категориальные ({categoricalFields.length})</span>
-              </div>
-              <div className="space-y-1">
-                {categoricalFields.map((field) => (
-                  <div key={field.name} className="border border-orange-200 rounded">
-                    <button
-                      onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-orange-50 rounded flex items-center justify-between"
-                    >
-                      <span className="font-mono text-xs truncate flex-1">{field.name}</span>
-                      {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                    
-                    {expandedField === field.name && (
-                      <div className="px-3 py-2 bg-orange-50 border-t border-orange-200 text-xs space-y-1">
-                        <p><strong>Числовых значений:</strong> {field.numericCount} из {field.totalCount}</p>
-                        <p><strong>Примеры:</strong></p>
-                        <ul className="list-disc list-inside text-gray-700 space-y-0.5">
-                          {field.sampleValues.slice(0, 3).map((val, idx) => (
-                            <li key={idx} className="truncate">{String(val)}</li>
-                          ))}
-                        </ul>
-                        <div className="mt-2 p-2 bg-white rounded border border-orange-300">
-                          <p className="text-orange-800 text-xs">
-                            ⚠️ Недоступно для формул
-                          </p>
-                          <p className="text-gray-600 text-xs mt-1">
-                            Используется для фильтрации
-                          </p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+              {/* Форма добавления фильтра */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <select
+                  value={currentFilter.column || ''}
+                  onChange={(e) => setCurrentFilter({ ...currentFilter, column: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Выберите колонку</option>
+                  {sheets[0].headers.map((header) => (
+                    <option key={header} value={header}>{header}</option>
+                  ))}
+                </select>
 
-          {/* Текстовые поля */}
-          {textFields.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 text-sm font-medium text-blue-700 mb-2">
-                <Type size={16} />
-                <span>Текстовые ({textFields.length})</span>
-              </div>
-              <div className="space-y-1">
-                {textFields.map((field) => (
-                  <div key={field.name} className="border border-blue-200 rounded">
-                    <button
-                      onClick={() => setExpandedField(expandedField === field.name ? null : field.name)}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 rounded flex items-center justify-between"
-                    >
-                      <span className="font-mono text-xs truncate flex-1">{field.name}</span>
-                      {expandedField === field.name ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                    
-                    {expandedField === field.name && (
-                      <div className="px-3 py-2 bg-blue-50 border-t border-blue-200 text-xs space-y-1">
-                        <p><strong>Примеры значений:</strong></p>
-                        <ul className="list-disc list-inside text-gray-700 space-y-0.5">
-                          {field.sampleValues.slice(0, 3).map((val, idx) => (
-                            <li key={idx} className="truncate">{String(val)}</li>
-                          ))}
-                        </ul>
-                        <p className="mt-2"><strong>Всего:</strong> {field.totalCount} значений</p>
-                        {!field.isAllowedInFormulas && (
-                          <div className="mt-2 p-2 bg-yellow-100 rounded">
-                            <p className="text-yellow-800 text-xs">
-                              ⚠️ Недоступно для формул
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+                <select
+                  value={currentFilter.operator || '='}
+                  onChange={(e) => setCurrentFilter({ ...currentFilter, operator: e.target.value })}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="=">=</option>
+                  <option value="!=">≠</option>
+                  <option value=">">{">"}</option>
+                  <option value="<">{"<"}</option>
+                  <option value=">=">≥</option>
+                  <option value="<=">≤</option>
+                  <option value="contains">Содержит</option>
+                </select>
 
-          {/* Если нет полей для формул */}
-          {numericFields.length === 0 && mixedFields.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              <Info size={48} className="mx-auto mb-2 text-gray-300" />
-              <p className="text-sm">Нет доступных числовых полей</p>
-              <p className="text-xs mt-1">Настройте типы данных в разделе Настройки</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={currentFilter.value || ''}
+                    onChange={(e) => setCurrentFilter({ ...currentFilter, value: e.target.value })}
+                    placeholder="Значение"
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={addFilter}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Plus size={20} />
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
-      )}
+
+        {/* Секция иерархии */}
+        {hierarchyConfig.length > 0 && (
+          <div className="mb-6">
+            <button
+              onClick={() => toggleSection('hierarchy')}
+              className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-lg hover:border-purple-300 transition-all"
+            >
+              <div className="flex items-center gap-2">
+                <Layers size={20} className="text-purple-600" />
+                <span className="font-semibold text-gray-900">
+                  Иерархический фильтр
+                </span>
+              </div>
+              <ChevronDown
+                className={`text-purple-600 transition-transform ${expandedSections.hierarchy ? 'rotate-180' : ''}`}
+                size={20}
+              />
+            </button>
+
+            {expandedSections.hierarchy && (
+              <div className="mt-4">
+                <HierarchyFilter
+                  data={sheets[0].rows}
+                  config={hierarchyConfig}
+                  onFilterChange={(filters) => {
+                    setCurrentGroup({
+                      ...currentGroup,
+                      hierarchyFilters: filters,
+                    });
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Секция показателей */}
+        <div className="mb-6">
+          <button
+            onClick={() => toggleSection('indicators')}
+            className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-lg hover:border-green-300 transition-all"
+          >
+            <div className="flex items-center gap-2">
+              <TrendingUp size={20} className="text-green-600" />
+              <span className="font-semibold text-gray-900">
+                Показатели ({currentGroup.indicators?.length || 0})
+              </span>
+            </div>
+            <ChevronDown
+              className={`text-green-600 transition-transform ${expandedSections.indicators ? 'rotate-180' : ''}`}
+              size={20}
+            />
+          </button>
+
+          {expandedSections.indicators && (
+            <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            {/* Библиотека показателей - УЛУЧШЕННАЯ ВЕРСИЯ */}
+            {savedIndicators.length > 0 && (
+              <div className="mb-4">
+                <button
+                  onClick={() => setShowIndicatorLibrary(!showIndicatorLibrary)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-100 via-pink-100 to-indigo-100 border-2 border-purple-300 rounded-lg hover:border-purple-400 hover:shadow-md transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white rounded-lg shadow-sm group-hover:scale-110 transition-transform">
+                      <Sparkles size={20} className="text-purple-600" />
+                    </div>
+                    <div className="text-left">
+                      <span className="text-purple-900 font-bold block">
+                        📚 Библиотека показателей
+                      </span>
+                      <span className="text-purple-700 text-xs">
+                        {savedIndicators.length} сохранённых показателей • {savedIndicators.reduce((sum, i) => sum + i.usageCount, 0)} использований
+                      </span>
+                    </div>
+                  </div>
+                  <ChevronDown
+                    className={`text-purple-600 transition-transform ${showIndicatorLibrary ? 'rotate-180' : ''}`}
+                    size={20}
+                  />
+                </button>
+
+                {showIndicatorLibrary && (
+                  <div className="mt-3 p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-lg border-2 border-purple-200">
+                    {/* Поиск и действия */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      <div className="flex-1 min-w-[200px] relative">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-purple-400" size={18} />
+                        <input
+                          type="text"
+                          placeholder="Поиск показателей..."
+                          value={indicatorSearchTerm}
+                          onChange={(e) => setIndicatorSearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                        />
+                      </div>
+                      
+                      <button
+                        onClick={addAllIndicatorsFromLibrary}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium transition-colors flex items-center gap-2"
+                      >
+                        <Plus size={18} />
+                        Добавить все
+                      </button>
+
+                      <select
+                        value={indicatorSortBy}
+                        onChange={(e) => setIndicatorSortBy(e.target.value as 'usage' | 'name' | 'date')}
+                        className="px-3 py-2 border-2 border-purple-300 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white"
+                      >
+                        <option value="usage">По популярности</option>
+                        <option value="name">По названию</option>
+                        <option value="date">По дате</option>
+                      </select>
+                    </div>
+
+                    {/* Список показателей */}
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-2">
+                      {sortedAndFilteredIndicators.length > 0 ? (
+                        sortedAndFilteredIndicators.map((indicator, index) => {
+                          const isAdded = currentGroup.indicators?.some(
+                            i => i.name.trim().toLowerCase() === indicator.name.trim().toLowerCase()
+                          );
+
+                          return (
+                            <div
+                              key={indicator.id}
+                              className={`group relative overflow-hidden rounded-lg border-2 transition-all ${
+                                isAdded
+                                  ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-400 shadow-sm'
+                                  : 'bg-white border-purple-200 hover:border-purple-400 hover:shadow-md'
+                              }`}
+                            >
+                              {/* Градиентная полоска сбоку */}
+                              <div className={`absolute left-0 top-0 bottom-0 w-1 ${
+                                isAdded 
+                                  ? 'bg-gradient-to-b from-green-500 to-emerald-500' 
+                                  : 'bg-gradient-to-b from-purple-500 to-pink-500'
+                              }`} />
+
+                              <div className="pl-4 pr-3 py-3">
+                                <div className="flex items-start gap-3">
+                                  {/* Иконка */}
+                                  <div className={`flex-shrink-0 p-2 rounded-lg ${
+                                    isAdded ? 'bg-green-100' : 'bg-purple-100'
+                                  }`}>
+                                    {isAdded ? (
+                                      <CheckCircle size={20} className="text-green-600" />
+                                    ) : (
+                                      <TrendingUp size={20} className="text-purple-600" />
+                                    )}
+                                  </div>
+
+                                  {/* Контент */}
+                                  <div className="flex-1 min-w-0">
+                                    {/* Заголовок с бейджами */}
+                                    <div className="flex items-start justify-between gap-2 mb-2">
+                                      <div className="flex-1">
+                                        <h4 className="font-bold text-gray-900 mb-1 flex items-center gap-2">
+                                          {indicator.name}
+                                          {index < 3 && (
+                                            <span className="text-xs bg-gradient-to-r from-yellow-400 to-orange-400 text-white px-2 py-0.5 rounded-full font-semibold">
+                                              ⭐ TOP {index + 1}
+                                            </span>
+                                          )}
+                                        </h4>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full text-xs font-semibold">
+                                            <Hash size={12} />
+                                            {indicator.usageCount}x использован
+                                          </span>
+                                          {isAdded && (
+                                            <span className="inline-flex items-center gap-1 bg-green-600 text-white px-2 py-0.5 rounded-full text-xs font-semibold">
+                                              <CheckCircle size={12} />
+                                              В группе
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      {/* Кнопки действий */}
+                                      <div className="flex gap-1">
+                                        <button
+                                          onClick={() => addIndicatorFromLibrary(indicator)}
+                                          disabled={isAdded}
+                                          className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                                            isAdded
+                                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                              : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-700 hover:to-pink-700 shadow-sm hover:shadow-md'
+                                          }`}
+                                          title={isAdded ? 'Уже добавлен' : 'Добавить в группу'}
+                                        >
+                                          {isAdded ? '✓' : '+'}
+                                        </button>
+                                        <button
+                                          onClick={() => removeFromLibrary(indicator.id)}
+                                          className="p-1.5 hover:bg-red-100 rounded-lg transition-colors"
+                                          title="Удалить из библиотеки"
+                                        >
+                                          <Trash2 size={16} className="text-red-600" />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    {/* Формула */}
+                                    <div className="relative group/formula">
+                                      <div className="bg-gray-900 bg-opacity-95 px-3 py-2 rounded-lg border border-gray-700">
+                                        <code className="text-xs text-green-400 font-mono break-all">
+                                          {indicator.formula}
+                                        </code>
+                                      </div>
+                                      <button
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(indicator.formula);
+                                          alert('Формула скопирована!');
+                                        }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover/formula:opacity-100 transition-opacity p-1 bg-gray-700 hover:bg-gray-600 rounded"
+                                        title="Копировать формулу"
+                                      >
+                                        <Copy size={14} className="text-white" />
+                                      </button>
+                                    </div>
+
+                                    {/* Метаданные */}
+                                    <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
+                                      <span className="flex items-center gap-1">
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                        </svg>
+                                        {new Date(indicator.createdAt).toLocaleDateString('ru-RU', { 
+                                          day: 'numeric', 
+                                          month: 'short', 
+                                          year: 'numeric' 
+                                        })}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="text-center py-12">
+                          <Search size={48} className="mx-auto text-purple-300 mb-3" />
+                          <p className="text-purple-700 font-medium">
+                            {indicatorSearchTerm ? 'Показатели не найдены' : 'Библиотека пуста'}
+                          </p>
+                          <p className="text-purple-600 text-sm mt-1">
+                            {indicatorSearchTerm ? 'Попробуйте другой запрос' : 'Создайте первый показатель'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Подсказка */}
+                    <div className="mt-4 p-3 bg-white border border-purple-300 rounded-lg text-xs text-purple-800">
+                      <strong>💡 Совет:</strong> Используйте показатели из библиотеки для создания групп с одинаковыми показателями. 
+                      Это позволит сравнивать их в режиме "Сравнение" на дашборде.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
 
-      {!showFieldsPanel && (
-        <button
-          onClick={() => setShowFieldsPanel(true)}
-          className="fixed right-4 top-20 px-4 py-2 bg-blue-600 text-white rounded-lg shadow-lg hover:bg-blue-700"
-        >
-          Показать поля
-        </button>
-      )}
+              
+
+              {/* Добавленные показатели */}
+              {currentGroup.indicators && currentGroup.indicators.length > 0 && (
+                <div className="mb-4 space-y-2">
+                  {currentGroup.indicators.map((indicator) => (
+                    <div
+                      key={indicator.id}
+                      className="flex items-start justify-between p-3 bg-white rounded-lg border border-gray-200"
+                    >
+                      <div className="flex-1">
+                        <div className="font-semibold text-gray-900 mb-1">{indicator.name}</div>
+                        <div className="text-sm font-mono text-gray-600 bg-gray-50 px-2 py-1 rounded">
+                          {indicator.formula}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => removeIndicator(indicator.id)}
+                        className="p-1 hover:bg-red-100 rounded transition-colors"
+                      >
+                        <Trash2 size={16} className="text-red-600" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              
+
+              {/* Панель доступных числовых полей с поиском */}
+              <div className="mb-4">
+                <button
+                  onClick={() => setShowFieldsPanel(!showFieldsPanel)}
+                  className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-lg hover:border-blue-300 transition-all"
+                >
+                  <div className="flex items-center gap-2">
+                    <Hash size={18} className="text-blue-600" />
+                    <span className="font-semibold text-gray-900">
+                      Доступные числовые поля ({numericFields.length})
+                    </span>
+                  </div>
+                  <ChevronDown
+                    className={`text-blue-600 transition-transform ${showFieldsPanel ? 'rotate-180' : ''}`}
+                    size={20}
+                  />
+                </button>
+
+                {showFieldsPanel && (
+                  <div className="mt-2 p-4 bg-white rounded-lg border-2 border-blue-200">
+                    {/* Поиск по полям */}
+                    <div className="mb-3 relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                      <input
+                        type="text"
+                        value={fieldSearchTerm}
+                        onChange={(e) => setFieldSearchTerm(e.target.value)}
+                        placeholder="Поиск по полям..."
+                        className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {/* Список полей */}
+                    <div className="max-h-64 overflow-y-auto">
+                      {filteredNumericFields.length > 0 ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                          {filteredNumericFields.map((field) => (
+                            <button
+                              key={field.name}
+                              onClick={() => {
+                                insertFieldIntoFormula(field.name);
+                                formulaInputRef.current?.focus();
+                              }}
+                              className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm font-medium transition-colors text-left truncate"
+                              title={field.name}
+                            >
+                              <Hash size={14} className="inline mr-1" />
+                              {field.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 text-center py-4">
+                          Поля не найдены
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Статистика */}
+                    <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-600">
+                      Показано: {filteredNumericFields.length} из {numericFields.length} числовых полей
+                    </div>
+
+                    {/* Информация о типах полей */}
+                    <details className="mt-3">
+                      <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-900 font-medium">
+                        ℹ️ Информация о всех полях в данных
+                      </summary>
+                      <div className="mt-2 p-3 bg-gray-50 rounded border border-gray-200">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <h5 className="font-semibold text-green-700 mb-2 flex items-center gap-1">
+                              <CheckCircle size={14} />
+                              Числовые поля ({numericFields.length})
+                            </h5>
+                            <div className="max-h-32 overflow-y-auto space-y-0.5">
+                              {numericFields.map(f => (
+                                <div key={f.name} className="text-gray-700">• {f.name}</div>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <h5 className="font-semibold text-gray-600 mb-2 flex items-center gap-1">
+                              <X size={14} />
+                              Текстовые поля ({sheets[0].headers.length - numericFields.length})
+                            </h5>
+                            <div className="max-h-32 overflow-y-auto space-y-0.5">
+                              {sheets[0].headers
+                                .filter(h => !numericFields.some(f => f.name === h))
+                                .map(h => (
+                                  <div key={h} className="text-gray-500">• {h}</div>
+                                ))
+                              }
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                )}
+              </div>
+
+
+              {/* Форма ввода показателя */}
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={currentIndicator.name || ''}
+                  onChange={(e) => setCurrentIndicator({ ...currentIndicator, name: e.target.value })}
+                  placeholder="Название показателя (например: Средний возраст)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500"
+                />
+
+
+                {currentIndicator.name && savedIndicators.some(
+                  i => currentIndicator.name && i.name.trim().toLowerCase() === currentIndicator.name.trim().toLowerCase()
+                ) && (
+                  <div className="flex items-center gap-2 text-sm text-orange-600 bg-orange-50 px-3 py-2 rounded">
+                    <AlertCircle size={16} />
+                    <span>
+                      Показатель с таким именем уже есть в библиотеке.
+                      При добавлении будет обновлена формула.
+                    </span>
+                  </div>
+                )}
+
+                <div className="relative">
+                  <input
+                    ref={formulaInputRef}
+                    type="text"
+                    value={currentIndicator.formula || ''}
+                    onChange={(e) => handleFormulaChange(e.target.value)}
+                    onKeyDown={handleFormulaKeyDown}
+                    placeholder="Формула (начните печатать для подсказок...)"
+                    className="w-full px-3 py-2 border-2 border-green-300 rounded-lg font-mono text-sm focus:ring-2 focus:ring-green-500"
+                  />
+
+                  {showAutocomplete && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border-2 border-blue-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                      {autocompleteOptions.map((option, index) => (
+                        <div
+                          key={option}
+                          onClick={() => insertAutocomplete(option)}
+                          className={`px-4 py-2 cursor-pointer ${
+                            index === selectedAutocompleteIndex
+                              ? 'bg-blue-100'
+                              : 'hover:bg-gray-50'
+                          }`}
+                        >
+                          {option}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Быстрые кнопки функций */}
+                {numericFields.length > 0 ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-gray-600 font-medium">
+                      Быстрая вставка функций:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {['SUM', 'AVG', 'COUNT', 'MIN', 'MAX'].map((func) => (
+                        <div key={func} className="relative group">
+                          <button className="px-3 py-1.5 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 text-sm font-medium transition-colors">
+                            {func}
+                          </button>
+                          <div className="absolute left-0 mt-1 w-64 bg-white rounded-lg shadow-xl border-2 border-blue-300 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                            <div className="p-2 bg-blue-50 border-b border-blue-200">
+                              <div className="text-xs font-semibold text-gray-700 mb-2">
+                                Выберите поле для {func}:
+                              </div>
+                              <input
+                                type="text"
+                                placeholder="Поиск..."
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => {
+                                  const term = e.target.value.toLowerCase();
+                                  const menu = e.target.closest('.group')?.querySelector('.field-menu');
+                                  if (menu) {
+                                    const buttons = menu.querySelectorAll('button');
+                                    buttons.forEach((btn) => {
+                                      const text = btn.textContent?.toLowerCase() || '';
+                                      if (text.includes(term)) {
+                                        (btn as HTMLElement).style.display = 'flex';
+                                      } else {
+                                        (btn as HTMLElement).style.display = 'none';
+                                      }
+                                    });
+                                  }
+                                }}
+                              />
+                            </div>
+                            <div className="field-menu max-h-64 overflow-y-auto p-1">
+                              {numericFields.map((field) => (
+                                <button
+                                  key={field.name}
+                                  onClick={() => insertQuickFormulaWithField(func, field.name)}
+                                  className="w-full text-left px-3 py-2 hover:bg-blue-50 text-sm flex items-center gap-2 rounded"
+                                >
+                                  <Hash size={14} className="text-blue-600 flex-shrink-0" />
+                                  <span className="truncate">{field.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-yellow-50 border border-yellow-300 rounded-lg text-sm text-yellow-800">
+                    <AlertCircle size={16} className="inline mr-1" />
+                    В данных нет числовых полей для создания формул
+                  </div>
+                )}
+
+                <button
+                  onClick={addIndicatorWithHistory}
+                  disabled={!currentIndicator.name || !currentIndicator.formula || numericFields.length === 0}
+                  className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-semibold transition-colors"
+                >
+                  <Plus size={16} />
+                  Добавить показатель
+                </button>
+
+              </div>
+            </div>
+          )}
+        </div>
+        
+        {/* Секция предпросмотра */}
+        {currentGroup.indicators && currentGroup.indicators.length > 0 && (
+          <div className="mb-6">
+            <button
+              onClick={() => {
+                toggleSection('preview');
+                setShowPreview(!showPreview);
+              }}
+              className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-lg hover:border-yellow-300 transition-all"
+            >
+              <div className="flex items-center gap-2">
+                <Eye size={20} className="text-yellow-600" />
+                <span className="font-semibold text-gray-900">
+                  Предпросмотр результатов
+                </span>
+              </div>
+              <ChevronDown
+                className={`text-yellow-600 transition-transform ${expandedSections.preview ? 'rotate-180' : ''}`}
+                size={20}
+              />
+            </button>
+
+            {expandedSections.preview && previewResults && (
+              <div className="mt-4 p-4 bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg border border-yellow-200">
+                <div className="mb-4 space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                    <CheckCircle size={16} className="text-green-600" />
+                    <span>
+                      Найдено <strong>{previewResults.rowCount}</strong> записей по заданным фильтрам
+                    </span>
+                  </div>
+                  {previewResults.hasHierarchyFilter && (
+                    <div className="flex items-center gap-2 text-sm text-purple-700 bg-purple-100 px-3 py-2 rounded">
+                      <Layers size={16} />
+                      <span>
+                        Иерархический фильтр: <strong>{previewResults.hierarchyFilterInfo}</strong>
+                      </span>
+                    </div>
+                  )}
+                  {(currentGroup.filters?.length || 0) > 0 && (
+                    <div className="flex items-center gap-2 text-sm text-blue-700 bg-blue-100 px-3 py-2 rounded">
+                      <Filter size={16} />
+                      <span>
+                        Применено фильтров: <strong>{currentGroup.filters?.length}</strong>
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {previewResults.results.map((result, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-4 rounded-lg border-2 ${
+                        result.error
+                          ? 'bg-red-50 border-red-300'
+                          : 'bg-white border-green-300'
+                      }`}
+                    >
+                      <div className="text-sm text-gray-600 mb-1">{result.name}</div>
+                      {result.error ? (
+                        <div className="text-red-600 text-sm">
+                          <AlertCircle size={16} className="inline mr-1" />
+                          {result.error}
+                        </div>
+                      ) : (
+                        <div className="text-2xl font-bold text-gray-900">
+                          {result.value.toFixed(2)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* Кнопки действий */}
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={saveCurrentGroup}
+            className="flex-1 min-w-[200px] px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 flex items-center justify-center gap-2 font-semibold shadow-lg hover:shadow-xl transition-all"
+          >
+            <Save size={20} />
+            {editingGroupId ? 'Сохранить изменения' : 'Создать группу'}
+          </button>
+
+          {!showPreview && currentGroup.indicators && currentGroup.indicators.length > 0 && (
+            <button
+              onClick={() => {
+                setShowPreview(true);
+                setExpandedSections(prev => ({ ...prev, preview: true }));
+              }}
+              className="px-6 py-3 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 flex items-center justify-center gap-2 font-semibold transition-colors"
+            >
+              <Eye size={20} />
+              Просмотр результатов
+            </button>
+          )}
+
+          {editingGroupId && (
+            <button
+              onClick={cancelEdit}
+              className="px-6 py-3 bg-gray-200 hover:bg-gray-300 rounded-lg flex items-center justify-center gap-2 font-semibold transition-colors"
+            >
+              <X size={20} />
+              Отмена
+            </button>
+          )}
+        </div>
+      </div>
+
+          
+
+      {/* Подсказки и справка */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl shadow-lg p-6">
+        <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
+          <Sparkles size={20} className="text-blue-600" />
+          Справка по формулам
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white rounded-lg p-4 border border-gray-200">
+            <h4 className="font-semibold text-gray-900 mb-2">Доступные функции:</h4>
+            <ul className="space-y-1 text-sm text-gray-700">
+              <li><code className="bg-gray-100 px-1 rounded">SUM(поле)</code> - сумма значений</li>
+              <li><code className="bg-gray-100 px-1 rounded">AVG(поле)</code> - среднее значение</li>
+              <li><code className="bg-gray-100 px-1 rounded">COUNT(поле)</code> - количество записей</li>
+              <li><code className="bg-gray-100 px-1 rounded">MIN(поле)</code> - минимальное значение</li>
+              <li><code className="bg-gray-100 px-1 rounded">MAX(поле)</code> - максимальное значение</li>
+            </ul>
+          </div>
+
+          <div className="bg-white rounded-lg p-4 border border-gray-200">
+            <h4 className="font-semibold text-gray-900 mb-2">Математические операторы:</h4>
+            <ul className="space-y-1 text-sm text-gray-700">
+              <li><code className="bg-gray-100 px-1 rounded">+</code> - сложение</li>
+              <li><code className="bg-gray-100 px-1 rounded">-</code> - вычитание</li>
+              <li><code className="bg-gray-100 px-1 rounded">*</code> - умножение</li>
+              <li><code className="bg-gray-100 px-1 rounded">/</code> - деление</li>
+              <li><code className="bg-gray-100 px-1 rounded">()</code> - скобки для приоритета</li>
+            </ul>
+          </div>
+
+          <div className="bg-white rounded-lg p-4 border border-gray-200">
+            <h4 className="font-semibold text-gray-900 mb-2">Примеры формул:</h4>
+            <ul className="space-y-1 text-sm text-gray-700">
+              <li><code className="bg-gray-100 px-1 rounded">SUM(Доход) / COUNT(ID)</code></li>
+              <li><code className="bg-gray-100 px-1 rounded">AVG(Возраст) * 12</code></li>
+              <li><code className="bg-gray-100 px-1 rounded">(MAX(Цена) - MIN(Цена)) / AVG(Цена)</code></li>
+            </ul>
+          </div>
+
+          <div className="bg-white rounded-lg p-4 border border-gray-200">
+            <h4 className="font-semibold text-gray-900 mb-2">Советы:</h4>
+            <ul className="space-y-1 text-sm text-gray-700">
+              <li>• Используйте Tab или Enter для автодополнения</li>
+              <li>• Сохраняйте показатели в библиотеку для переиспользования</li>
+              <li>• Проверяйте результаты перед сохранением</li>
+            </ul>
+          </div>
+        </div>
+
+        {/* Статистика */}
+        {groups.length > 0 && (
+          <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200">
+            <h4 className="font-semibold text-gray-900 mb-2">Статистика проекта:</h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <div className="text-gray-600">Всего групп</div>
+                <div className="text-2xl font-bold text-blue-600">{groups.length}</div>
+              </div>
+              <div>
+                <div className="text-gray-600">Показателей</div>
+                <div className="text-2xl font-bold text-green-600">
+                  {groups.reduce((sum, g) => sum + g.indicators.length, 0)}
+                </div>
+              </div>
+              <div>
+                <div className="text-gray-600">В библиотеке</div>
+                <div className="text-2xl font-bold text-purple-600">{savedIndicators.length}</div>
+              </div>
+              <div>
+                <div className="text-gray-600">Фильтров</div>
+                <div className="text-2xl font-bold text-orange-600">
+                  {groups.reduce((sum, g) => sum + g.filters.length, 0)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
+

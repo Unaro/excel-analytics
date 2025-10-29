@@ -1,10 +1,9 @@
-import type { Metadata } from 'next';
 import './globals.css';
 import Sidebar from '@/components/sidebar';
 
-export const metadata: Metadata = {
-  title: 'Excel Analytics',
-  description: 'Анализ данных из Excel таблиц',
+export const metadata = {
+  title: 'Analytics Platform',
+  description: 'Платформа для анализа данных',
 };
 
 export default function RootLayout({
@@ -15,10 +14,13 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body>
-        <div className="flex ">
+        <div className="flex min-h-screen bg-gray-50">
           <Sidebar />
-          <main className="flex-1 bg-gray-50 h-screen overflow-scroll p-5">
-            {children}
+          
+          <main className="flex-1 overflow-auto">
+            <div className="p-6 lg:p-8 pt-20 lg:pt-8">
+              {children}
+            </div>
           </main>
         </div>
       </body>

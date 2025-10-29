@@ -1,449 +1,623 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { Search, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, X, Filter } from 'lucide-react';
-import { ExcelRow, SheetData } from '@/types';
 import { getExcelData } from '@/lib/storage';
-import Loader from '@/components/loader';
+import { SheetData } from '@/types';
+import { 
+  Search, 
+  Download, 
+  ChevronDown, 
+  ChevronUp, 
+  Eye, 
+  EyeOff, 
+  BarChart3,
+  Filter,
+  X,
+  Copy,
+  Check,
+  Settings,
+  List,
+  Grid,
+} from 'lucide-react';
+
+interface ColumnVisibility {
+  [key: string]: boolean;
+}
+
+interface ColumnStats {
+  sum: number;
+  avg: number;
+  min: number;
+  max: number;
+  count: number;
+}
+
+type ViewMode = 'table' | 'cards';
 
 export default function DataPage() {
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [selectedSheet, setSelectedSheet] = useState(0);
   const [loading, setLoading] = useState(true);
-  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [columnVisibility, setColumnVisibility] = useState<ColumnVisibility>({});
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+  const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(25);
-  
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedColumn, setSelectedColumn] = useState<string | null>(null);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
+  const [copied, setCopied] = useState(false);
+  const [columnFilters, setColumnFilters] = useState<Record<string, string>>({});
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
-    async function fetchData() {
-      const data = getExcelData();
-      if (data) {
-        setSheets(data);
-      }
-      setLoading(false);
+    const data = getExcelData();
+    if (data && data.length > 0) {
+      setSheets(data);
+      
+      // Инициализируем видимость колонок
+      const initialVisibility: ColumnVisibility = {};
+      data[0].headers.forEach(header => {
+        initialVisibility[header] = true;
+      });
+      setColumnVisibility(initialVisibility);
     }
-    fetchData();
+    setLoading(false);
   }, []);
 
-  useEffect(() => {
-    setCurrentPage(1);
-    setSearchQuery('');
-    setSelectedColumn(null);
-  }, [selectedSheet]);
+  const currentSheet = sheets[selectedSheet];
 
-  const filteredRows = useMemo(() => {
-    if (!sheets || sheets.length === 0) return [];
-    
-    const currentSheet = sheets[selectedSheet];
-    if (!searchQuery.trim()) return currentSheet.rows;
+  // Видимые колонки
+  const visibleHeaders = useMemo(() => {
+    if (!currentSheet) return [];
+    return currentSheet.headers.filter(h => columnVisibility[h] !== false);
+  }, [currentSheet, columnVisibility]);
 
-    const query = searchQuery.toLowerCase();
-    
-    if (selectedColumn) {
-      return currentSheet.rows.filter((row: ExcelRow) => {
-        const value = row[selectedColumn];
-        return value !== null && 
-               value !== undefined && 
-               String(value).toLowerCase().includes(query);
-      });
+  // Фильтрация и сортировка
+  const filteredAndSortedRows = useMemo(() => {
+    if (!currentSheet) return [];
+
+    let filtered = currentSheet.rows;
+
+    // Поиск
+    if (searchTerm) {
+      filtered = filtered.filter((row) =>
+        Object.values(row).some((value) =>
+          String(value).toLowerCase().includes(searchTerm.toLowerCase())
+        )
+      );
     }
-    
-    return currentSheet.rows.filter((row: ExcelRow) => {
-      return currentSheet.headers.some((header: string) => {
-        const value = row[header];
-        return value !== null && 
-               value !== undefined && 
-               String(value).toLowerCase().includes(query);
-      });
+
+    // Фильтры по колонкам
+    Object.entries(columnFilters).forEach(([column, filterValue]) => {
+      if (filterValue) {
+        filtered = filtered.filter(row =>
+          String(row[column]).toLowerCase().includes(filterValue.toLowerCase())
+        );
+      }
     });
-  }, [sheets, selectedSheet, searchQuery, selectedColumn]);
 
-  // Вычисление пагинации
-  const totalPages = Math.ceil(filteredRows.length / rowsPerPage);
-  const startIndex = (currentPage - 1) * rowsPerPage;
-  const endIndex = startIndex + rowsPerPage;
-  const currentRows = filteredRows.slice(startIndex, endIndex);
+    // Сортировка
+    if (sortColumn) {
+      filtered = [...filtered].sort((a, b) => {
+        const aVal = a[sortColumn];
+        const bVal = b[sortColumn];
 
-  // Навигация по страницам
-  const goToPage = (page: number) => {
-    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
-  };
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+        }
 
-  // Обработка клика по заголовку колонки
-  const handleColumnClick = (column: string) => {
-    if (selectedColumn === column) {
-      // Если уже выбрана эта колонка, сбрасываем фильтр
-      setSelectedColumn(null);
-    } else {
-      // Выбираем новую колонку
-      setSelectedColumn(column);
+        const aStr = String(aVal).toLowerCase();
+        const bStr = String(bVal).toLowerCase();
+        return sortDirection === 'asc'
+          ? aStr.localeCompare(bStr)
+          : bStr.localeCompare(aStr);
+      });
     }
-    setCurrentPage(1);
-  };
 
-  // Сброс фильтра
-  const clearFilter = () => {
-    setSearchQuery('');
-    setSelectedColumn(null);
-    setCurrentPage(1);
-  };
+    return filtered;
+  }, [currentSheet, searchTerm, sortColumn, sortDirection, columnFilters]);
 
-  // Экспорт в CSV
-  const exportToCSV = () => {
-    if (!sheets || sheets.length === 0) return;
+  // Пагинация
+  const paginatedRows = useMemo(() => {
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    return filteredAndSortedRows.slice(startIndex, startIndex + rowsPerPage);
+  }, [filteredAndSortedRows, currentPage, rowsPerPage]);
+
+  const totalPages = Math.ceil(filteredAndSortedRows.length / rowsPerPage);
+
+  // Статистика по выбранным колонкам
+  const columnStats = useMemo(() => {
+    if (!currentSheet || selectedColumns.size === 0) return null;
+
+    const stats: Record<string, ColumnStats> = {};
     
-    const currentSheet = sheets[selectedSheet];
+    selectedColumns.forEach(column => {
+      const numericValues = filteredAndSortedRows
+        .map(row => row[column])
+        .filter(val => typeof val === 'number') as number[];
+
+      if (numericValues.length > 0) {
+        stats[column] = {
+          sum: numericValues.reduce((a, b) => a + b, 0),
+          avg: numericValues.reduce((a, b) => a + b, 0) / numericValues.length,
+          min: Math.min(...numericValues),
+          max: Math.max(...numericValues),
+          count: numericValues.length,
+        };
+      }
+    });
+
+    return Object.keys(stats).length > 0 ? stats : null;
+  }, [currentSheet, selectedColumns, filteredAndSortedRows]);
+
+  // Обработчики
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const toggleColumnVisibility = (column: string) => {
+    setColumnVisibility(prev => ({
+      ...prev,
+      [column]: !prev[column],
+    }));
+  };
+
+  const toggleColumnSelection = (column: string) => {
+    setSelectedColumns(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(column)) {
+        newSet.delete(column);
+      } else {
+        newSet.add(column);
+      }
+      return newSet;
+    });
+  };
+
+  const exportToCSV = (filteredOnly = false) => {
+    if (!currentSheet) return;
+
+    const dataToExport = filteredOnly ? filteredAndSortedRows : currentSheet.rows;
+    const headers = visibleHeaders;
+    
     const csvContent = [
-      currentSheet.headers.join(','),
-      ...filteredRows.map((row: ExcelRow) => 
-        currentSheet.headers.map((header: string) => {
+      headers.join(','),
+      ...dataToExport.map(row =>
+        headers.map(header => {
           const value = row[header];
-          return value !== null && value !== undefined ? `"${value}"` : '';
+          const stringValue = String(value);
+          return stringValue.includes(',') ? `"${stringValue}"` : stringValue;
         }).join(',')
-      )
+      ),
     ].join('\n');
 
-    // Добавляем UTF-8 BOM для корректного отображения кириллицы в Excel
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `${currentSheet.sheetName}_export.csv`;
+    link.download = `${currentSheet.sheetName}_${filteredOnly ? 'filtered_' : ''}${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
+  };
+
+  const copyToClipboard = async () => {
+    if (!currentSheet) return;
+
+    const text = [
+      visibleHeaders.join('\t'),
+      ...paginatedRows.map(row =>
+        visibleHeaders.map(header => row[header]).join('\t')
+      ),
+    ].join('\n');
+
+    await navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   if (loading) {
     return (
-      <Loader />
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Загрузка данных...</p>
+        </div>
+      </div>
     );
   }
 
   if (!sheets || sheets.length === 0) {
     return (
       <div className="text-center py-12">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-8 max-w-md mx-auto">
-          <p className="text-xl text-gray-800 mb-2">📊 Нет загруженных данных</p>
-          <p className="text-gray-600">
-            Загрузите Excel файл на главной странице, чтобы начать работу.
-          </p>
-        </div>
+        <p className="text-xl text-gray-600">Нет загруженных данных</p>
       </div>
     );
   }
 
-  const currentSheet = sheets[selectedSheet];
-
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="max-w-full mx-auto px-4">
+      {/* Заголовок */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Данные из Excel</h1>
+        <h1 className="text-3xl font-bold mb-2">Просмотр данных</h1>
         <p className="text-gray-600">
-          Просмотр и анализ табличных данных с возможностью поиска и фильтрации
+          Всего записей: {currentSheet.rows.length} | Отображено: {filteredAndSortedRows.length}
         </p>
       </div>
 
-      {/* Панель управления */}
-      <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Выбор листа */}
-          {sheets.length > 1 && (
-            <div>
-              <label className="block text-sm font-medium mb-2 text-gray-700">
-                Лист Excel:
-              </label>
-              <select
-                value={selectedSheet}
-                onChange={(e) => setSelectedSheet(Number(e.target.value))}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {sheets.map((sheet, index) => (
-                  <option key={index} value={index}>
-                    {sheet.sheetName} ({sheet.rows.length} строк)
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
+      {/* Панель инструментов */}
+      <div className="bg-white rounded-xl shadow-lg p-4 mb-6 space-y-4">
+        {/* Строка 1: Основные действия */}
+        <div className="flex flex-wrap items-center gap-3">
           {/* Поиск */}
-          <div className={sheets.length > 1 ? '' : 'md:col-span-2'}>
-            <label className="block text-sm font-medium mb-2 text-gray-700">
-              {selectedColumn ? `Поиск в колонке: ${selectedColumn}` : 'Поиск по всем колонкам'}
-            </label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <input
-                type="text"
-                placeholder={selectedColumn ? `Поиск в "${selectedColumn}"...` : 'Введите запрос для поиска...'}
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              {(searchQuery || selectedColumn) && (
-                <button
-                  onClick={clearFilter}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  title="Очистить фильтр"
-                >
-                  <X size={20} />
-                </button>
-              )}
+          <div className="flex-1 min-w-[200px] relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Поиск по всем колонкам..."
+              className="w-full pl-10 pr-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {/* Режим просмотра */}
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1.5 rounded transition-colors ${
+                viewMode === 'table' ? 'bg-white shadow' : 'hover:bg-gray-200'
+              }`}
+              title="Таблица"
+            >
+              <List size={18} />
+            </button>
+            <button
+              onClick={() => setViewMode('cards')}
+              className={`px-3 py-1.5 rounded transition-colors ${
+                viewMode === 'cards' ? 'bg-white shadow' : 'hover:bg-gray-200'
+              }`}
+              title="Карточки"
+            >
+              <Grid size={18} />
+            </button>
+          </div>
+
+          {/* Фильтры */}
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`px-4 py-2 rounded-lg flex items-center gap-2 font-medium transition-colors ${
+              showFilters ? 'bg-blue-600 text-white' : 'bg-gray-100 hover:bg-gray-200'
+            }`}
+          >
+            <Filter size={18} />
+            Фильтры
+          </button>
+
+          {/* Настройки колонок */}
+          <button
+            onClick={() => setShowColumnSettings(!showColumnSettings)}
+            className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2 font-medium transition-colors"
+          >
+            <Settings size={18} />
+            Колонки
+          </button>
+
+          {/* Экспорт */}
+          <div className="relative group">
+            <button className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2 font-medium hover:bg-green-700 transition-colors">
+              <Download size={18} />
+              Экспорт
+            </button>
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+              <button
+                onClick={() => exportToCSV(false)}
+                className="w-full text-left px-4 py-2 hover:bg-gray-50 rounded-t-lg"
+              >
+                Все данные
+              </button>
+              <button
+                onClick={() => exportToCSV(true)}
+                className="w-full text-left px-4 py-2 hover:bg-gray-50 rounded-b-lg"
+              >
+                Только отфильтрованные
+              </button>
             </div>
           </div>
 
-          {/* Кнопка экспорта */}
-          <div className="flex items-end">
-            <button
-              onClick={exportToCSV}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+          {/* Копировать */}
+          <button
+            onClick={copyToClipboard}
+            className="px-4 py-2 bg-purple-600 text-white rounded-lg flex items-center gap-2 font-medium hover:bg-purple-700 transition-colors"
+          >
+            {copied ? <Check size={18} /> : <Copy size={18} />}
+            {copied ? 'Скопировано!' : 'Копировать'}
+          </button>
+        </div>
+        {/* Фильтры по колонкам */}
+        {showFilters && (
+          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-900">Фильтры по колонкам</h3>
+              <button
+                onClick={() => setColumnFilters({})}
+                className="text-sm text-red-600 hover:text-red-700"
+              >
+                Сбросить все
+              </button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {visibleHeaders.map(header => (
+                <div key={header}>
+                  <label className="block text-xs text-gray-600 mb-1">{header}</label>
+                  <input
+                    type="text"
+                    value={columnFilters[header] || ''}
+                    onChange={(e) => setColumnFilters(prev => ({
+                      ...prev,
+                      [header]: e.target.value,
+                    }))}
+                    placeholder="Фильтр..."
+                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Настройки колонок */}
+        {showColumnSettings && (
+          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-900">Управление колонками</h3>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const newVisibility: ColumnVisibility = {};
+                    currentSheet.headers.forEach(h => newVisibility[h] = true);
+                    setColumnVisibility(newVisibility);
+                  }}
+                  className="text-sm text-blue-600 hover:text-blue-700"
+                >
+                  Показать все
+                </button>
+                <button
+                  onClick={() => {
+                    const newVisibility: ColumnVisibility = {};
+                    currentSheet.headers.forEach(h => newVisibility[h] = false);
+                    setColumnVisibility(newVisibility);
+                  }}
+                  className="text-sm text-gray-600 hover:text-gray-700"
+                >
+                  Скрыть все
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              {currentSheet.headers.map(header => (
+                <label
+                  key={header}
+                  className="flex items-center gap-2 p-2 bg-white rounded border border-gray-200 hover:bg-gray-50 cursor-pointer"
+                >
+                  <input
+                    type="checkbox"
+                    checked={columnVisibility[header] !== false}
+                    onChange={() => toggleColumnVisibility(header)}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm truncate">{header}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Статистика по выбранным колонкам */}
+      {columnStats && (
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl shadow-lg p-4 mb-6">
+          <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <BarChart3 size={20} />
+            Статистика по выбранным колонкам
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {Object.entries(columnStats).map(([column, stats]) => (
+              <div key={column} className="bg-white rounded-lg p-4 border border-gray-200">
+                <h4 className="font-semibold text-gray-900 mb-2">{column}</h4>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Сумма:</span>
+                    <span className="font-semibold">{stats.sum.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Среднее:</span>
+                    <span className="font-semibold">{stats.avg.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Мин:</span>
+                    <span className="font-semibold">{stats.min.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Макс:</span>
+                    <span className="font-semibold">{stats.max.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-1">
+                    <span className="text-gray-600">Записей:</span>
+                    <span className="font-semibold">{stats.count}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Таблица или карточки */}
+      {viewMode === 'table' ? (
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left">
+                    <input
+                      type="checkbox"
+                      className="w-4 h-4"
+                      title="Выбрать все колонки для статистики"
+                    />
+                  </th>
+                  {visibleHeaders.map((header) => (
+                    <th
+                      key={header}
+                      onClick={() => handleSort(header)}
+                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span>{header}</span>
+                        <div className="flex flex-col">
+                          <ChevronUp
+                            size={14}
+                            className={`${
+                              sortColumn === header && sortDirection === 'asc'
+                                ? 'text-blue-600'
+                                : 'text-gray-300'
+                            }`}
+                          />
+                          <ChevronDown
+                            size={14}
+                            className={`-mt-1 ${
+                              sortColumn === header && sortDirection === 'desc'
+                                ? 'text-blue-600'
+                                : 'text-gray-300'
+                            }`}
+                          />
+                        </div>
+                      </div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {paginatedRows.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4"
+                        title="Выбрать для статистики"
+                      />
+                    </td>
+                    {visibleHeaders.map((header) => (
+                      <td
+                        key={header}
+                        onClick={() => toggleColumnSelection(header)}
+                        className={`px-6 py-4 whitespace-nowrap text-sm ${
+                          selectedColumns.has(header)
+                            ? 'bg-blue-50 font-semibold text-blue-900'
+                            : 'text-gray-900'
+                        } cursor-pointer`}
+                      >
+                        {typeof row[header] === 'number'
+                          ? row[header].toLocaleString('ru-RU')
+                          : row[header]}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        /* Режим карточек */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {paginatedRows.map((row, idx) => (
+            <div
+              key={idx}
+              className="bg-white rounded-lg shadow-lg p-4 hover:shadow-xl transition-shadow border border-gray-200"
             >
-              <Download size={20} />
-              Экспорт в CSV
+              <div className="space-y-2">
+                {visibleHeaders.map((header) => (
+                  <div key={header} className="flex justify-between items-start">
+                    <span className="text-sm font-medium text-gray-600 mr-2">
+                      {header}:
+                    </span>
+                    <span className="text-sm text-gray-900 text-right">
+                      {typeof row[header] === 'number'
+                        ? row[header].toLocaleString('ru-RU')
+                        : row[header]}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Пагинация */}
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-4 bg-white rounded-xl shadow-lg p-4">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">Строк на странице:</span>
+          <select
+            value={rowsPerPage}
+            onChange={(e) => {
+              setRowsPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="px-3 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          >
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+            <option value={200}>200</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-600">
+            Страница {currentPage} из {totalPages}
+          </span>
+          <div className="flex gap-1">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ««
+            </button>
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              «
+            </button>
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              »
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              »»
             </button>
           </div>
         </div>
 
-        {/* Информация о данных */}
-        <div className="mt-4 flex flex-wrap gap-4 text-sm">
-          <div className="bg-blue-50 px-4 py-2 rounded-lg">
-            <span className="text-gray-600">Всего строк:</span>
-            <span className="ml-2 font-semibold text-blue-700">{currentSheet.rows.length}</span>
-          </div>
-          <div className="bg-green-50 px-4 py-2 rounded-lg">
-            <span className="text-gray-600">Найдено:</span>
-            <span className="ml-2 font-semibold text-green-700">{filteredRows.length}</span>
-          </div>
-          <div className="bg-purple-50 px-4 py-2 rounded-lg">
-            <span className="text-gray-600">Колонок:</span>
-            <span className="ml-2 font-semibold text-purple-700">{currentSheet.headers.length}</span>
-          </div>
-          {selectedColumn && (
-            <div className="bg-orange-50 px-4 py-2 rounded-lg flex items-center gap-2">
-              <Filter size={16} className="text-orange-600" />
-              <span className="text-gray-600">Фильтр по колонке:</span>
-              <span className="font-semibold text-orange-700">{selectedColumn}</span>
-              <button
-                onClick={() => setSelectedColumn(null)}
-                className="ml-2 text-orange-600 hover:text-orange-800"
-              >
-                <X size={16} />
-              </button>
-            </div>
-          )}
+        <div className="text-sm text-gray-600">
+          Показано {((currentPage - 1) * rowsPerPage) + 1} - {Math.min(currentPage * rowsPerPage, filteredAndSortedRows.length)} из {filteredAndSortedRows.length}
         </div>
-
-        {/* Подсказка */}
-        <div className="mt-3 text-xs text-gray-500 flex items-center gap-1">
-          <Filter size={14} />
-          <span>Нажмите на заголовок колонки, чтобы фильтровать по ней</span>
-        </div>
-      </div>
-
-      {/* Таблица с ограниченной шириной и скроллом */}
-      <div className="bg-white rounded-lg shadow-lg overflow-hidden">
-        {/* Контейнер для горизонтального скролла */}
-        <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-          <table className="w-full border-collapse">
-            <thead className="sticky top-0 z-20">
-              <tr className="bg-gradient-to-r from-gray-800 to-gray-700 text-white">
-                <th className="px-4 py-3 text-left font-semibold text-sm sticky left-0 bg-gray-800 z-30 border-r border-gray-600">
-                  #
-                </th>
-                {currentSheet.headers.map((header: string, index: number) => (
-                  <th 
-                    key={index}
-                    onClick={() => handleColumnClick(header)}
-                    className={`
-                      px-4 py-3 text-left font-semibold text-sm min-w-[150px] cursor-pointer
-                      transition-colors duration-200
-                      ${selectedColumn === header 
-                        ? 'bg-blue-600 hover:bg-blue-700' 
-                        : 'hover:bg-gray-600'
-                      }
-                      group
-                    `}
-                    title={selectedColumn === header ? 'Нажмите для сброса фильтра' : 'Нажмите для фильтрации по этой колонке'}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate">{header}</span>
-                      {selectedColumn === header ? (
-                        <Filter size={14} className="flex-shrink-0" />
-                      ) : (
-                        <Filter size={14} className="flex-shrink-0 opacity-0 group-hover:opacity-50 transition-opacity" />
-                      )}
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {currentRows.length > 0 ? (
-                currentRows.map((row: ExcelRow, rowIndex: number) => (
-                  <tr 
-                    key={rowIndex} 
-                    className={`
-                      ${rowIndex % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                      hover:bg-blue-50 transition-colors border-b border-gray-200
-                    `}
-                  >
-                    <td className="px-4 py-3 text-sm font-medium text-gray-600 sticky left-0 bg-inherit z-10 border-r border-gray-200">
-                      {startIndex + rowIndex + 1}
-                    </td>
-                    {currentSheet.headers.map((header: string, colIndex: number) => (
-                      <td 
-                        key={colIndex} 
-                        className={`
-                          px-4 py-3 text-sm text-gray-800
-                          ${selectedColumn === header ? 'bg-blue-50 font-medium' : ''}
-                        `}
-                      >
-                        {row[header] !== null && row[header] !== undefined 
-                          ? String(row[header]) 
-                          : <span className="text-gray-400 italic">—</span>
-                        }
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td 
-                    colSpan={currentSheet.headers.length + 1} 
-                    className="px-4 py-12 text-center text-gray-500"
-                  >
-                    <div className="flex flex-col items-center gap-2">
-                      <Search size={48} className="text-gray-300" />
-                      <p className="text-lg font-medium">Ничего не найдено</p>
-                      <p className="text-sm">Попробуйте изменить поисковый запрос или сбросить фильтр</p>
-                      {(searchQuery || selectedColumn) && (
-                        <button
-                          onClick={clearFilter}
-                          className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                        >
-                          Очистить фильтр
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Пагинация */}
-        {filteredRows.length > 0 && (
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200">
-            <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
-              {/* Выбор количества строк */}
-              <div className="flex items-center gap-2">
-                <label className="text-sm text-gray-700 whitespace-nowrap">Строк на странице:</label>
-                <select
-                  value={rowsPerPage}
-                  onChange={(e) => {
-                    setRowsPerPage(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                </select>
-              </div>
-
-              {/* Информация о текущей странице */}
-              <div className="text-sm text-gray-700 text-center">
-                Показано <span className="font-semibold">{startIndex + 1}</span> - 
-                <span className="font-semibold"> {Math.min(endIndex, filteredRows.length)}</span> из 
-                <span className="font-semibold"> {filteredRows.length}</span> строк
-              </div>
-
-              {/* Кнопки навигации */}
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => goToPage(1)}
-                  disabled={currentPage === 1}
-                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title="Первая страница"
-                >
-                  <ChevronsLeft size={18} />
-                </button>
-                
-                <button
-                  onClick={() => goToPage(currentPage - 1)}
-                  disabled={currentPage === 1}
-                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title="Предыдущая"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-
-                {/* Номера страниц */}
-                <div className="hidden sm:flex items-center gap-1">
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => goToPage(pageNum)}
-                        className={`
-                          w-9 h-9 rounded-lg font-medium text-sm transition-colors
-                          ${currentPage === pageNum
-                            ? 'bg-blue-600 text-white'
-                            : 'border border-gray-300 hover:bg-gray-100'
-                          }
-                        `}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Мобильный индикатор страницы */}
-                <div className="sm:hidden px-3 py-2 text-sm font-medium">
-                  {currentPage} / {totalPages}
-                </div>
-
-                <button
-                  onClick={() => goToPage(currentPage + 1)}
-                  disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title="Следующая"
-                >
-                  <ChevronRight size={18} />
-                </button>
-                
-                <button
-                  onClick={() => goToPage(totalPages)}
-                  disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  title="Последняя страница"
-                >
-                  <ChevronsRight size={18} />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
