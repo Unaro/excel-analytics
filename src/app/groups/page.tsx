@@ -1330,9 +1330,6 @@ const previewResults = useMemo(() => {
               </div>
             )}
 
-
-              
-
               {/* Добавленные показатели */}
               {currentGroup.indicators && currentGroup.indicators.length > 0 && (
                 <div className="mb-4 space-y-2">

@@ -1,21 +1,29 @@
 'use client';
 
 import { useEffect, useState, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import { COLORS, getExcelData } from '@/lib/storage';
+import { getExcelData } from '@/lib/storage';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
-import KPICard from '@/components/kpi-card';
-import GroupSummaryTable from '@/components/group-summary-table';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from '@/lib/recharts';
-import { AlertCircle, BarChart3, Printer, ArrowLeft } from 'lucide-react';
 import { SheetData } from '@/types';
-import Link from 'next/link';
+import { 
+  FileSpreadsheet,
+  Users,
+  TrendingUp,
+  Eye,
+  Download,
+  BarChart3,
+  Table as TableIcon,
+  Activity,
+  Check,
+} from 'lucide-react';
 import Loader from '@/components/loader';
-import Linechart from '@/components/linechart';
-import { ChartDataPoint } from '@/types/dashboard';
-import Barchart from '@/components/barchart';
-import Piechart from '@/components/piechart';
-import DetailedCard from '@/components/detailcard';
+import DetailCard from '@/components/dashboard/DetailCard';
+import EmptyState from '@/components/dashboard/EmptyState';
+import KPICard from '@/components/dashboard/KPICard';
+import ChartWrapper from '@/components/charts/ChartWrapper';
+import BarChart from '@/components/charts/BarChart';
+import LineChart from '@/components/charts/LineChart';
+import PieChart from '@/components/charts/PieChart';
+import SummaryTable from '@/components/dashboard/SummaryTable';
 
 interface Group {
   id: string;
@@ -34,52 +42,51 @@ interface Group {
   hierarchyFilters?: Record<string, string>;
 }
 
-export default function DashboardOverviewPage() {
-  const router = useRouter();
+type Tab = 'cards' | 'charts' | 'table';
+
+export default function OverviewPage() {
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [hierarchyConfig, setHierarchyConfig] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<Tab>('cards');
+  const [selectedIndicators, setSelectedIndicators] = useState<string[]>([]);
+  const [chartType, setChartType] = useState<'bar' | 'line'>('bar');
 
   useEffect(() => {
     const data = getExcelData();
-    if (data) {
-      setSheets(data);
-    }
+    if (data) setSheets(data);
 
     const savedGroups = localStorage.getItem('analyticsGroups');
-    if (savedGroups) {
-      setGroups(JSON.parse(savedGroups));
-    }
+    if (savedGroups) setGroups(JSON.parse(savedGroups));
 
     const savedConfig = localStorage.getItem('hierarchyConfig');
-    if (savedConfig) {
-      setHierarchyConfig(JSON.parse(savedConfig));
-    }
+    if (savedConfig) setHierarchyConfig(JSON.parse(savedConfig));
 
     setLoading(false);
   }, []);
 
-  const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
-    if (!hierarchyFilters || !hierarchyConfig.length) return null;
-
-    let deepestLevel = null;
-    for (let i = hierarchyConfig.length - 1; i >= 0; i--) {
-      const col = hierarchyConfig[i];
-      if (hierarchyFilters[col]) {
-        deepestLevel = { column: col, value: hierarchyFilters[col] };
-        break;
-      }
-    }
-    return deepestLevel;
-  };
-
+  // Вычисление результатов для всех групп
   const groupResults = useMemo(() => {
     if (!sheets || sheets.length === 0 || groups.length === 0) return [];
 
     return groups.map((group) => {
+      const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
+        if (!hierarchyFilters || !hierarchyConfig.length) return null;
+
+        let deepestLevel = null;
+        for (let i = hierarchyConfig.length - 1; i >= 0; i--) {
+          const col = hierarchyConfig[i];
+          if (hierarchyFilters[col]) {
+            deepestLevel = { column: col, value: hierarchyFilters[col] };
+            break;
+          }
+        }
+        return deepestLevel;
+      };
+
       const deepestFilter = getDeepestHierarchyFilter(group.hierarchyFilters);
-      
+
       const allFilters = [
         ...group.filters,
         ...(deepestFilter ? [{
@@ -91,12 +98,23 @@ export default function DashboardOverviewPage() {
       ];
 
       const filteredData = applyFilters(sheets[0].rows, allFilters);
-      
-      const indicators = group.indicators.map((indicator) => ({
-        name: indicator.name,
-        formula: indicator.formula,
-        value: evaluateFormula(indicator.formula, filteredData, sheets[0].headers),
-      }));
+
+      const indicators = group.indicators.map((indicator) => {
+        try {
+          const value = evaluateFormula(indicator.formula, filteredData, sheets[0].headers);
+          return {
+            name: indicator.name,
+            formula: indicator.formula,
+            value,
+          };
+        } catch (error) {
+          return {
+            name: indicator.name,
+            formula: indicator.formula,
+            value: 0,
+          };
+        }
+      });
 
       return {
         groupId: group.id,
@@ -110,175 +128,381 @@ export default function DashboardOverviewPage() {
     });
   }, [sheets, groups, hierarchyConfig]);
 
-  const chartData: ChartDataPoint[] = useMemo(() => {
-    return groupResults.map((result) => {
-      const dataPoint: ChartDataPoint = { name: result.groupName };
-      result.indicators.forEach((indicator) => {
-        dataPoint[indicator.name] = indicator.value;
-      });
-      return dataPoint;
-    });
-  }, [groupResults]);
-
-  const pieChartData = useMemo(() => {
-    return groupResults.map((result) => {
-      const firstIndicator = result.indicators[0];
-      return {
-        name: result.groupName,
-        value: firstIndicator ? firstIndicator.value : 0,
-      };
-    });
-  }, [groupResults]);
-
+  // Получаем все уникальные показатели из всех групп
   const allIndicatorNames = useMemo(() => {
     const names = new Set<string>();
-    groupResults.forEach(r => r.indicators.forEach(i => names.add(i.name)));
-    return Array.from(names);
+    groups.forEach(group => {
+      group.indicators.forEach(ind => names.add(ind.name));
+    });
+    return Array.from(names).sort();
+  }, [groups]);
+
+  // Получаем общие показатели (которые есть во всех группах)
+  const commonIndicatorNames = useMemo(() => {
+    if (groups.length === 0) return [];
+    if (groups.length === 1) return groups[0].indicators.map(i => i.name);
+
+    const firstGroupIndicators = new Set(groups[0].indicators.map(i => i.name));
+    
+    return Array.from(firstGroupIndicators).filter(indicatorName => 
+      groups.every(group => 
+        group.indicators.some(ind => ind.name === indicatorName)
+      )
+    );
+  }, [groups]);
+
+  // Автовыбор первого общего показателя
+  useEffect(() => {
+    if (commonIndicatorNames.length > 0 && selectedIndicators.length === 0) {
+      setSelectedIndicators([commonIndicatorNames[0]]);
+    }
+  }, [commonIndicatorNames, selectedIndicators.length]);
+
+  // KPI метрики
+  const kpiMetrics = useMemo(() => {
+    if (groupResults.length === 0) return null;
+
+    const totalRecords = groupResults.reduce((sum, g) => sum + g.rowCount, 0);
+    const avgRecordsPerGroup = totalRecords / groupResults.length;
+    const totalIndicators = groupResults.reduce((sum, g) => sum + g.indicators.length, 0);
+
+    return {
+      totalGroups: groupResults.length,
+      totalRecords,
+      avgRecordsPerGroup: avgRecordsPerGroup.toFixed(0),
+      totalIndicators,
+    };
   }, [groupResults]);
 
-  const totalIndicators = useMemo(() => {
-    return groupResults.reduce((sum, g) => sum + g.indicators.length, 0);
-  }, [groupResults]);
+  // Данные для графиков - с выбранными показателями
+  const chartData = useMemo(() => {
+    if (groupResults.length === 0 || selectedIndicators.length === 0) return [];
 
-  const averageValue = useMemo(() => {
-    if (groupResults.length === 0) return 0;
-    const total = groupResults.reduce((sum, g) => {
-      return sum + g.indicators.reduce((s, i) => s + i.value, 0);
-    }, 0);
-    return total / totalIndicators || 0;
-  }, [groupResults, totalIndicators]);
+    return groupResults.map(group => {
+      const dataPoint: any = { name: group.groupName };
+      
+      selectedIndicators.forEach(indicatorName => {
+        const indicator = group.indicators.find(i => i.name === indicatorName);
+        dataPoint[indicatorName] = indicator ? indicator.value : 0;
+      });
 
-  const totalRows = useMemo(() => {
-    return groupResults.reduce((sum, g) => sum + g.rowCount, 0);
-  }, [groupResults]);
+      return dataPoint;
+    });
+  }, [groupResults, selectedIndicators]);
+
+  // Переключение выбора показателя
+  const toggleIndicatorSelection = (name: string) => {
+    setSelectedIndicators(prev => 
+      prev.includes(name) 
+        ? prev.filter(n => n !== name)
+        : [...prev, name]
+    );
+  };
+
+  // Экспорт в CSV
+  const exportToCSV = () => {
+    const headers = ['Группа', ...allIndicatorNames, 'Записей'];
+    const rows = groupResults.map(group => [
+      group.groupName,
+      ...allIndicatorNames.map(name => {
+        const ind = group.indicators.find(i => i.name === name);
+        return ind ? ind.value.toFixed(2) : '—';
+      }),
+      group.rowCount.toString(),
+    ]);
+
+    const csv = [
+      headers.join(','),
+      ...rows.map(row => row.join(',')),
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `overview_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+  };
 
   if (loading) {
-    return (
-      <Loader title='Загрузка обзора...'/>
-    );
+    return <Loader title="Загрузка обзора..." />;
   }
 
   if (!sheets || sheets.length === 0) {
     return (
-      <div className="text-center py-12">
-        <AlertCircle size={48} className="mx-auto text-yellow-500 mb-4" />
-        <p className="text-xl text-gray-600 mb-4">
-          Нет загруженных данных
-        </p>
-        <Link  href="/" className="text-blue-600 hover:underline">
-          Загрузить данные
-        </Link>
-      </div>
+      <EmptyState
+        icon={FileSpreadsheet}
+        title="Нет загруженных данных"
+        description="Загрузите Excel или CSV файл для начала работы с аналитикой"
+        actionLabel="Загрузить данные"
+        actionHref="/"
+      />
     );
   }
 
   if (groups.length === 0) {
     return (
-      <div className="text-center py-12">
-        <AlertCircle size={48} className="mx-auto text-yellow-500 mb-4" />
-        <p className="text-xl text-gray-600 mb-4">
-          Нет созданных групп показателей
-        </p>
-        <Link
-          href="/groups" 
-          className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          Создать группу
-        </Link>
-      </div>
+      <EmptyState
+        icon={Users}
+        title="Нет созданных групп"
+        description="Создайте группы показателей для анализа ваших данных"
+        actionLabel="Создать группу"
+        actionHref="/groups"
+      />
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
-      {/* Хедер */}
-      <div className="mb-6 flex items-center justify-between">
+    <div className="max-w-7xl mx-auto space-y-6">
+      {/* Заголовок */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3 mb-2">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <ArrowLeft size={20} />
-            </button>
-            <h1 className="text-3xl font-bold">Обзор показателей</h1>
-          </div>
-          <p className="text-gray-600 ml-12">
-            Визуализация всех групп и показателей
+          <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Обзор показателей
+          </h1>
+          <p className="text-gray-600">
+            Сводка по всем группам и показателям
           </p>
         </div>
         <button
-          onClick={() => window.print()}
-          className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2 transition-colors"
+          onClick={exportToCSV}
+          className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 transition-colors shadow-md hover:shadow-lg"
         >
-          <Printer size={18} />
-          Печать
+          <Download size={18} />
+          Экспорт
         </button>
       </div>
 
-      {/* KPI Карточки */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 print-break-inside-avoid">
-        <KPICard
-          title="Всего групп"
-          value={groups.length}
-          icon={BarChart3}
-          color="blue"
-        />
-        <KPICard
-          title="Показателей"
-          value={totalIndicators}
-          icon={BarChart3}
-          color="green"
-        />
-        <KPICard
-          title="Среднее значение"
-          value={averageValue.toFixed(2)}
-          icon={BarChart3}
-          color="purple"
-        />
-        <KPICard
-          title="Строк обработано"
-          value={totalRows}
-          icon={BarChart3}
-          color="orange"
-        />
-      </div>
+      {/* KPI карточки */}
+      {kpiMetrics && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <KPICard
+            title="Всего групп"
+            value={kpiMetrics.totalGroups}
+            icon={Users}
+            color="#3b82f6"
+            subtitle="Активных групп показателей"
+          />
+          <KPICard
+            title="Всего записей"
+            value={kpiMetrics.totalRecords.toLocaleString()}
+            icon={FileSpreadsheet}
+            color="#8b5cf6"
+            subtitle="Обработано данных"
+          />
+          <KPICard
+            title="Средний размер группы"
+            value={kpiMetrics.avgRecordsPerGroup}
+            icon={BarChart3}
+            color="#10b981"
+            subtitle="Записей на группу"
+          />
+          <KPICard
+            title="Всего показателей"
+            value={kpiMetrics.totalIndicators}
+            icon={TrendingUp}
+            color="#f59e0b"
+            subtitle="Вычисляемых метрик"
+          />
+        </div>
+      )}
 
-      {/* Детальные карточки по группам */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-8">
-        {groupResults.map((result, index) => <DetailedCard data={result} key={index} idx={index} />)}
-      </div>
-
-      {/* Графики */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Столбчатая диаграмма */}
-        <div className="bg-white rounded-lg shadow-lg p-6 print-break-inside-avoid">
-          <h2 className="text-xl font-semibold mb-4">Сравнение показателей</h2>
-          <Barchart data={chartData} indicators={allIndicatorNames}/>
+      {/* Табы */}
+      <div className="bg-white rounded-xl shadow-lg">
+        <div className="border-b border-gray-200">
+          <div className="flex flex-wrap gap-2 p-2">
+            {[
+              { id: 'cards' as Tab, label: 'Карточки', icon: Eye },
+              { id: 'charts' as Tab, label: 'Графики', icon: Activity },
+              { id: 'table' as Tab, label: 'Таблица', icon: TableIcon },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`
+                  flex items-center gap-2 px-6 py-3 rounded-lg font-medium transition-all
+                  ${activeTab === tab.id
+                    ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-md'
+                    : 'text-gray-600 hover:bg-gray-100'
+                  }
+                `}
+              >
+                <tab.icon size={18} />
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Круговая диаграмма */}
-        <div className="bg-white rounded-lg shadow-lg p-6 print-break-inside-avoid">
-          <h2 className="text-xl font-semibold mb-4">Распределение (первый показатель)</h2>
-          <Piechart data={pieChartData} />
+        <div className="p-6">
+          {/* Таб: Карточки */}
+          {activeTab === 'cards' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {groupResults.map((result, idx) => (
+                <DetailCard
+                  key={result.groupId}
+                  data={result}
+                  index={idx}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Таб: Графики */}
+          {activeTab === 'charts' && (
+            <div className="space-y-6">
+              {/* Панель выбора показателей */}
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border-2 border-blue-200">
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                  <div>
+                    <h3 className="font-bold text-gray-900 mb-1">
+                      Выберите показатели для отображения
+                    </h3>
+                    <p className="text-sm text-gray-600">
+                      {commonIndicatorNames.length > 0 
+                        ? `Доступно ${commonIndicatorNames.length} общих показателей`
+                        : 'Выберите из всех показателей'
+                      }
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setChartType('bar')}
+                      className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${
+                        chartType === 'bar'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <BarChart3 size={18} />
+                      Столбцы
+                    </button>
+                    <button
+                      onClick={() => setChartType('line')}
+                      className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${
+                        chartType === 'line'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <TrendingUp size={18} />
+                      Линии
+                    </button>
+                  </div>
+                </div>
+
+                {/* Список показателей для выбора */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {(commonIndicatorNames.length > 0 ? commonIndicatorNames : allIndicatorNames).map(name => {
+                    const isSelected = selectedIndicators.includes(name);
+                    const isCommon = commonIndicatorNames.includes(name);
+
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => toggleIndicatorSelection(name)}
+                        className={`
+                          relative px-3 py-2 rounded-lg text-sm font-medium transition-all text-left
+                          ${isSelected
+                            ? 'bg-blue-600 text-white shadow-md'
+                            : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                          }
+                        `}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate">{name}</span>
+                          {isSelected && <Check size={14} />}
+                        </div>
+                        {!isCommon && (
+                          <span className="absolute top-1 right-1 w-2 h-2 bg-orange-400 rounded-full" title="Не во всех группах" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {selectedIndicators.length > 0 && (
+                  <div className="mt-3 p-2 bg-white rounded border border-blue-300 text-sm text-blue-800">
+                    <strong>Выбрано:</strong> {selectedIndicators.length} показателей
+                  </div>
+                )}
+              </div>
+
+              {/* Графики */}
+              {selectedIndicators.length > 0 ? (
+                <div className="space-y-6">
+                  {/* Основной график */}
+                  <ChartWrapper
+                    title={`Сравнение показателей: ${selectedIndicators.join(', ')}`}
+                    description={`Данные по ${groupResults.length} группам`}
+                  >
+                    {chartType === 'bar' ? (
+                      <BarChart 
+                        data={chartData} 
+                        indicators={selectedIndicators}
+                        height={450}
+                      />
+                    ) : (
+                      <LineChart 
+                        data={chartData} 
+                        indicators={selectedIndicators}
+                        height={450}
+                      />
+                    )}
+                  </ChartWrapper>
+
+                  {/* Дополнительные графики для каждого показателя */}
+                  {selectedIndicators.length === 1 && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <ChartWrapper title={`${selectedIndicators[0]} - Круговая диаграмма`}>
+                        <PieChart 
+                          data={chartData.map(d => ({
+                            name: d.name,
+                            value: d[selectedIndicators[0]]
+                          }))} 
+                          height={350}
+                        />
+                      </ChartWrapper>
+
+                      <ChartWrapper title={`${selectedIndicators[0]} - Линейный тренд`}>
+                        <LineChart 
+                          data={chartData} 
+                          indicators={selectedIndicators[0]}
+                          height={350}
+                        />
+                      </ChartWrapper>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-gray-500">
+                  <BarChart3 size={64} className="mx-auto mb-4 text-gray-300" />
+                  <p className="text-lg">Выберите показатели для отображения</p>
+                  <p className="text-sm mt-1">Выберите один или несколько показателей выше</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Таб: Таблица */}
+          {activeTab === 'table' && (
+            <SummaryTable
+              data={groupResults.map(group => ({
+                groupId: group.groupId,
+                groupName: group.groupName,
+                indicators: group.indicators,
+                rowCount: group.rowCount,
+              }))}
+              allIndicatorNames={allIndicatorNames}
+              stickyColumn={true}
+              showRowCount={true}
+              showTotals={true}
+              highlightMax={true}
+              highlightMin={true}
+              sortable={true}
+              exportable={true}
+            />
+          )}
         </div>
-
-        {/* Линейный график */}
-        <div className="bg-white rounded-lg shadow-lg p-6 lg:col-span-2 print-break-inside-avoid">
-          <h2 className="text-xl font-semibold mb-4">Динамика показателей</h2>
-          <Linechart data={chartData} indicators={allIndicatorNames} />
-        </div>
-      </div>
-
-      {/* Сводная таблица */}
-      <div className="bg-white rounded-lg shadow-lg p-6 mb-8 print-break-inside-avoid">
-        <h2 className="text-xl font-semibold mb-4">Сводная таблица</h2>
-        <GroupSummaryTable results={groupResults} />
-      </div>
-
-      {/* Дата формирования отчёта */}
-      <div className="text-center text-sm text-gray-500 mb-4 print-only">
-        <p>Отчёт сформирован: {new Date().toLocaleString('ru-RU')}</p>
       </div>
     </div>
   );

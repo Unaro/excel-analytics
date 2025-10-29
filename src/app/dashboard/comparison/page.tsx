@@ -3,15 +3,25 @@
 import { useEffect, useState, useMemo } from 'react';
 import { getExcelData } from '@/lib/storage';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
-import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieLabel, PieLabelRenderProps } from '@/lib/recharts';
-import { AlertCircle, BarChart3 } from 'lucide-react';
 import { SheetData } from '@/types';
-import Link from 'next/link';
+import { 
+  AlertCircle, 
+  BarChart3, 
+  Download,
+  FileSpreadsheet,
+  Users,
+  TrendingUp,
+  Layers,
+  Filter as FilterIcon,
+} from 'lucide-react';
 import Loader from '@/components/loader';
-import Piechart from '@/components/piechart';
-import Barchart from '@/components/barchart';
-import ChartCard from '@/components/chartcard';
-import Linechart from '@/components/linechart';
+import EmptyState from '@/components/dashboard/EmptyState';
+import GroupSelector from '@/components/dashboard/GroupSelector';
+import ComparisonTable from '@/components/dashboard/ComparisonTable';
+import ChartWrapper from '@/components/charts/ChartWrapper';
+import BarChart from '@/components/charts/BarChart';
+import LineChart from '@/components/charts/LineChart';
+import PieChart from '@/components/charts/PieChart';
 
 interface Group {
   id: string;
@@ -30,356 +40,314 @@ interface Group {
   hierarchyFilters?: Record<string, string>;
 }
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
-
 export default function ComparisonPage() {
   const [sheets, setSheets] = useState<SheetData[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [loading, setLoading] = useState(true);
   const [hierarchyConfig, setHierarchyConfig] = useState<string[]>([]);
-  
-  const [selectedIndicator, setSelectedIndicator] = useState<string>('');
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
+  const [selectedIndicator, setSelectedIndicator] = useState<string>('');
+  const [chartType, setChartType] = useState<'bar' | 'line' | 'pie'>('bar');
 
   useEffect(() => {
     const data = getExcelData();
-    if (data) {
-      setSheets(data);
-    }
+    if (data) setSheets(data);
 
     const savedGroups = localStorage.getItem('analyticsGroups');
-    if (savedGroups) {
-      const parsedGroups = JSON.parse(savedGroups);
-      setGroups(parsedGroups);
-      
-      // Автоматически выбираем все группы и первый показатель
-      if (parsedGroups.length > 0) {
-        setSelectedGroupIds(parsedGroups.map((g: Group) => g.id));
-        
-        // Находим первый общий показатель
-        const firstIndicator = parsedGroups[0]?.indicators[0]?.name;
-        if (firstIndicator) {
-          setSelectedIndicator(firstIndicator);
-        }
-      }
-    }
+    if (savedGroups) setGroups(JSON.parse(savedGroups));
 
     const savedConfig = localStorage.getItem('hierarchyConfig');
-    if (savedConfig) {
-      setHierarchyConfig(JSON.parse(savedConfig));
-    }
+    if (savedConfig) setHierarchyConfig(JSON.parse(savedConfig));
 
     setLoading(false);
   }, []);
 
-  const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
-    if (!hierarchyFilters || !hierarchyConfig.length) return null;
-
-    let deepestLevel = null;
-    for (let i = hierarchyConfig.length - 1; i >= 0; i--) {
-      const col = hierarchyConfig[i];
-      if (hierarchyFilters[col]) {
-        deepestLevel = { column: col, value: hierarchyFilters[col] };
-        break;
-      }
+  // Получаем общие показатели для выбранных групп
+  const commonIndicators = useMemo(() => {
+    if (selectedGroupIds.length === 0) return [];
+    
+    const selectedGroups = groups.filter(g => selectedGroupIds.includes(g.id));
+    
+    if (selectedGroups.length === 0) return [];
+    if (selectedGroups.length === 1) {
+      return selectedGroups[0].indicators.map(i => i.name);
     }
-    return deepestLevel;
+    
+    const firstGroupIndicators = new Set(selectedGroups[0].indicators.map(i => i.name));
+    
+    const common = Array.from(firstGroupIndicators).filter(indicatorName => 
+      selectedGroups.every(group => 
+        group.indicators.some(ind => ind.name === indicatorName)
+      )
+    );
+    
+    return common;
+  }, [groups, selectedGroupIds]);
+
+  // Автовыбор первого показателя
+  useEffect(() => {
+    if (commonIndicators.length > 0 && !commonIndicators.includes(selectedIndicator)) {
+      setSelectedIndicator(commonIndicators[0]);
+    } else if (commonIndicators.length === 0) {
+      setSelectedIndicator('');
+    }
+  }, [commonIndicators, selectedIndicator]);
+
+  // Вычисление данных для сравнения
+  const comparisonData = useMemo(() => {
+    if (!sheets || sheets.length === 0 || selectedGroupIds.length === 0 || !selectedIndicator) {
+      return [];
+    }
+
+    const selectedGroups = groups.filter(g => selectedGroupIds.includes(g.id));
+
+    return selectedGroups.map((group) => {
+      const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
+        if (!hierarchyFilters || !hierarchyConfig.length) return null;
+
+        let deepestLevel = null;
+        for (let i = hierarchyConfig.length - 1; i >= 0; i--) {
+          const col = hierarchyConfig[i];
+          if (hierarchyFilters[col]) {
+            deepestLevel = { column: col, value: hierarchyFilters[col] };
+            break;
+          }
+        }
+        return deepestLevel;
+      };
+
+      const deepestFilter = getDeepestHierarchyFilter(group.hierarchyFilters);
+
+      const allFilters = [
+        ...group.filters,
+        ...(deepestFilter ? [{
+          id: 'hier_deepest',
+          column: deepestFilter.column,
+          operator: '=',
+          value: deepestFilter.value,
+        }] : []),
+      ];
+
+      const filteredData = applyFilters(sheets[0].rows, allFilters);
+
+      const indicator = group.indicators.find(ind => ind.name === selectedIndicator);
+      if (!indicator) return { name: group.name, value: 0 };
+
+      try {
+        const value = evaluateFormula(indicator.formula, filteredData, sheets[0].headers);
+        return { name: group.name, value };
+      } catch (error) {
+        return { name: group.name, value: 0 };
+      }
+    });
+  }, [sheets, groups, selectedGroupIds, selectedIndicator, hierarchyConfig]);
+
+  // Экспорт
+  const exportToCSV = () => {
+    if (comparisonData.length === 0) return;
+
+    const headers = ['Группа', selectedIndicator];
+    const rows = comparisonData.map(item => [item.name, item.value.toFixed(2)]);
+
+    const csv = [
+      headers.join(','),
+      ...rows.map(row => row.join(',')),
+    ].join('\n');
+
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `comparison_${selectedIndicator}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
   };
 
-  const groupResults = useMemo(() => {
-    if (!sheets || sheets.length === 0 || groups.length === 0) return [];
+  // Обработчики выбора групп
+  const toggleGroupSelection = (id: string) => {
+    setSelectedGroupIds(prev =>
+      prev.includes(id) ? prev.filter(gid => gid !== id) : [...prev, id]
+    );
+  };
 
-    return groups
-      .filter(g => selectedGroupIds.includes(g.id))
-      .map((group) => {
-        const deepestFilter = getDeepestHierarchyFilter(group.hierarchyFilters);
-        
-        const allFilters = [
-          ...group.filters,
-          ...(deepestFilter ? [{
-            id: 'hier_deepest',
-            column: deepestFilter.column,
-            operator: '=',
-            value: deepestFilter.value,
-          }] : []),
-        ];
+  const selectAllGroups = () => {
+    setSelectedGroupIds(groups.map(g => g.id));
+  };
 
-        const filteredData = applyFilters(sheets[0].rows, allFilters);
-        
-        const indicators = group.indicators.map((indicator) => ({
-          name: indicator.name,
-          formula: indicator.formula,
-          value: evaluateFormula(indicator.formula, filteredData, sheets[0].headers),
-        }));
-
-        return {
-          groupId: group.id,
-          groupName: group.name,
-          indicators,
-          rowCount: filteredData.length,
-        };
-      });
-  }, [sheets, groups, selectedGroupIds, hierarchyConfig]);
-
-  // Данные для графиков
-  const comparisonData = useMemo(() => {
-    if (!selectedIndicator) return [];
-    
-    return groupResults.map(result => {
-      const indicator = result.indicators.find(i => i.name === selectedIndicator);
-      return {
-        name: result.groupName,
-        value: indicator ? indicator.value : 0,
-      };
-    });
-  }, [groupResults, selectedIndicator]);
-
-  // Получаем только общие показатели для выбранных групп
-    const commonIndicators = useMemo(() => {
-        if (selectedGroupIds.length === 0) return [];
-        
-        // Получаем выбранные группы
-        const selectedGroups = groups.filter(g => selectedGroupIds.includes(g.id));
-        
-        if (selectedGroups.length === 0) return [];
-        if (selectedGroups.length === 1) {
-            // Если выбрана одна группа, показываем все её показатели
-            return selectedGroups[0].indicators.map(i => i.name);
-        }
-        
-        // Находим показатели, которые есть у ВСЕХ выбранных групп
-        const firstGroupIndicators = new Set(selectedGroups[0].indicators.map(i => i.name));
-        
-        const common = Array.from(firstGroupIndicators).filter(indicatorName => 
-            selectedGroups.every(group => 
-            group.indicators.some(ind => ind.name === indicatorName)
-            )
-        );
-        
-        return common;
-        }, [groups, selectedGroupIds]);
-
-        // Автоматически выбираем первый общий показатель при изменении групп
-        useEffect(() => {
-        if (commonIndicators.length > 0 && !commonIndicators.includes(selectedIndicator)) {
-            setSelectedIndicator(commonIndicators[0]);
-        } else if (commonIndicators.length === 0) {
-            setSelectedIndicator('');
-        }
-    }, [commonIndicators, selectedIndicator]);
+  const clearAllGroups = () => {
+    setSelectedGroupIds([]);
+  };
 
   if (loading) {
+    return <Loader title="Загрузка сравнения..." />;
+  }
+
+  if (!sheets || sheets.length === 0) {
     return (
-      <Loader />
+      <EmptyState
+        icon={FileSpreadsheet}
+        title="Нет загруженных данных"
+        description="Загрузите Excel или CSV файл для начала работы"
+        actionLabel="Загрузить данные"
+        actionHref="/"
+      />
     );
   }
 
-  if (!sheets || sheets.length === 0 || groups.length === 0) {
+  if (groups.length === 0) {
     return (
-      <div className="text-center py-12">
-        <AlertCircle size={48} className="mx-auto text-yellow-500 mb-4" />
-        <p className="text-xl text-gray-600 mb-4">
-          {!sheets || sheets.length === 0 
-            ? 'Нет загруженных данных' 
-            : 'Нет созданных групп показателей'
-          }
-        </p>
-        <Link
-          href={!sheets || sheets.length === 0 ? '/' : '/groups'}
-          className="inline-block px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          {!sheets || sheets.length === 0 ? 'Загрузить данные' : 'Создать группу'}
-        </Link>
-      </div>
+      <EmptyState
+        icon={Users}
+        title="Нет созданных групп"
+        description="Создайте группы показателей для сравнения"
+        actionLabel="Создать группу"
+        actionHref="/groups"
+      />
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto space-y-6">
       {/* Заголовок */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Режим сравнения групп</h1>
-        <p className="text-gray-600">
-          Сравните одинаковый показатель между разными группами
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Сравнение групп
+          </h1>
+          <p className="text-gray-600">
+            Сравните одинаковый показатель между разными группами
+          </p>
+        </div>
+        {comparisonData.length > 0 && (
+          <button
+            onClick={exportToCSV}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 transition-colors"
+          >
+            <Download size={18} />
+            Экспорт
+          </button>
+        )}
       </div>
 
-      {/* Панель настроек */}
-      <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Выбор показателя */}
-            <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-                📊 Показатель для сравнения:
-            </label>
-            <select
-                value={selectedIndicator}
-                onChange={(e) => setSelectedIndicator(e.target.value)}
-                className="w-full px-4 py-2 border-2 border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                disabled={commonIndicators.length === 0}
-            >
-                <option value="">
-                {commonIndicators.length === 0 
-                    ? '-- Нет общих показателей --' 
-                    : '-- Выберите показатель --'
-                }
-                </option>
-                {commonIndicators.map(ind => (
-                <option key={ind} value={ind}>{ind}</option>
-                ))}
-            </select>
-            
-            {selectedGroupIds.length > 1 && commonIndicators.length === 0 && (
-                <p className="mt-2 text-sm text-orange-600">
-                ⚠️ У выбранных групп нет общих показателей
-                </p>
-            )}
-            
-            {commonIndicators.length > 0 && (
-                <p className="mt-2 text-sm text-green-600">
-                ✓ Доступно {commonIndicators.length} общих {commonIndicators.length === 1 ? 'показатель' : 'показателей'}
-                </p>
-            )}
-            </div>
+      {/* Селектор групп */}
+      <GroupSelector
+        groups={groups}
+        selectedIds={selectedGroupIds}
+        onToggle={toggleGroupSelection}
+        onSelectAll={selectAllGroups}
+        onClearAll={clearAllGroups}
+      />
+
+      {/* Выбор показателя */}
+      {selectedGroupIds.length > 0 && (
+        <div className="bg-white rounded-xl shadow-lg p-6">
+          <label className="block text-sm font-bold text-gray-700 mb-3">
+            📊 Показатель для сравнения:
+          </label>
+          <select
+            value={selectedIndicator}
+            onChange={(e) => setSelectedIndicator(e.target.value)}
+            className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
+            disabled={commonIndicators.length === 0}
+          >
+            <option value="">
+              {commonIndicators.length === 0 
+                ? '-- Нет общих показателей --' 
+                : '-- Выберите показатель --'
+              }
+            </option>
+            {commonIndicators.map(ind => (
+              <option key={ind} value={ind}>{ind}</option>
+            ))}
+          </select>
           
-          {/* Выбор групп */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              🎯 Группы для сравнения:
-            </label>
-            <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto p-2 border-2 border-green-300 rounded-lg">
-              {groups.map(group => (
-                <label 
-                  key={group.id} 
-                  className="flex items-center gap-2 p-2 hover:bg-green-50 rounded cursor-pointer transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedGroupIds.includes(group.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedGroupIds([...selectedGroupIds, group.id]);
-                      } else {
-                        setSelectedGroupIds(selectedGroupIds.filter(id => id !== group.id));
-                      }
-                    }}
-                    className="w-4 h-4 text-green-600"
-                  />
-                  <span className="text-sm">{group.name}</span>
-                </label>
-              ))}
+          {selectedGroupIds.length > 1 && commonIndicators.length === 0 && (
+            <div className="mt-3 p-3 bg-orange-50 border border-orange-300 rounded-lg flex items-start gap-2">
+              <AlertCircle size={18} className="text-orange-600 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-orange-800">
+                <p className="font-semibold">⚠️ У выбранных групп нет общих показателей</p>
+                <p className="mt-1">Выберите группы с одинаковыми показателями или создайте их используя библиотеку показателей</p>
+              </div>
             </div>
-          </div>
-        </div>
-
-        {/* Информация о выборе */}
-        <div className="mt-4 p-3 bg-green-50 rounded-lg">
-            <div className="flex items-start justify-between">
-                <div>
-                <p className="text-sm text-green-800">
-                    <strong>Выбрано:</strong> {selectedGroupIds.length} {selectedGroupIds.length === 1 ? 'группа' : 'групп'}
-                    {selectedIndicator && ` · Показатель: ${selectedIndicator}`}
-                </p>
-                {selectedGroupIds.length > 1 && (
-                    <p className="text-xs text-green-700 mt-1">
-                    Общих показателей: {commonIndicators.length}
-                    </p>
-                )}
-                </div>
-                
-                {selectedGroupIds.length > 0 && commonIndicators.length === 0 && (
-                <div className="bg-orange-100 text-orange-800 px-3 py-1 rounded text-xs font-medium">
-                    Нет общих показателей
-                </div>
-                )}
+          )}
+          
+          {commonIndicators.length > 0 && (
+            <div className="mt-3 p-3 bg-green-50 border border-green-300 rounded-lg text-sm text-green-800">
+              ✓ Доступно <strong>{commonIndicators.length}</strong> {commonIndicators.length === 1 ? 'общий показатель' : 'общих показателей'}
             </div>
+          )}
         </div>
-      </div>
+      )}
 
-      {/* Визуализация */}
+      {/* Результаты сравнения */}
       {selectedIndicator && comparisonData.length > 0 ? (
         <div className="space-y-6">
-          {/* Карточки с числами */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {comparisonData.map((item, index) => <ChartCard indicator={selectedIndicator} color={COLORS[index % COLORS.length]} key={index} name={item.name} value={item.value.toFixed(2)} />)}
-          </div>
-
-          {/* Графики */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Столбчатая диаграмма */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-                Сравнение по группам
-              </h2>
-              <Barchart data={comparisonData} indicators={selectedIndicator} />
-            </div>
-
-            {/* Круговая диаграмма */}
-                <div className="bg-white rounded-lg shadow-lg p-6">
-                  <h2 className="text-xl font-semibold mb-4">Распределение</h2>
-                  <Piechart data={comparisonData} />
-                </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-lg p-6 lg:col-span-2 print-break-inside-avoid">
-            <h2 className="text-xl font-semibold mb-4">Динамика показателей ({selectedIndicator})</h2>
-            <Linechart data={comparisonData} indicators={selectedIndicator} />
-          </div>
-
-          {/* Таблица сравнения */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Таблица сравнения</h2>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Группа
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      {selectedIndicator}
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      % от общего
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {comparisonData.map((item, index) => {
-                    const total = comparisonData.reduce((sum, d) => sum + d.value, 0);
-                    const percentage = (item.value / total) * 100;
-                    
-                    return (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-2">
-                            <div 
-                              className="w-3 h-3 rounded-full"
-                              style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                            />
-                            <span className="text-sm font-medium text-gray-900">{item.name}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">
-                          {item.value.toFixed(2)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {percentage.toFixed(1)}%
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          {/* Переключатель типа графика */}
+          <div className="bg-white rounded-xl shadow-lg p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">Тип визуализации:</span>
+              <div className="flex gap-2">
+                {[
+                  { type: 'bar' as const, label: 'Столбцы', icon: BarChart3 },
+                  { type: 'line' as const, label: 'Линии', icon: TrendingUp },
+                  { type: 'pie' as const, label: 'Круговая', icon: Layers },
+                ].map(({ type, label, icon: Icon }) => (
+                  <button
+                    key={type}
+                    onClick={() => setChartType(type)}
+                    className={`px-4 py-2 rounded-lg flex items-center gap-2 transition-all ${
+                      chartType === type
+                        ? 'bg-blue-600 text-white shadow-md'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Icon size={18} />
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
+
+          {/* График */}
+          <ChartWrapper
+            title={`Сравнение: ${selectedIndicator}`}
+            description={`Данные по ${comparisonData.length} группам`}
+          >
+            {chartType === 'bar' && (
+              <BarChart data={comparisonData} indicators="value" height={450} />
+            )}
+            {chartType === 'line' && (
+              <LineChart data={comparisonData} indicators="value" height={450} />
+            )}
+            {chartType === 'pie' && (
+              <PieChart data={comparisonData} height={450} />
+            )}
+          </ChartWrapper>
+
+          {/* Таблица */}
+          <ComparisonTable data={comparisonData} indicator={selectedIndicator} />
+        </div>
+      ) : selectedGroupIds.length > 0 ? (
+        <div className="bg-white rounded-xl shadow-lg p-12 text-center">
+          <BarChart3 size={64} className="mx-auto text-gray-300 mb-4" />
+          <p className="text-xl text-gray-600 mb-2">
+            {commonIndicators.length === 0 
+              ? 'Нет общих показателей' 
+              : 'Выберите показатель для сравнения'
+            }
+          </p>
+          <p className="text-sm text-gray-500">
+            {commonIndicators.length === 0
+              ? 'Выберите группы с одинаковыми показателями'
+              : `Выберите один из ${commonIndicators.length} доступных показателей выше`
+            }
+          </p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-          <BarChart3 size={64} className="mx-auto text-gray-300 mb-4" />
-          <p className="text-xl text-gray-600 mb-2">Выберите показатель для сравнения</p>
+        <div className="bg-white rounded-xl shadow-lg p-12 text-center">
+          <Users size={64} className="mx-auto text-gray-300 mb-4" />
+          <p className="text-xl text-gray-600 mb-2">Выберите группы для сравнения</p>
           <p className="text-sm text-gray-500">
-            Выберите показатель и группы выше, чтобы увидеть визуализацию
+            Выберите 2 или более групп выше, чтобы увидеть сравнение
           </p>
         </div>
       )}
