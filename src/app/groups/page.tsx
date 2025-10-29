@@ -182,19 +182,6 @@ export default function GroupsPage() {
     setNewFilters(newFilters.filter(f => f.id !== id));
   };
 
-  const addIndicator = () => {
-    if (currentIndicator.name && currentIndicator.formula) {
-      setNewIndicators([
-        ...newIndicators,
-        {
-          id: Date.now().toString(),
-          ...currentIndicator,
-        },
-      ]);
-      setCurrentIndicator({ name: '', formula: '' });
-    }
-  };
-
   const removeIndicator = (id: string) => {
     setNewIndicators(newIndicators.filter(i => i.id !== id));
   };
@@ -259,17 +246,6 @@ export default function GroupsPage() {
       input.focus();
       input.setSelectionRange(start + fieldName.length, start + fieldName.length);
     }, 0);
-  };
-
-  // Быстрые кнопки формул
-  const insertQuickFormula = (type: 'SUM' | 'AVG' | 'COUNT' | 'MIN' | 'MAX', field?: string) => {
-    if (!field && expandedField) {
-      field = expandedField;
-    }
-    if (field) {
-      const formula = `${type}(${field})`;
-      setCurrentIndicator({ ...currentIndicator, formula });
-    }
   };
 
   // Предпросмотр группы
@@ -571,6 +547,42 @@ const useIndicatorFromLibrary = (indicator: SavedIndicator) => {
   console.log(`✓ Показатель "${indicator.name}" добавлен`);
 };
 
+// Добавьте эту функцию после useIndicatorFromLibrary
+const addAllIndicatorsFromLibrary = () => {
+  // Добавляем все показатели, которые ещё не добавлены
+  const toAdd = savedIndicators.filter(
+    si => !newIndicators.some(
+      ni => ni.name.trim().toLowerCase() === si.name.trim().toLowerCase()
+    )
+  );
+  
+  if (toAdd.length === 0) {
+    alert('Все показатели уже добавлены');
+    return;
+  }
+  
+  const newInds: Indicator[] = toAdd.map(indicator => ({
+    id: `${Date.now()}_${Math.random()}`,
+    name: indicator.name,
+    formula: indicator.formula,
+  }));
+  
+  setNewIndicators([...newIndicators, ...newInds]);
+  
+  // Обновляем счётчики
+  const updated = savedIndicators.map(si => {
+    if (toAdd.some(ta => ta.id === si.id)) {
+      return { ...si, usageCount: si.usageCount + 1 };
+    }
+    return si;
+  });
+  setSavedIndicators(updated);
+  localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
+  
+  alert(`✓ Добавлено ${toAdd.length} показателей`);
+};
+
+
 // Функция удаления из библиотеки
 const removeFromLibrary = (id: string) => {
   const updated = savedIndicators.filter(i => i.id !== id);
@@ -834,39 +846,9 @@ const removeFromLibrary = (id: string) => {
                     </span>
                     {showIndicatorLibrary && savedIndicators.length > 0 && (
                       <button
-                        onClick={(e) => {
+                        onClick={(e) => {    
                           e.stopPropagation();
-                          // Добавляем все показатели, которые ещё не добавлены
-                          const toAdd = savedIndicators.filter(
-                            si => !newIndicators.some(
-                              ni => ni.name.trim().toLowerCase() === si.name.trim().toLowerCase()
-                            )
-                          );
-                          
-                          if (toAdd.length === 0) {
-                            alert('Все показатели уже добавлены');
-                            return;
-                          }
-                          
-                          const newInds = toAdd.map(indicator => ({
-                            id: `${Date.now()}_${Math.random()}`,
-                            name: indicator.name,
-                            formula: indicator.formula,
-                          }));
-                          
-                          setNewIndicators([...newIndicators, ...newInds]);
-                          
-                          // Обновляем счётчики
-                          const updated = savedIndicators.map(si => {
-                            if (toAdd.some(ta => ta.id === si.id)) {
-                              return { ...si, usageCount: si.usageCount + 1 };
-                            }
-                            return si;
-                          });
-                          setSavedIndicators(updated);
-                          localStorage.setItem('indicatorLibrary', JSON.stringify(updated));
-                          
-                          alert(`✓ Добавлено ${toAdd.length} показателей`);
+                          addAllIndicatorsFromLibrary();
                         }}
                         className="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 text-xs font-medium transition-colors"
                       >
@@ -957,7 +939,7 @@ const removeFromLibrary = (id: string) => {
 
                 <div className="mt-2 p-2 bg-blue-50 rounded text-xs text-blue-800">
                   💡 <strong>Совет:</strong> Используйте показатели из библиотеки для создания групп с одинаковыми показателями. 
-                  Это позволит сравнивать их в режиме "Сравнение" на дашборде.
+                  Это позволит сравнивать их в режиме &quot;Сравнение&quot; на дашборде.
                 </div>
               </div>
             )}
