@@ -38,3 +38,26 @@ export interface Dashboard {
   createdAt: number;
   updatedAt: number;
 }
+
+export interface DashboardFilter {
+  id: string;
+  column: string;
+  type: 'select' | 'multiselect' | 'range' | 'date' | 'search';
+  label: string;
+  selectedValues?: string[];
+  rangeMin?: number;
+  rangeMax?: number;
+  dateFrom?: string;
+  dateTo?: string;
+  searchTerm?: string;
+}
+
+export interface Dashboard {
+  id: string;
+  name: string;
+  description?: string;
+  charts: ChartConfig[];
+  filters: DashboardFilter[]; // Добавляем фильтры
+  createdAt: number;
+  updatedAt: number;
+}

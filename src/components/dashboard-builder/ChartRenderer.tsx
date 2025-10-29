@@ -134,6 +134,12 @@ export default function ChartRenderer({
       {/* Заголовок */}
       <div className="bg-gradient-to-r from-blue-50 to-purple-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
         <h3 className="font-bold text-gray-900">{config.title}</h3>
+        {/* Индикатор фильтрации */}
+        {data.length > 0 && (
+        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
+            {data.length}
+        </span>
+        )}
         {isEditMode && (
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             <button

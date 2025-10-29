@@ -21,6 +21,8 @@ import Loader from '@/components/loader';
 import EmptyState from '@/components/dashboard/EmptyState';
 import ChartEditor from '@/components/dashboard-builder/ChartEditor';
 import ChartRenderer from '@/components/dashboard-builder/ChartRenderer';
+import FilterPanel from '@/components/dashboard-builder/FilterPanel';
+import { DashboardFilter } from '@/types/dashboard-builder';
 
 interface Group {
   id: string;
@@ -51,6 +53,7 @@ export default function DashboardBuilderPage() {
   const [editingChart, setEditingChart] = useState<Partial<ChartConfig> | null>(null);
   const [showDashboardDialog, setShowDashboardDialog] = useState(false);
   const [dashboardName, setDashboardName] = useState('');
+  const [activeFilters, setActiveFilters] = useState<DashboardFilter[]>([]);
 
   useEffect(() => {
     const data = getExcelData();
@@ -72,54 +75,136 @@ export default function DashboardBuilderPage() {
     setLoading(false);
   }, []);
 
-  // Подготовка данных для групп
-  const groupsData = useMemo(() => {
+  useEffect(() => {
+    if (currentDashboard) {
+        setActiveFilters(currentDashboard.filters || []);
+    }
+  }, [currentDashboard]);
+
+    const applyDashboardFilters = (data: any[]): any[] => {
+        if (!activeFilters || activeFilters.length === 0) return data;
+
+        return data.filter(row => {
+            return activeFilters.every(filter => {
+            const value = row[filter.column];
+
+            // SELECT фильтр
+            if (filter.type === 'select' && filter.selectedValues && filter.selectedValues.length > 0) {
+                return filter.selectedValues.includes(String(value));
+            }
+
+            // MULTISELECT фильтр
+            if (filter.type === 'multiselect' && filter.selectedValues && filter.selectedValues.length > 0) {
+                return filter.selectedValues.includes(String(value));
+            }
+
+            // RANGE фильтр
+            if (filter.type === 'range') {
+                const numValue = Number(value);
+                if (filter.rangeMin != null && numValue < filter.rangeMin) return false;
+                if (filter.rangeMax != null && numValue > filter.rangeMax) return false;
+            }
+
+            // DATE фильтр
+            if (filter.type === 'date') {
+                const dateValue = new Date(value);
+                if (filter.dateFrom && dateValue < new Date(filter.dateFrom)) return false;
+                if (filter.dateTo && dateValue > new Date(filter.dateTo)) return false;
+            }
+
+            // SEARCH фильтр
+            if (filter.type === 'search' && filter.searchTerm) {
+                return String(value).toLowerCase().includes(filter.searchTerm.toLowerCase());
+            }
+
+            return true;
+            });
+        });
+    };
+
+    // Подготовка данных для групп
+    const groupsData = useMemo(() => {
     if (!sheets || sheets.length === 0 || groups.length === 0) return [];
 
     return groups.map(group => {
-      const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
+        const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
         if (!hierarchyFilters || !hierarchyConfig.length) return null;
         let deepestLevel = null;
         for (let i = hierarchyConfig.length - 1; i >= 0; i--) {
-          const col = hierarchyConfig[i];
-          if (hierarchyFilters[col]) {
+            const col = hierarchyConfig[i];
+            if (hierarchyFilters[col]) {
             deepestLevel = { column: col, value: hierarchyFilters[col] };
             break;
-          }
+            }
         }
         return deepestLevel;
-      };
+        };
 
-      const deepestFilter = getDeepestHierarchyFilter(group.hierarchyFilters);
-      const allFilters = [
+        const deepestFilter = getDeepestHierarchyFilter(group.hierarchyFilters);
+        const allFilters = [
         ...group.filters,
         ...(deepestFilter ? [{
-          id: 'hier_deepest',
-          column: deepestFilter.column,
-          operator: '=',
-          value: deepestFilter.value,
+            id: 'hier_deepest',
+            column: deepestFilter.column,
+            operator: '=',
+            value: deepestFilter.value,
         }] : []),
-      ];
+        ];
 
-      const filteredData = applyFilters(sheets[0].rows, allFilters);
+        // Применяем фильтры группы
+        let filteredData = applyFilters(sheets[0].rows, allFilters);
+        
+        // Применяем фильтры дашборда
+        filteredData = applyDashboardFilters(filteredData);
 
-      const indicators = group.indicators.map(indicator => {
+        const indicators = group.indicators.map(indicator => {
         try {
-          const value = evaluateFormula(indicator.formula, filteredData, sheets[0].headers);
-          return { name: indicator.name, value };
+            const value = evaluateFormula(indicator.formula, filteredData, sheets[0].headers);
+            return { name: indicator.name, value };
         } catch {
-          return { name: indicator.name, value: 0 };
+            return { name: indicator.name, value: 0 };
         }
-      });
+        });
 
-      return {
+        return {
         id: group.id,
         name: group.name,
         indicators: group.indicators.map(i => i.name),
         data: indicators,
-      };
+        };
     });
-  }, [sheets, groups, hierarchyConfig]);
+    }, [sheets, groups, hierarchyConfig, activeFilters]); // Добавили activeFilters в зависимости
+
+    // Функции для работы с фильтрами:
+    const handleFiltersChange = (filters: DashboardFilter[]) => {
+    setActiveFilters(filters);
+    
+    if (currentDashboard) {
+        const updatedDashboard = {
+        ...currentDashboard,
+        filters,
+        updatedAt: Date.now(),
+        };
+        
+        setCurrentDashboard(updatedDashboard);
+        
+        const updatedDashboards = dashboards.map(d => 
+        d.id === updatedDashboard.id ? updatedDashboard : d
+        );
+        setDashboards(updatedDashboards);
+        localStorage.setItem('dashboards', JSON.stringify(updatedDashboards));
+    }
+    };
+
+    const handleAddFilter = (filter: DashboardFilter) => {
+        const updated = [...activeFilters, filter];
+        handleFiltersChange(updated);
+    };
+
+    const handleRemoveFilter = (filterId: string) => {
+        const updated = activeFilters.filter(f => f.id !== filterId);
+        handleFiltersChange(updated);
+    };
 
   // Получение данных для чарта
   const getChartData = (config: ChartConfig) => {
@@ -147,28 +232,29 @@ export default function DashboardBuilderPage() {
   };
 
   // Создание нового дашборда
-  const createDashboard = () => {
-    if (!dashboardName.trim()) {
-      alert('Введите название дашборда');
-      return;
-    }
+    const createDashboard = () => {
+        if (!dashboardName.trim()) {
+            alert('Введите название дашборда');
+            return;
+        }
 
-    const newDashboard: Dashboard = {
-      id: Date.now().toString(),
-      name: dashboardName,
-      charts: [],
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+        const newDashboard: Dashboard = {
+            id: Date.now().toString(),
+            name: dashboardName,
+            charts: [],
+            filters: [], // Инициализируем пустыми фильтрами
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+        };
+
+        const updated = [...dashboards, newDashboard];
+        setDashboards(updated);
+        setCurrentDashboard(newDashboard);
+        localStorage.setItem('dashboards', JSON.stringify(updated));
+        
+        setShowDashboardDialog(false);
+        setDashboardName('');
     };
-
-    const updated = [...dashboards, newDashboard];
-    setDashboards(updated);
-    setCurrentDashboard(newDashboard);
-    localStorage.setItem('dashboards', JSON.stringify(updated));
-    
-    setShowDashboardDialog(false);
-    setDashboardName('');
-  };
 
   // Сохранение чарта
   const saveChart = (config: ChartConfig) => {
@@ -291,11 +377,25 @@ export default function DashboardBuilderPage() {
                   ))}
                 </select>
                 {currentDashboard && (
-                  <p className="text-xs text-gray-500">
-                    {currentDashboard.charts.length} графиков • 
-                    Обновлено: {new Date(currentDashboard.updatedAt).toLocaleString('ru-RU')}
-                  </p>
+                    <p className="text-xs text-gray-500">
+                        {currentDashboard.charts.length} графиков
+                        {activeFilters.length > 0 && (
+                        <>
+                            {' • '}
+                            <span className="text-blue-600 font-semibold">
+                            {activeFilters.filter(f => 
+                                (f.selectedValues && f.selectedValues.length > 0) ||
+                                f.rangeMin != null || f.rangeMax != null ||
+                                f.dateFrom || f.dateTo || f.searchTerm
+                            ).length} активных фильтров
+                            </span>
+                        </>
+                        )}
+                        {' • '}
+                        Обновлено: {new Date(currentDashboard.updatedAt).toLocaleString('ru-RU')}
+                    </p>
                 )}
+
               </div>
             </div>
 
@@ -405,6 +505,16 @@ export default function DashboardBuilderPage() {
               </div>
             )}
 
+            {/* Панель фильтров */}
+            <FilterPanel
+                filters={activeFilters}
+                availableColumns={sheets[0]?.headers || []}
+                data={sheets[0]?.rows || []}
+                onFiltersChange={handleFiltersChange}
+                onAddFilter={handleAddFilter}
+                onRemoveFilter={handleRemoveFilter}
+            />
+
             {/* Grid с графиками */}
             {currentDashboard.charts.length > 0 ? (
               <div
@@ -465,6 +575,8 @@ export default function DashboardBuilderPage() {
           </div>
         )}
       </div>
+
+        
 
       {/* Диалог создания дашборда */}
       {showDashboardDialog && (

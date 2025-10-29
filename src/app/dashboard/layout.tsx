@@ -25,13 +25,13 @@ export default function DashboardLayout({
       color: 'green'
     },
     { 
-      href: '/dashboard/analysis', 
-      label: 'Анализ', 
+      href: '/dashboard/sql', 
+      label: 'SQL Builder', 
       icon: TrendingUp,
       color: 'purple'
     },
     { 
-      href: '/dashboard/custom', 
+      href: '/dashboard/builder', 
       label: 'Кастомный', 
       icon: SettingsIcon,
       color: 'orange'
