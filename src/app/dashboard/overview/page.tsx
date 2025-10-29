@@ -107,7 +107,7 @@ export default function OverviewPage() {
             formula: indicator.formula,
             value,
           };
-        } catch (error) {
+        } catch {
           return {
             name: indicator.name,
             formula: indicator.formula,
@@ -179,7 +179,7 @@ export default function OverviewPage() {
     if (groupResults.length === 0 || selectedIndicators.length === 0) return [];
 
     return groupResults.map(group => {
-      const dataPoint: any = { name: group.groupName };
+      const dataPoint: Record<string, string | number> = { name: group.groupName };
       
       selectedIndicators.forEach(indicatorName => {
         const indicator = group.indicators.find(i => i.name === indicatorName);

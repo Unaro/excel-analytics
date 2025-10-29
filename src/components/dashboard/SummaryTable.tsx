@@ -11,7 +11,7 @@ interface SummaryTableRow {
   groupName: string;
   indicators: IndicatorValue[];
   rowCount: number;
-  metadata?: Record<string, any>; // Дополнительные данные
+  metadata?: Record<string, string | number | boolean>;
 }
 
 interface SummaryTableProps {
