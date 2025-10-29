@@ -35,3 +35,30 @@ export interface ChartDataPoint {
   name: string;
   [key: string]: string | number;
 }
+
+export interface IndicatorValue {
+  name: string;
+  value: number;
+}
+
+export interface GroupResult {
+  groupId: string;
+  groupName: string;
+  filters: Array<{
+    id: string;
+    column: string;
+    operator: string;
+    value: string;
+  }>;
+  hierarchyFilters: Record<string, string> | undefined;
+  deepestFilter: {
+    column: string;
+    value: string;
+  } | null;
+  indicators: Array<{
+    name: string;
+    formula: string;
+    value: number;
+  }>;
+  rowCount: number;
+}

@@ -464,13 +464,13 @@ export default function DataPage() {
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-4 py-3 text-left">
+                  {/* <th className="px-4 py-3 text-left">
                     <input
                       type="checkbox"
                       className="w-4 h-4"
                       title="Выбрать все колонки для статистики"
                     />
-                  </th>
+                  </th> */}
                   {visibleHeaders.map((header) => (
                     <th
                       key={header}
@@ -505,13 +505,13 @@ export default function DataPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {paginatedRows.map((row, idx) => (
                   <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3">
+                    {/* <td className="px-4 py-3">
                       <input
                         type="checkbox"
                         className="w-4 h-4"
                         title="Выбрать для статистики"
                       />
-                    </td>
+                    </td> */}
                     {visibleHeaders.map((header) => (
                       <td
                         key={header}

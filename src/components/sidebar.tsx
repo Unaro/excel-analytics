@@ -76,7 +76,7 @@ export default function Sidebar() {
         { name: 'Обзор', href: '/dashboard/overview', icon: BarChart3 },
         { name: 'Сравнение', href: '/dashboard/comparison', icon: Layers },
         { name: 'Анализ', href: '/dashboard/analysis', icon: FileSpreadsheet },
-        { name: 'Кастомный', href: '/dashboard/custom', icon: Settings },
+        { name: 'Кастомный', href: '/dashboard/builder', icon: Settings },
       ],
     },
     {
