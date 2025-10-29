@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ChartConfig, ChartType } from '@/types/dashboard-builder';
-import { X, Save, BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Hash, TrendingUp } from 'lucide-react';
+import { X, Save, BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Hash, TrendingUp, LucideIcon } from 'lucide-react';
 
 interface ChartEditorProps {
   config: Partial<ChartConfig>;
@@ -30,7 +30,7 @@ export default function ChartEditor({
     ...config,
   });
 
-  const chartTypes: Array<{ type: ChartType; icon: any; label: string }> = [
+  const chartTypes: Array<{ type: ChartType; icon: LucideIcon; label: string }> = [
     { type: 'bar', icon: BarChart3, label: 'Столбцы' },
     { type: 'line', icon: LineChartIcon, label: 'Линии' },
     { type: 'pie', icon: PieChartIcon, label: 'Круговая' },
@@ -122,19 +122,19 @@ export default function ChartEditor({
               Источник данных *
             </label>
             <div className="grid grid-cols-3 gap-3">
-              {['groups', 'sql', 'raw'].map((source) => (
+              {(['groups', 'sql', 'raw'] as const).map((source) => (
                 <button
-                  key={source}
-                  onClick={() => setEditConfig({ ...editConfig, dataSource: source as any })}
-                  className={`px-4 py-3 rounded-lg border-2 font-medium transition-all ${
+                    key={source}
+                    onClick={() => setEditConfig({ ...editConfig, dataSource: source })}
+                    className={`px-4 py-3 rounded-lg border-2 font-medium transition-all ${
                     editConfig.dataSource === source
-                      ? 'border-purple-600 bg-purple-50 text-purple-900'
-                      : 'border-gray-300 hover:border-purple-300 text-gray-700'
-                  }`}
+                        ? 'border-purple-600 bg-purple-50 text-purple-900'
+                        : 'border-gray-300 hover:border-purple-300 text-gray-700'
+                    }`}
                 >
-                  {source === 'groups' ? 'Группы' : source === 'sql' ? 'SQL' : 'Сырые данные'}
+                    {source === 'groups' ? 'Группы' : source === 'sql' ? 'SQL' : 'Сырые данные'}
                 </button>
-              ))}
+                ))}
             </div>
           </div>
 

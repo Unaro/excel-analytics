@@ -3,11 +3,12 @@
 import { useState, useMemo } from 'react';
 import { DashboardFilter } from '@/types/dashboard-builder';
 import { Filter, X, Plus, ChevronDown, Search, Calendar } from 'lucide-react';
+import { ExcelRow } from '@/types';
 
 interface FilterPanelProps {
   filters: DashboardFilter[];
   availableColumns: string[];
-  data: any[];
+  data: ExcelRow[];
   onFiltersChange: (filters: DashboardFilter[]) => void;
   onAddFilter: (filter: DashboardFilter) => void;
   onRemoveFilter: (filterId: string) => void;
@@ -37,13 +38,21 @@ export default function FilterPanel({
   };
 
   // Определяем тип колонки
-  const getColumnType = (column: string): 'number' | 'string' | 'date' => {
-    if (data.length === 0) return 'string';
-    const sample = data[0][column];
-    if (typeof sample === 'number') return 'number';
-    if (sample instanceof Date || /^\d{4}-\d{2}-\d{2}/.test(String(sample))) return 'date';
-    return 'string';
-  };
+    const getColumnType = (column: string): 'number' | 'string' | 'date' => {
+        if (data.length === 0) return 'string';
+        const sample = data[0][column];
+        
+        if (sample == null) return 'string';
+        if (typeof sample === 'number') return 'number';
+        if (typeof sample === 'boolean') return 'string'; // boolean как string
+        
+        // Проверка строки на формат даты
+        if (typeof sample === 'string' && /^\d{4}-\d{2}-\d{2}/.test(sample)) {
+            return 'date';
+        }
+        
+        return 'string';
+    };
 
   // Добавление нового фильтра
   const handleAddFilter = () => {
@@ -278,7 +287,7 @@ export default function FilterPanel({
 
                 <select
                   value={newFilterType}
-                  onChange={(e) => setNewFilterType(e.target.value as any)}
+                  onChange={(e) => setNewFilterType(e.target.value as "select" | "multiselect" | "range" | "date" | "search")}
                   className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="select">Выпадающий список</option>

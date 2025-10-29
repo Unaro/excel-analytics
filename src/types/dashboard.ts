@@ -36,11 +36,15 @@ export interface ChartDataPoint {
   [key: string]: string | number;
 }
 
-export interface IndicatorValue {
+export interface PieChartData {
   name: string;
   value: number;
 }
 
+export interface IndicatorValue {
+  name: string;
+  value: number;
+}
 export interface GroupResult {
   groupId: string;
   groupName: string;

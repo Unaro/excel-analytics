@@ -5,11 +5,13 @@ import { ChartConfig } from '@/types/dashboard-builder';
 import BarChart from '@/components/charts/BarChart';
 import LineChart from '@/components/charts/LineChart';
 import PieChart from '@/components/charts/PieChart';
-import { Edit2, Trash2, Maximize2 } from 'lucide-react';
+import { Edit2, Trash2 } from 'lucide-react';
+import { ChartDataPoint } from '@/types/dashboard';
+import { chartDataPointsToPieData } from '@/lib/data-converters';
 
 interface ChartRendererProps {
   config: ChartConfig;
-  data: any[];
+  data: ChartDataPoint[];
   onEdit?: () => void;
   onDelete?: () => void;
   isEditMode?: boolean;
@@ -63,12 +65,16 @@ export default function ChartRenderer({
         );
 
       case 'pie':
+        // Определяем какое поле использовать для value
+        const valueField = config.indicators?.[0] || 'value';
+        const pieData = chartDataPointsToPieData(chartData, valueField);
+
         return (
-          <PieChart
-            data={chartData}
+            <PieChart
+            data={pieData}
             height={height}
             showLegend={config.showLegend}
-          />
+            />
         );
 
       case 'metric':

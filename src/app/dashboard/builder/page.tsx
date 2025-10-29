@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { getExcelData } from '@/lib/storage';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
-import { SheetData } from '@/types';
+import { ExcelRow, SheetData } from '@/types';
 import { Dashboard, ChartConfig } from '@/types/dashboard-builder';
 import { 
   FileSpreadsheet,
@@ -23,6 +23,7 @@ import ChartEditor from '@/components/dashboard-builder/ChartEditor';
 import ChartRenderer from '@/components/dashboard-builder/ChartRenderer';
 import FilterPanel from '@/components/dashboard-builder/FilterPanel';
 import { DashboardFilter } from '@/types/dashboard-builder';
+import { ChartDataPoint } from '@/types/dashboard';
 
 interface Group {
   id: string;
@@ -81,7 +82,7 @@ export default function DashboardBuilderPage() {
     }
   }, [currentDashboard]);
 
-    const applyDashboardFilters = (data: any[]): any[] => {
+    const applyDashboardFilters = (data: ExcelRow[]): ExcelRow[] => {
         if (!activeFilters || activeFilters.length === 0) return data;
 
         return data.filter(row => {
@@ -100,20 +101,27 @@ export default function DashboardBuilderPage() {
 
             // RANGE фильтр
             if (filter.type === 'range') {
-                const numValue = Number(value);
-                if (filter.rangeMin != null && numValue < filter.rangeMin) return false;
-                if (filter.rangeMax != null && numValue > filter.rangeMax) return false;
+                if (typeof value !== 'number') return true; // Пропускаем не-числовые значения
+                if (filter.rangeMin != null && value < filter.rangeMin) return false;
+                if (filter.rangeMax != null && value > filter.rangeMax) return false;
             }
 
             // DATE фильтр
             if (filter.type === 'date') {
+                if (!value) return true;
+                
+                // Пропускаем boolean значения
+                if (typeof value === 'boolean') return true;
+                
                 const dateValue = new Date(value);
+                if (isNaN(dateValue.getTime())) return true; // Невалидная дата
                 if (filter.dateFrom && dateValue < new Date(filter.dateFrom)) return false;
                 if (filter.dateTo && dateValue > new Date(filter.dateTo)) return false;
             }
 
             // SEARCH фильтр
             if (filter.type === 'search' && filter.searchTerm) {
+                if (!value) return false;
                 return String(value).toLowerCase().includes(filter.searchTerm.toLowerCase());
             }
 
@@ -207,29 +215,29 @@ export default function DashboardBuilderPage() {
     };
 
   // Получение данных для чарта
-  const getChartData = (config: ChartConfig) => {
-    if (config.dataSource === 'groups' && config.groupIds) {
-      const selectedGroups = groupsData.filter(g => config.groupIds!.includes(g.id));
-      
-      if (config.indicators && config.indicators.length > 0) {
-        return selectedGroups.map(group => {
-          const result: any = { name: group.name };
-          config.indicators!.forEach(ind => {
-            const indicator = group.data.find(d => d.name === ind);
-            result[ind] = indicator ? indicator.value : 0;
-          });
-          return result;
-        });
-      }
-      
-      return selectedGroups.map(g => ({
-        name: g.name,
-        value: g.data[0]?.value || 0,
-      }));
-    }
-    
-    return [];
-  };
+    const getChartData = (config: ChartConfig): ChartDataPoint[] => {
+        if (config.dataSource === 'groups' && config.groupIds) {
+            const selectedGroups = groupsData.filter(g => config.groupIds!.includes(g.id));
+            
+            if (config.indicators && config.indicators.length > 0) {
+            return selectedGroups.map(group => {
+                const result: ChartDataPoint = { name: group.name };
+                config.indicators!.forEach(ind => {
+                const indicator = group.data.find(d => d.name === ind);
+                result[ind] = indicator ? indicator.value : 0;
+                });
+                return result;
+            });
+            }
+            
+            return selectedGroups.map(g => ({
+            name: g.name,
+            value: g.data[0]?.value || 0,
+            }));
+        }
+        
+        return [];
+    };
 
   // Создание нового дашборда
     const createDashboard = () => {

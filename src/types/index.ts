@@ -54,3 +54,5 @@ export interface FieldInfo {
   max?: number;
   avg?: number;
 }
+
+export type DataRow = Record<string, string | number | Date | null | undefined>;
