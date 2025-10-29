@@ -336,7 +336,7 @@ export default function SQLQueryPage() {
                   <Database size={64} className="mx-auto text-gray-300 mb-4" />
                   <p className="text-lg text-gray-600 mb-2">Результатов пока нет</p>
                   <p className="text-sm text-gray-500">
-                    Введите SQL запрос и нажмите "Выполнить" или Ctrl+Enter
+                    Введите SQL запрос и нажмите &quot;Выполнить&quot; или Ctrl+Enter
                   </p>
                 </div>
               )}

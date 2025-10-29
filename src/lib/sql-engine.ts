@@ -109,7 +109,7 @@ export class SQLEngine {
 
         // Выполнение выражения
         return eval(expr);
-      } catch (e) {
+      } catch {
         return false;
       }
     });
@@ -185,7 +185,7 @@ export class SQLEngine {
     });
   }
 
-  private evaluateExpression(row: ExcelRow, expr: string): any {
+  private evaluateExpression(row: ExcelRow, expr: string): string | number | boolean | null {
     try {
       let evaluatedExpr = expr;
       this.headers.forEach(header => {
@@ -193,13 +193,15 @@ export class SQLEngine {
         const replacement = typeof value === 'string' ? `"${value}"` : String(value);
         evaluatedExpr = evaluatedExpr.replace(new RegExp(`\\b${header}\\b`, 'g'), replacement);
       });
+
+      // eslint-disable-next-line no-eval
       return eval(evaluatedExpr);
     } catch (e) {
       return null;
     }
   }
 
-  private evaluateAggregation(group: ExcelRow[], expr: string): any {
+  private evaluateAggregation(group: ExcelRow[], expr: string): string | number | null {
     const upperExpr = expr.toUpperCase();
 
     // COUNT(*)
