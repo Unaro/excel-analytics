@@ -515,7 +515,7 @@ const saveIndicatorToLibrary = (indicator: { name: string; formula: string }) =>
 };
 
 // Функция использования показателя из библиотеки
-const useIndicatorFromLibrary = (indicator: SavedIndicator) => {
+const addIndicatorFromLibrary = (indicator: SavedIndicator) => {
   // Проверяем, нет ли уже такого показателя в текущей группе
   const alreadyExists = newIndicators.some(
     i => i.name.trim().toLowerCase() === indicator.name.trim().toLowerCase()
@@ -547,7 +547,7 @@ const useIndicatorFromLibrary = (indicator: SavedIndicator) => {
   console.log(`✓ Показатель "${indicator.name}" добавлен`);
 };
 
-// Добавьте эту функцию после useIndicatorFromLibrary
+
 const addAllIndicatorsFromLibrary = () => {
   // Добавляем все показатели, которые ещё не добавлены
   const toAdd = savedIndicators.filter(
@@ -909,7 +909,7 @@ const removeFromLibrary = (id: string) => {
                             
                             <div className="flex gap-1">
                               <button
-                                onClick={() => useIndicatorFromLibrary(indicator)}
+                                onClick={() => addIndicatorFromLibrary(indicator)}
                                 disabled={isAdded}
                                 className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                                   isAdded
