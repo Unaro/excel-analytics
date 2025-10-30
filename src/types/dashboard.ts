@@ -1,3 +1,6 @@
+import type { IndicatorWithValue } from "@/lib/data-store";
+import type { ExcelRow, FilterCondition, HierarchyFilters } from ".";
+
 export interface DashboardConfig {
   mode: 'auto' | 'comparison' | 'analysis' | 'custom';
   
@@ -65,4 +68,70 @@ export interface GroupResult {
     value: number;
   }>;
   rowCount: number;
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  description?: string;
+  filters: FilterCondition[];
+  hierarchyFilters?: HierarchyFilters;  // Record<string, string>
+  indicators: Indicator[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface GroupWithData extends Group {
+  rowCount: number;
+  indicators: IndicatorWithValue[];
+}
+
+export interface Metric {
+  name: string;
+  formula: string;
+  aggregatedValue: number;
+  stats: MetricStatistics;
+}
+
+export interface MetricStatistics {
+  mean: number;
+  median: number;
+  stdDev: number;
+  min?: number;
+  max?: number;
+}
+
+export interface Indicator {
+  name: string;
+  formula: string;
+  value?: number;
+}
+
+// Для страницы Overview
+export interface IndicatorData {
+  name: string;
+  values: Record<string, number>; // groupId -> value
+}
+
+// Для страницы Comparison
+export interface ComparisonData {
+  indicator: string;
+  groups: {
+    groupId: string;
+    groupName: string;
+    value: number;
+  }[];
+}
+
+// Для страницы SQL
+export interface SQLResult {
+  headers: string[];
+  rows: ExcelRow[];
+}
+
+export interface SavedQuery {
+  id: string;
+  name: string;
+  query: string;
+  createdAt: number;
 }

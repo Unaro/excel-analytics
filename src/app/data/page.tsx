@@ -8,11 +8,10 @@ import {
   Download, 
   ChevronDown, 
   ChevronUp, 
-  Eye, 
-  EyeOff, 
+  // Eye, EyeOff - icons kept in other pages; removed local usage
   BarChart3,
   Filter,
-  X,
+  // X removed (unused)
   Copy,
   Check,
   Settings,

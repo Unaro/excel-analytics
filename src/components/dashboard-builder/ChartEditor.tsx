@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ChartConfig, ChartType } from '@/types/dashboard-builder';
 import { X, Save, BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Hash, TrendingUp, LucideIcon } from 'lucide-react';
 

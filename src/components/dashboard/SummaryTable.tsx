@@ -1,333 +1,190 @@
-import { useState, useMemo } from 'react';
-import { ArrowUp, ArrowDown, Download } from 'lucide-react';
+'use client';
 
-interface IndicatorValue {
-  name: string;
-  value: number;
-}
+import { useMemo } from 'react';
+import Link from 'next/link';
+import { ExternalLink } from 'lucide-react';
+import { IndicatorWithValue } from '@/lib/data-store';
 
 interface SummaryTableRow {
   groupId: string;
   groupName: string;
-  indicators: IndicatorValue[];
+  indicators: IndicatorWithValue[];
   rowCount: number;
-  metadata?: Record<string, string | number | boolean>;
 }
 
 interface SummaryTableProps {
   data: SummaryTableRow[];
-  allIndicatorNames: string[];
+  emptyText?: string;
   stickyColumn?: boolean;
   showRowCount?: boolean;
   showTotals?: boolean;
   highlightMax?: boolean;
   highlightMin?: boolean;
-  sortable?: boolean;
-  exportable?: boolean;
-  emptyText?: string;
 }
-
-type SortConfig = {
-  column: string;
-  direction: 'asc' | 'desc';
-} | null;
 
 export default function SummaryTable({
   data,
-  allIndicatorNames,
+  emptyText = 'Нет данных для отображения',
   stickyColumn = true,
   showRowCount = true,
-  showTotals = false,
+  showTotals = true,
   highlightMax = false,
   highlightMin = false,
-  sortable = true,
-  exportable = false,
-  emptyText = 'Нет данных для отображения',
 }: SummaryTableProps) {
-  const [sortConfig, setSortConfig] = useState<SortConfig>(null);
-
-  // Находим максимальное и минимальное значение для каждого показателя
-  const extremeValues = useMemo(() => {
-    const extremes: Record<string, { max: number; min: number }> = {};
-
-    allIndicatorNames.forEach(name => {
-      const values = data.map(row => {
-        const indicator = row.indicators.find(i => i.name === name);
-        return indicator ? indicator.value : 0;
-      }).filter(v => v !== 0);
-
-      if (values.length > 0) {
-        extremes[name] = {
-          max: Math.max(...values),
-          min: Math.min(...values),
-        };
-      }
+  
+  // Получаем все уникальные названия показателей
+  const allIndicatorNames = useMemo(() => {
+    const namesSet = new Set<string>();
+    data.forEach(row => {
+      row.indicators.forEach(ind => namesSet.add(ind.name));
     });
-
-    return extremes;
-  }, [data, allIndicatorNames]);
+    return Array.from(namesSet).sort();
+  }, [data]);
 
   // Вычисляем итоги
   const totals = useMemo(() => {
-    if (!showTotals) return null;
-
     const sums: Record<string, number> = {};
     let totalRowCount = 0;
 
     data.forEach(row => {
       totalRowCount += row.rowCount;
-      allIndicatorNames.forEach(name => {
-        const indicator = row.indicators.find(i => i.name === name);
-        if (indicator) {
-          sums[name] = (sums[name] || 0) + indicator.value;
-        }
+      row.indicators.forEach(ind => {
+        sums[ind.name] = (sums[ind.name] || 0) + ind.value;
       });
     });
 
     return { sums, totalRowCount };
-  }, [data, allIndicatorNames, showTotals]);
+  }, [data]);
 
-  // Сортировка
-  const sortedData = useMemo(() => {
-    if (!sortConfig) return data;
+  // Находим максимальные и минимальные значения для каждого показателя
+  const extremes = useMemo(() => {
+    const max: Record<string, number> = {};
+    const min: Record<string, number> = {};
 
-    return [...data].sort((a, b) => {
-      let aValue: number | string;
-      let bValue: number | string;
-
-      if (sortConfig.column === 'groupName') {
-        aValue = a.groupName;
-        bValue = b.groupName;
-      } else if (sortConfig.column === 'rowCount') {
-        aValue = a.rowCount;
-        bValue = b.rowCount;
-      } else {
-        const aInd = a.indicators.find(i => i.name === sortConfig.column);
-        const bInd = b.indicators.find(i => i.name === sortConfig.column);
-        aValue = aInd ? aInd.value : 0;
-        bValue = bInd ? bInd.value : 0;
+    allIndicatorNames.forEach(name => {
+      const values = data
+        .map(row => row.indicators.find(i => i.name === name)?.value)
+        .filter((v): v is number => v !== undefined);
+      
+      if (values.length > 0) {
+        max[name] = Math.max(...values);
+        min[name] = Math.min(...values);
       }
-
-      if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-      if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-      return 0;
     });
-  }, [data, sortConfig]);
 
-  // Обработчик сортировки
-  const handleSort = (column: string) => {
-    if (!sortable) return;
-
-    setSortConfig(current => {
-      if (!current || current.column !== column) {
-        return { column, direction: 'desc' };
-      }
-      if (current.direction === 'desc') {
-        return { column, direction: 'asc' };
-      }
-      return null;
-    });
-  };
-
-  // Экспорт в CSV
-  const handleExport = () => {
-    const headers = ['Группа', ...allIndicatorNames, ...(showRowCount ? ['Записей'] : [])];
-    const rows = sortedData.map(row => [
-      row.groupName,
-      ...allIndicatorNames.map(name => {
-        const ind = row.indicators.find(i => i.name === name);
-        return ind ? ind.value.toFixed(2) : '—';
-      }),
-      ...(showRowCount ? [row.rowCount.toString()] : []),
-    ]);
-
-    if (showTotals && totals) {
-      rows.push([
-        'ИТОГО',
-        ...allIndicatorNames.map(name => (totals.sums[name] || 0).toFixed(2)),
-        ...(showRowCount ? [totals.totalRowCount.toString()] : []),
-      ]);
-    }
-
-    const csv = [
-      headers.join(','),
-      ...rows.map(row => row.join(',')),
-    ].join('\n');
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `summary_table_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
-  };
-
-  // Компонент заголовка столбца с сортировкой
-  const SortableHeader = ({ column, children }: { column: string; children: React.ReactNode }) => {
-    const isSorted = sortConfig?.column === column;
-    const direction = sortConfig?.direction;
-
-    return (
-      <th
-        onClick={() => handleSort(column)}
-        className={`px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider ${
-          sortable ? 'cursor-pointer hover:bg-blue-100 transition-colors' : ''
-        }`}
-      >
-        <div className="flex items-center gap-2">
-          {children}
-          {sortable && (
-            <div className="flex flex-col">
-              <ArrowUp 
-                size={12} 
-                className={`${isSorted && direction === 'asc' ? 'text-blue-600' : 'text-gray-300'}`}
-              />
-              <ArrowDown 
-                size={12} 
-                className={`-mt-1 ${isSorted && direction === 'desc' ? 'text-blue-600' : 'text-gray-300'}`}
-              />
-            </div>
-          )}
-        </div>
-      </th>
-    );
-  };
-
-  // Определение цвета ячейки
-  const getCellStyle = (value: number, indicatorName: string) => {
-    const extreme = extremeValues[indicatorName];
-    if (!extreme) return {};
-
-    if (highlightMax && value === extreme.max) {
-      return { backgroundColor: '#dcfce7', fontWeight: 'bold', color: '#166534' };
-    }
-    if (highlightMin && value === extreme.min) {
-      return { backgroundColor: '#fee2e2', fontWeight: 'bold', color: '#991b1b' };
-    }
-
-    return {};
-  };
+    return { max, min };
+  }, [data, allIndicatorNames]);
 
   if (data.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-        <p className="text-gray-500">{emptyText}</p>
+      <div className="text-center py-8 text-gray-500">
+        {emptyText}
       </div>
     );
   }
 
-  return (
-    <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-      {/* Заголовок с кнопкой экспорта */}
-      {exportable && (
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <h3 className="text-lg font-bold text-gray-900">Сводная таблица</h3>
-          <button
-            onClick={handleExport}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 text-sm transition-colors"
-          >
-            <Download size={16} />
-            Экспорт
-          </button>
-        </div>
-      )}
+  const getCellClassName = (indicatorName: string, value: number) => {
+    let className = 'px-4 py-3 text-right';
+    
+    if (highlightMax && value === extremes.max[indicatorName]) {
+      className += ' bg-green-50 font-semibold text-green-700';
+    } else if (highlightMin && value === extremes.min[indicatorName]) {
+      className += ' bg-red-50 font-semibold text-red-700';
+    }
+    
+    return className;
+  };
 
-      {/* Таблица */}
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gradient-to-r from-blue-50 to-purple-50">
-            <tr>
-              <SortableHeader column="groupName">
-                <span className={stickyColumn ? 'sticky left-0 bg-blue-50' : ''}>
-                  Группа
-                </span>
-              </SortableHeader>
-              {allIndicatorNames.map(name => (
-                <SortableHeader key={name} column={name}>
-                  <span className="text-right block">{name}</span>
-                </SortableHeader>
-              ))}
-              {showRowCount && (
-                <SortableHeader column="rowCount">
-                  <span className="text-right block">Записей</span>
-                </SortableHeader>
-              )}
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {sortedData.map((row) => (
-              <tr key={row.groupId} className="hover:bg-gray-50 transition-colors">
-                <td 
-                  className={`px-6 py-4 whitespace-nowrap font-medium text-gray-900 ${
-                    stickyColumn ? 'sticky left-0 bg-white' : ''
-                  }`}
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th
+              className={`px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${
+                stickyColumn ? 'sticky left-0 bg-gray-50 z-10' : ''
+              }`}
+            >
+              Группа
+            </th>
+            {allIndicatorNames.map((name) => (
+              <th
+                key={name}
+                className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+              >
+                {name}
+              </th>
+            ))}
+            {showRowCount && (
+              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Строк
+              </th>
+            )}
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {data.map((row) => (
+            <tr key={row.groupId} className="hover:bg-gray-50 group">
+              <td
+                className={`px-4 py-3 text-sm font-medium text-gray-900 ${
+                  stickyColumn ? 'sticky left-0 bg-white group-hover:bg-gray-50 z-10' : ''
+                }`}
+              >
+                <Link
+                  href={`/dashboard/group/${row.groupId}`}
+                  className="flex items-center hover:text-blue-600 transition-colors"
                 >
                   {row.groupName}
+                  <ExternalLink className="w-3 h-3 ml-2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </Link>
+              </td>
+              {allIndicatorNames.map((name) => {
+                const indicator = row.indicators.find((i) => i.name === name);
+                return (
+                  <td
+                    key={name}
+                    className={
+                      indicator
+                        ? getCellClassName(name, indicator.value)
+                        : 'px-4 py-3 text-right text-gray-400'
+                    }
+                  >
+                    {indicator ? indicator.value.toFixed(2) : '—'}
+                  </td>
+                );
+              })}
+              {showRowCount && (
+                <td className="px-4 py-3 text-right text-sm text-gray-600">
+                  {row.rowCount.toLocaleString()}
                 </td>
-                {allIndicatorNames.map(name => {
-                  const indicator = row.indicators.find(i => i.name === name);
-                  return (
-                    <td 
-                      key={name} 
-                      className="px-6 py-4 whitespace-nowrap text-right"
-                      style={indicator ? getCellStyle(indicator.value, name) : {}}
-                    >
-                      {indicator ? (
-                        <span className="font-semibold">
-                          {indicator.value.toFixed(2)}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                  );
-                })}
-                {showRowCount && (
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-gray-600">
-                    {row.rowCount.toLocaleString()}
-                  </td>
-                )}
-              </tr>
-            ))}
-            
-            {/* Итоговая строка */}
-            {showTotals && totals && (
-              <tr className="bg-gradient-to-r from-blue-100 to-purple-100 font-bold">
-                <td className={`px-6 py-4 text-gray-900 ${stickyColumn ? 'sticky left-0 bg-blue-100' : ''}`}>
-                  ИТОГО
+              )}
+            </tr>
+          ))}
+          
+          {/* Строка с итогами */}
+          {showTotals && (
+            <tr className="bg-gray-100 font-semibold">
+              <td
+                className={`px-4 py-3 text-sm text-gray-900 ${
+                  stickyColumn ? 'sticky left-0 bg-gray-100 z-10' : ''
+                }`}
+              >
+                ИТОГО
+              </td>
+              {allIndicatorNames.map((name) => (
+                <td key={name} className="px-4 py-3 text-right text-sm text-gray-900">
+                  {(totals.sums[name] || 0).toFixed(2)}
                 </td>
-                {allIndicatorNames.map(name => (
-                  <td key={name} className="px-6 py-4 text-right text-gray-900">
-                    {(totals.sums[name] || 0).toFixed(2)}
-                  </td>
-                ))}
-                {showRowCount && (
-                  <td className="px-6 py-4 text-right text-gray-900">
-                    {totals.totalRowCount.toLocaleString()}
-                  </td>
-                )}
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Легенда */}
-      {(highlightMax || highlightMin) && (
-        <div className="px-6 py-3 bg-gray-50 border-t border-gray-200 flex gap-4 text-xs">
-          {highlightMax && (
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-green-100 border border-green-300 rounded"></div>
-              <span className="text-gray-600">Максимальное значение</span>
-            </div>
+              ))}
+              {showRowCount && (
+                <td className="px-4 py-3 text-right text-sm text-gray-900">
+                  {totals.totalRowCount.toLocaleString()}
+                </td>
+              )}
+            </tr>
           )}
-          {highlightMin && (
-            <div className="flex items-center gap-2">
-              <div className="w-4 h-4 bg-red-100 border border-red-300 rounded"></div>
-              <span className="text-gray-600">Минимальное значение</span>
-            </div>
-          )}
-        </div>
-      )}
+        </tbody>
+      </table>
     </div>
   );
 }

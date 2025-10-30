@@ -2,13 +2,14 @@ export interface ExcelRow {
   [key: string]: string | number | boolean | null;
 }
 
+export type HierarchyFilters = Record<string, string>;
+
 export interface FilterCondition {
   id: string;
   column: string;
   operator: '=' | '>' | '<' | '>=' | '<=' | '!=' | 'contains';
   value: string | number;
 }
-
 export interface GroupDefinition {
   id: string;
   name: string;
@@ -56,3 +57,26 @@ export interface FieldInfo {
 }
 
 export type DataRow = Record<string, string | number | Date | null | undefined>;
+
+
+export interface SelectOption {
+  value: string;
+  label: string;
+}
+
+export interface EmptyStateProps {
+  icon?: React.ReactNode;
+  title: string;
+  description: string;
+  action?: {
+    label: string;
+    onClick: () => void;
+  };
+}
+
+export interface CardProps {
+  title?: string;
+  children: React.ReactNode;
+  className?: string;
+  actions?: React.ReactNode;
+}

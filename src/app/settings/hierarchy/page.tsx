@@ -1,310 +1,275 @@
 'use client';
 
-import { useState, useEffect, DragEvent } from 'react';
-import { getExcelData } from '@/lib/storage';
-import { getMetadataForSheet } from '@/lib/metadata-manager';
-import { SheetData } from '@/types';
-import { GripVertical, Trash2, Plus, Save, AlertCircle, ArrowRight } from 'lucide-react';
-import Loader from '@/components/loader';
+import { useState, useEffect } from 'react';
+import { Save, Trash2, Plus, GripVertical, AlertCircle, CheckCircle } from 'lucide-react';
+import { getFieldTypes, saveFieldTypes } from '@/lib/field-type-store';
+import { dataStore } from '@/lib/data-store';
+import type { FieldInfo } from '@/lib/field-type-store';
 
-export default function HierarchySettingsPage() {
-  const [sheets, setSheets] = useState<SheetData[]>([]);
-  const [hierarchyLevels, setHierarchyLevels] = useState<string[]>([]);
+export default function SettingsHierarchyPage() {
+  const [hierarchyConfig, setHierarchyConfig] = useState<string[]>([]);
   const [availableFields, setAvailableFields] = useState<string[]>([]);
-  const [draggedItem, setDraggedItem] = useState<string | null>(null);
+  const [fieldTypes, setFieldTypes] = useState<Record<string, FieldInfo>>({});
   const [loading, setLoading] = useState(true);
+  const [saved, setSaved] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    const data = getExcelData();
-    if (data && data.length) {
-      setSheets(data);
-      
-      // Получить только категориальные поля
-      const md = getMetadataForSheet(data[0].sheetName);
-      if (md) {
-        const categorical = md.columns
-          .filter(col => col.dataType === 'categorical')
-          .map(col => col.name);
-        setAvailableFields(categorical);
-      } else {
-        setAvailableFields(data[0].headers);
-      }
-      
-      // Загрузить сохраненную конфигурацию
-      const savedConfig = localStorage.getItem('hierarchyConfig');
-      if (savedConfig) {
-        setHierarchyLevels(JSON.parse(savedConfig));
-      }
-    }
+    if (typeof window === 'undefined') return;
+
+    const config = JSON.parse(localStorage.getItem('hierarchyConfig') || '[]') as string[];
+    const headers = dataStore.getHeaders();
+    const types = getFieldTypes();
+
+    setHierarchyConfig(config);
+    setAvailableFields(headers);
+    setFieldTypes(types);
     setLoading(false);
   }, []);
 
-  // Drag handlers для иерархии
-  const handleDragStart = (e: DragEvent<HTMLDivElement>, item: string) => {
-    setDraggedItem(item);
-    e.dataTransfer.effectAllowed = 'move';
+  const handleSaveConfig = (): void => {
+    localStorage.setItem('hierarchyConfig', JSON.stringify(hierarchyConfig));
+    setSaved(true);
+    setTimeout(() => setSaved(false), 3000);
   };
 
-  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  };
+  const handleAddField = (field: string): void => {
+    if (!hierarchyConfig.includes(field)) {
+      const newConfig = [...hierarchyConfig, field];
+      setHierarchyConfig(newConfig);
 
-  const handleDropInHierarchy = (e: DragEvent<HTMLDivElement>, targetIndex: number) => {
-    e.preventDefault();
-    if (!draggedItem) return;
-
-    const newLevels = [...hierarchyLevels];
-    const draggedIndex = newLevels.indexOf(draggedItem);
-
-    if (draggedIndex !== -1) {
-      // Перемещение внутри иерархии
-      newLevels.splice(draggedIndex, 1);
-      newLevels.splice(targetIndex, 0, draggedItem);
-    } else {
-      // Добавление из доступных полей
-      newLevels.splice(targetIndex, 0, draggedItem);
-    }
-
-    setHierarchyLevels(newLevels);
-    setDraggedItem(null);
-  };
-
-  const handleDropInAvailable = (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (!draggedItem) return;
-
-    // Удалить из иерархии
-    setHierarchyLevels(prev => prev.filter(item => item !== draggedItem));
-    setDraggedItem(null);
-  };
-
-  const addToHierarchy = (field: string) => {
-    if (!hierarchyLevels.includes(field)) {
-      setHierarchyLevels([...hierarchyLevels, field]);
+      // Обновляем fieldTypes чтобы отметить поле как используемое в иерархии
+      const updated = {
+        ...fieldTypes,
+        [field]: {
+          ...fieldTypes[field],
+          isInHierarchy: true,
+        },
+      };
+      setFieldTypes(updated);
+      saveFieldTypes(updated);
     }
   };
 
-  const removeFromHierarchy = (field: string) => {
-    setHierarchyLevels(prev => prev.filter(item => item !== field));
+  const handleRemoveField = (index: number): void => {
+    const field = hierarchyConfig[index];
+    const newConfig = hierarchyConfig.filter((_, i) => i !== index);
+    setHierarchyConfig(newConfig);
+
+    // Обновляем fieldTypes чтобы отметить поле как не используемое в иерархии
+    const updated = {
+      ...fieldTypes,
+      [field]: {
+        ...fieldTypes[field],
+        isInHierarchy: false,
+      },
+    };
+    setFieldTypes(updated);
+    saveFieldTypes(updated);
   };
 
-  const saveHierarchy = () => {
-    localStorage.setItem('hierarchyConfig', JSON.stringify(hierarchyLevels));
-    alert('✅ Иерархия успешно сохранена!');
+  const handleDragStart = (index: number): void => {
+    setDraggedIndex(index);
   };
 
-  const resetHierarchy = () => {
-    if (confirm('Вы уверены? Это удалит текущую конфигурацию иерархии.')) {
-      setHierarchyLevels([]);
-      localStorage.removeItem('hierarchyConfig');
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (targetIndex: number): void => {
+    if (draggedIndex === null || draggedIndex === targetIndex) {
+      setDraggedIndex(null);
+      return;
     }
+
+    const newConfig = [...hierarchyConfig];
+    const [draggedItem] = newConfig.splice(draggedIndex, 1);
+    newConfig.splice(targetIndex, 0, draggedItem);
+    setHierarchyConfig(newConfig);
+    setDraggedIndex(null);
+  };
+
+  const categoricalFields = availableFields.filter(
+    (field) => fieldTypes[field]?.type === 'categorical' && fieldTypes[field]?.isVisible
+  );
+
+  const unselectedFields = categoricalFields.filter((field) => !hierarchyConfig.includes(field));
+
+  const hierarchyLevelLabels: Record<number, string> = {
+    0: 'Первый уровень',
+    1: 'Второй уровень',
+    2: 'Третий уровень',
+    3: 'Четвёртый уровень',
+    4: 'Пятый уровень',
   };
 
   if (loading) {
     return (
-      <Loader />
-    );
-  }
-
-  if (!sheets || sheets.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-8 max-w-md mx-auto">
-          <AlertCircle className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
-          <p className="text-xl text-gray-800 mb-2">Нет загруженных данных</p>
-          <p className="text-gray-600">
-            Загрузите Excel файл на главной странице.
-          </p>
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
       </div>
     );
   }
-
-  const fieldsNotInHierarchy = availableFields.filter(
-    field => !hierarchyLevels.includes(field)
-  );
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Настройка иерархии данных</h1>
-        <p className="text-gray-600">
-          Перетащите категориальные поля в нужном порядке: от большего уровня к меньшему
+    <div className="space-y-8">
+      {/* Информация */}
+      <div className="rounded-lg border border-blue-200 bg-blue-50 p-6">
+        <h2 className="text-lg font-semibold text-blue-900 mb-3">🏗️ Настройка иерархии</h2>
+        <p className="text-sm text-blue-800 mb-3">
+          Определите иерархическую структуру для фильтрации данных. Порядок важен: от общего
+          (более высокого уровня) к частному (более низкому).
         </p>
+        <div className="text-xs text-blue-700 bg-white p-2 rounded border border-blue-200">
+          💡 <strong>Пример:</strong> Регион → Город → Район
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Левая панель - Доступные поля */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Plus className="text-blue-600" size={24} />
-            Доступные категориальные поля
-          </h2>
-          
-          <div
-            onDrop={handleDropInAvailable}
-            onDragOver={handleDragOver}
-            className="space-y-2 min-h-[300px] border-2 border-dashed border-gray-300 rounded-lg p-4"
-          >
-            {fieldsNotInHierarchy.length > 0 ? (
-              fieldsNotInHierarchy.map((field) => (
-                <div
-                  key={field}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, field)}
-                  className="bg-gray-50 border border-gray-200 rounded-lg p-3 cursor-move hover:bg-gray-100 hover:border-gray-300 transition-colors flex items-center justify-between group"
-                >
-                  <div className="flex items-center gap-2">
-                    <GripVertical size={18} className="text-gray-400 group-hover:text-gray-600" />
-                    <span className="font-medium text-gray-800">{field}</span>
-                  </div>
-                  <button
-                    onClick={() => addToHierarchy(field)}
-                    className="p-1 hover:bg-blue-100 rounded transition-colors"
-                    title="Добавить в иерархию"
-                  >
-                    <Plus size={18} className="text-blue-600" />
-                  </button>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-12 text-gray-400">
-                <p>Все доступные поля уже в иерархии</p>
-                <p className="text-sm mt-2">или</p>
-                <p className="text-sm">Перетащите элементы сюда для удаления</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Выбранная иерархия */}
+        <div className="lg:col-span-2">
+          <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+            <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+              <h3 className="font-semibold text-gray-900 flex items-center">
+                <CheckCircle className="w-5 h-5 text-green-600 mr-2" />
+                Выбранные уровни иерархии ({hierarchyConfig.length})
+              </h3>
+            </div>
+
+            {hierarchyConfig.length === 0 ? (
+              <div className="p-6 text-center">
+                <p className="text-gray-500 text-sm mb-4">Иерархия не настроена</p>
+                <p className="text-xs text-gray-400">Добавьте категориальные поля справа</p>
               </div>
-            )}
-          </div>
-
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg text-sm text-blue-800">
-            <p className="font-semibold mb-1">💡 Подсказка:</p>
-            <p>Только поля с типом &quot;Категориальный&quot; доступны для иерархии. Измените тип в разделе Настройки → Типы данных.</p>
-          </div>
-        </div>
-
-        {/* Правая панель - Иерархия */}
-        <div className="bg-white rounded-lg shadow-lg p-6">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <ArrowRight className="text-green-600" size={24} />
-            Структура иерархии
-          </h2>
-
-          <div className="space-y-3 min-h-[300px] border-2 border-dashed border-green-300 rounded-lg p-4 bg-green-50/30">
-            {hierarchyLevels.length > 0 ? (
-              hierarchyLevels.map((field, index) => (
-                <div key={field}>
+            ) : (
+              <div className="divide-y divide-gray-200">
+                {hierarchyConfig.map((field, index) => (
                   <div
+                    key={index}
                     draggable
-                    onDragStart={(e) => handleDragStart(e, field)}
+                    onDragStart={() => handleDragStart(index)}
                     onDragOver={handleDragOver}
-                    onDrop={(e) => handleDropInHierarchy(e, index)}
-                    className="bg-white border-2 border-green-200 rounded-lg p-4 cursor-move hover:border-green-400 hover:shadow-md transition-all group"
+                    onDrop={() => handleDrop(index)}
+                    className={`
+                      flex items-center gap-3 px-6 py-4 cursor-move transition-colors
+                      ${draggedIndex === index ? 'bg-blue-100 opacity-50' : 'hover:bg-gray-50'}
+                    `}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <GripVertical size={18} className="text-gray-400 group-hover:text-gray-600" />
-                        <div className="flex items-center gap-2">
-                          <div className="bg-green-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold">
-                            {index + 1}
-                          </div>
-                          <span className="font-semibold text-gray-800">{field}</span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => removeFromHierarchy(field)}
-                        className="p-1 hover:bg-red-100 rounded transition-colors"
-                        title="Удалить из иерархии"
-                      >
-                        <Trash2 size={18} className="text-red-600" />
-                      </button>
-                    </div>
-                    <div className="ml-9 mt-2 text-xs text-gray-500">
-                      {index === 0 && 'Верхний уровень (самый широкий)'}
-                      {index === hierarchyLevels.length - 1 && index > 0 && 'Нижний уровень (самый детальный)'}
-                      {index > 0 && index < hierarchyLevels.length - 1 && `Уровень ${index + 1}`}
-                    </div>
-                  </div>
-                  
-                  {index < hierarchyLevels.length - 1 && (
-                    <div className="flex justify-center py-1">
-                      <ArrowRight size={20} className="text-green-600" />
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-12 text-gray-400">
-                <p className="text-lg mb-2">Перетащите поля сюда</p>
-                <p className="text-sm">для создания иерархической структуры</p>
-              </div>
-            )}
-          </div>
+                    <GripVertical className="w-5 h-5 text-gray-400 flex-shrink-0" />
 
-          {/* Превью иерархии */}
-          {hierarchyLevels.length > 0 && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-              <p className="text-sm font-semibold text-gray-700 mb-2">📊 Превью структуры:</p>
-              <div className="flex items-center gap-2 text-sm text-gray-600 flex-wrap">
-                {hierarchyLevels.map((field, index) => (
-                  <div key={field} className="flex items-center gap-2">
-                    <span className="bg-green-100 text-green-800 px-2 py-1 rounded font-medium">
-                      {field}
-                    </span>
-                    {index < hierarchyLevels.length - 1 && (
-                      <span className="text-gray-400">→</span>
-                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-900">{field}</div>
+                      <div className="text-xs text-gray-500">
+                        {hierarchyLevelLabels[index] || `Уровень ${index + 1}`}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleRemoveField(index)}
+                      className="p-2 text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* Кнопка сохранения */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex gap-2">
+              <button
+                onClick={handleSaveConfig}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center font-medium"
+              >
+                <Save className="w-4 h-4 mr-2" />
+                Сохранить конфигурацию
+              </button>
+
+              {saved && (
+                <div className="px-4 py-2 bg-green-100 text-green-700 rounded-lg text-sm font-medium flex items-center">
+                  ✓ Сохранено
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Доступные поля */}
+        <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+          <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+            <h3 className="font-semibold text-gray-900 flex items-center">
+              <Plus className="w-5 h-5 text-orange-600 mr-2" />
+              Доступные поля ({unselectedFields.length})
+            </h3>
+          </div>
+
+          {unselectedFields.length === 0 ? (
+            <div className="p-6 text-center">
+              <p className="text-gray-500 text-sm">Нет доступных полей</p>
+              <p className="text-xs text-gray-400 mt-2">
+                В настройках должны быть категориальные видимые поля
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+              {unselectedFields.map((field) => (
+                <button
+                  key={field}
+                  onClick={() => handleAddField(field)}
+                  className="w-full text-left px-6 py-3 hover:bg-blue-50 transition-colors flex items-center justify-between group"
+                >
+                  <span className="text-sm font-medium text-gray-900 truncate">{field}</span>
+                  <Plus className="w-4 h-4 text-gray-400 group-hover:text-blue-600 flex-shrink-0" />
+                </button>
+              ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* Кнопки управления */}
-      <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
-          <div className="text-sm text-gray-600">
-            {hierarchyLevels.length > 0 ? (
-              <span>✅ Настроено <strong>{hierarchyLevels.length}</strong> уровней иерархии</span>
-            ) : (
-              <span>❌ Иерархия не настроена</span>
-            )}
-          </div>
+      {/* Требования */}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
+        <h3 className="font-semibold text-amber-900 mb-3">⚠️ Требования к полям</h3>
+        <ul className="text-sm text-amber-800 space-y-2">
+          <li className="flex items-start gap-2">
+            <span className="text-amber-600 flex-shrink-0">•</span>
+            <span>Поле должно быть типа "Категориальное"</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-amber-600 flex-shrink-0">•</span>
+            <span>Поле должно быть отмечено как "Видимо в фильтрах и формулах"</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-amber-600 flex-shrink-0">•</span>
+            <span>Поле должно быть отмечено как "Использовать в иерархии" в основных настройках</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-amber-600 flex-shrink-0">•</span>
+            <span>Порядок в иерархии должен быть от общего к частному</span>
+          </li>
+          <li className="flex items-start gap-2">
+            <span className="text-amber-600 flex-shrink-0">•</span>
+            <span>Перетащите поля для изменения порядка</span>
+          </li>
+        </ul>
+      </div>
 
-          <div className="flex gap-3">
-            <button
-              onClick={resetHierarchy}
-              disabled={hierarchyLevels.length === 0}
-              className="px-6 py-2 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Очистить
-            </button>
-            <button
-              onClick={saveHierarchy}
-              disabled={hierarchyLevels.length === 0}
-              className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Save size={20} />
-              Сохранить иерархию
-            </button>
+      {/* Текущая конфигурация */}
+      {hierarchyConfig.length > 0 && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-6">
+          <h3 className="font-semibold text-green-900 mb-3">✓ Текущая конфигурация</h3>
+          <div className="text-sm text-green-800 space-y-1">
+            {hierarchyConfig.map((field, idx) => (
+              <div key={idx} className="flex items-center gap-2">
+                <span className="w-6 h-6 rounded-full bg-green-200 text-green-700 flex items-center justify-center text-xs font-bold">
+                  {idx + 1}
+                </span>
+                <span>{field}</span>
+              </div>
+            ))}
           </div>
         </div>
-      </div>
-
-      {/* Инструкция */}
-      <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <h3 className="font-semibold text-blue-900 mb-3">📖 Как использовать:</h3>
-        <ol className="list-decimal list-inside space-y-2 text-blue-800 text-sm">
-          <li>Перетащите категориальные поля из левой панели в правую в нужном порядке</li>
-          <li>Первый элемент — самый широкий уровень (например, Область)</li>
-          <li>Последний элемент — самый детальный уровень (например, Улица)</li>
-          <li>Измените порядок, перетаскивая элементы внутри иерархии</li>
-          <li>Удалите элемент, перетащив его обратно влево или нажав на корзину</li>
-          <li>Нажмите &quot;Сохранить&quot; после настройки</li>
-        </ol>
-      </div>
+      )}
     </div>
   );
 }

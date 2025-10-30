@@ -194,7 +194,7 @@ export class SQLEngine {
         evaluatedExpr = evaluatedExpr.replace(new RegExp(`\\b${header}\\b`, 'g'), replacement);
       });
 
-      // eslint-disable-next-line no-eval
+       
       return eval(evaluatedExpr);
     } catch (e) {
       return null;

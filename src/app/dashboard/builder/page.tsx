@@ -8,7 +8,6 @@ import { Dashboard, ChartConfig } from '@/types/dashboard-builder';
 import { 
   FileSpreadsheet,
   Plus,
-  Save,
   Eye,
   EyeOff,
   Download,
@@ -339,7 +338,7 @@ export default function DashboardBuilderPage() {
         localStorage.setItem('dashboards', JSON.stringify(updated));
         
         alert('Дашборд импортирован!');
-      } catch (err) {
+      } catch {
         alert('Ошибка импорта файла');
       }
     };
