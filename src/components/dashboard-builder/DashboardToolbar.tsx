@@ -3,6 +3,7 @@
 
 import { Plus, BarChart3, Info, Zap } from 'lucide-react';
 import { Card } from '@/components/common';
+import Button from '@/components/common/Button';
 import type { Dashboard } from '@/types/dashboard-builder';
 
 interface DashboardToolbarProps {
@@ -11,15 +12,10 @@ interface DashboardToolbarProps {
   className?: string;
 }
 
-export function DashboardToolbar({
-  dashboard,
-  onAddChart,
-  className = '',
-}: DashboardToolbarProps) {
+export function DashboardToolbar({ dashboard, onAddChart, className = '' }: DashboardToolbarProps) {
   return (
     <Card className={`bg-gradient-to-r from-blue-50 to-purple-50 border-l-4 border-l-blue-500 ${className}`}>
       <div className="flex items-center justify-between">
-        {/* Информация о дашборде */}
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-blue-100 rounded-lg">
@@ -39,20 +35,15 @@ export function DashboardToolbar({
           </div>
         </div>
 
-        {/* Кнопка добавления графика */}
-        <button
-          onClick={onAddChart}
-          className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg flex items-center gap-2 font-bold hover:from-blue-700 hover:to-purple-700 transition-all shadow-md hover:shadow-lg transform hover:scale-105"
-        >
-          <Plus size={20} />
-          <span>Добавить график</span>
-        </button>
+        <Button variant="primary" size="md" onClick={onAddChart}>
+          <Plus className="w-4 h-4 mr-2" />
+          Добавить график
+        </Button>
       </div>
     </Card>
   );
 }
 
-// Компонент для пустого состояния дашборда
 export function EmptyDashboardState({ onAddChart }: { onAddChart: () => void }) {
   return (
     <Card className="text-center py-16">
@@ -63,9 +54,7 @@ export function EmptyDashboardState({ onAddChart }: { onAddChart: () => void }) 
           </div>
         </div>
         
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">
-          Дашборд пуст
-        </h3>
+        <h3 className="text-2xl font-bold text-gray-900 mb-2">Дашборд пуст</h3>
         
         <p className="text-gray-600 mb-8 text-lg leading-relaxed">
           Создайте интерактивные графики на основе ваших данных.
@@ -73,15 +62,11 @@ export function EmptyDashboardState({ onAddChart }: { onAddChart: () => void }) 
           Начните с добавления первого графика.
         </p>
         
-        <button
-          onClick={onAddChart}
-          className="inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-bold text-lg hover:from-blue-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
-        >
-          <Plus size={24} />
+        <Button variant="primary" size="lg" onClick={onAddChart}>
+          <Plus className="w-5 h-5 mr-2" />
           Добавить первый график
-        </button>
+        </Button>
         
-        {/* Подсказки */}
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
           <div className="flex items-start gap-2 p-3 bg-blue-50 rounded-lg">
             <BarChart3 className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
