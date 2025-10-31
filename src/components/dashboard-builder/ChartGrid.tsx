@@ -1,7 +1,7 @@
 // src/components/dashboard-builder/ChartGrid.tsx
 'use client';
 
-import { ChartRenderer } from './ChartRenderer';
+import ChartRenderer from './ChartRenderer';
 import { EmptyDashboardState } from './DashboardToolbar';
 import type { ChartConfig } from '@/types/dashboard-builder';
 import type { ChartDataPoint } from '@/types/dashboard';
@@ -85,7 +85,7 @@ export function ChartGrid({
                   isEditMode={isEditMode}
                   onEdit={() => onEditChart(chart)}
                   onDelete={() => onDeleteChart(chart.id)}
-                  className="h-full"
+                  className="h-full" as any
                 />
               </div>
             </div>
@@ -123,7 +123,6 @@ export function ChartGrid({
   );
 }
 
-// Компонент статистики фильтрации
 export function FilterStats({ 
   totalRows, 
   filteredRows, 
