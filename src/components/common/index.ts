@@ -13,3 +13,6 @@ export { HierarchyDisplay } from './HierarchyDisplay';
 export { IndicatorsList } from './IndicatorList';
 export { PlaceholderCard } from './PlaceholderCard';
 export { SimpleEmptyState } from './SimpleEmptyState';
+export { KeyValueRow } from './KeyValueRow';
+export { ConfirmMenu } from './ConfirmMenu';
+export { Section } from './Section';

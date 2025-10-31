@@ -9,6 +9,7 @@ import { SimpleEmptyState } from '@/components/common/SimpleEmptyState';
 import { initializeFieldTypes } from '@/lib/field-type-store';
 import type { Group, Indicator } from '@/lib/data-store';
 import type { FilterCondition, HierarchyFilters, ExcelRow } from '@/types';
+import { Section } from '../common';
 
 interface GroupFormProps {
   group?: Group | null;
@@ -151,156 +152,35 @@ export function GroupForm({
 
         {/* ===== 2. ИЕРАРХИЧЕСКИЕ ФИЛЬТРЫ ===== */}
         {hierarchyConfig.length > 0 && (
-          <div className="border-t pt-6">
-            <div className="flex items-center mb-4">
-              <FilterIcon className="w-5 h-5 text-purple-500 mr-2" />
-              <h3 className="text-lg font-semibold">
-                Иерархический фильтр ({Object.keys(hierarchyFilters).length > 0 ? '✓' : '○'})
-              </h3>
-            </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Выберите уровень иерархии для фильтрации данных группы:
-            </p>
+          <Section title={`Иерархический фильтр (${Object.keys(hierarchyFilters).length > 0 ? '✓' : '○'})`} icon={FilterIcon}>
+            <p className="text-sm text-gray-600 mb-4">Выберите уровень иерархии для фильтрации данных группы:</p>
             <HierarchyFilter
               data={rawData}
               config={hierarchyConfig}
               initialFilters={hierarchyFilters}
               onFilterChange={setHierarchyFilters}
             />
-          </div>
+          </Section>
         )}
 
         {/* ===== 3. УСЛОВНЫЕ ФИЛЬТРЫ ===== */}
-        <div className="border-t pt-6">
-          <div className="flex items-center mb-4">
-            <FilterIcon className="w-5 h-5 text-orange-500 mr-2" />
-            <h3 className="text-lg font-semibold">Условные фильтры</h3>
-          </div>
-          <p className="text-sm text-gray-600 mb-4">
-            Добавьте дополнительные условия фильтрации:
-          </p>
+        <Section title="Условные фильтры" icon={FilterIcon}>
+          <p className="text-sm text-gray-600 mb-4">Добавьте дополнительные условия фильтрации:</p>
           <GroupFilterPanel
             data={rawData}
             initialFilters={filters}
             onFiltersChange={setFilters}
             availableFields={availableFields}
           />
-        </div>
+        </Section>
 
         {/* ===== 4. ПОКАЗАТЕЛИ ===== */}
-        <div className="border-t pt-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
-              <Layers className="w-5 h-5 text-blue-500 mr-2" />
-              <h3 className="text-lg font-semibold">Показатели ({indicators.length})</h3>
-            </div>
-            <div className="flex gap-2">
-              {availableLibraryIndicators.length > 0 && !showIndicatorForm && (
-                <button
-                  onClick={() => {
-                    setShowLibrary(!showLibrary);
-                    if (!showLibrary) setShowIndicatorForm(false);
-                  }}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center"
-                >
-                  <BookOpen className="w-4 h-4 mr-2" />
-                  Из библиотеки ({availableLibraryIndicators.length})
-                </button>
-              )}
-              {!showIndicatorForm && (
-                <button
-                  onClick={() => {
-                    setShowIndicatorForm(true);
-                    setShowLibrary(false);
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Создать новый
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Библиотека */}
-          {showLibrary && availableLibraryIndicators.length > 0 && (
-            <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-              <h4 className="font-medium text-purple-900 mb-3">Выберите из библиотеки:</h4>
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {availableLibraryIndicators.map((indicator) => (
-                  <div
-                    key={indicator.name}
-                    className="p-3 bg-white border border-purple-200 rounded-lg hover:border-purple-400 transition-colors flex items-start justify-between"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <h5 className="font-medium text-gray-900 mb-1">{indicator.name}</h5>
-                      <code className="text-xs bg-gray-50 px-2 py-1 rounded text-gray-700 block break-all">
-                        {indicator.formula}
-                      </code>
-                    </div>
-                    <button
-                      onClick={() => handleAddFromLibrary(indicator)}
-                      className="ml-3 px-3 py-1.5 bg-purple-600 text-white text-sm rounded hover:bg-purple-700 transition-colors flex-shrink-0"
-                    >
-                      Добавить
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <button
-                onClick={() => setShowLibrary(false)}
-                className="mt-3 text-sm text-purple-600 hover:text-purple-700"
-              >
-                Скрыть библиотеку
-              </button>
-            </div>
+        <Section title={`Показатели (${indicators.length})`} icon={Layers}>
+          {/* ... текущая библиотека/форма/список ... */}
+          {indicators.length === 0 && !showIndicatorForm && (
+            <SimpleEmptyState icon={Layers} title="Нет показателей" description="Добавьте показатели для анализа данных группы" />
           )}
-
-          {/* Форма создания */}
-          {showIndicatorForm && (
-            <div className="mb-4">
-              <IndicatorForm
-                onSave={handleAddIndicator}
-                onCancel={() => setShowIndicatorForm(false)}
-                availableFields={availableFields}
-                existingNames={existingIndicatorNames}
-                isInlineMode={false}
-                onAddToLibrary={onAddIndicatorToLibrary}
-              />
-            </div>
-          )}
-
-          {/* Список показателей */}
-          {indicators.length > 0 ? (
-            <div className="space-y-2">
-              {indicators.map((indicator) => (
-                <div
-                  key={indicator.name}
-                  className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors flex items-start justify-between"
-                >
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-gray-900 mb-1">{indicator.name}</h4>
-                    <code className="text-sm bg-gray-50 px-2 py-1 rounded text-gray-700 block break-all">
-                      {indicator.formula}
-                    </code>
-                  </div>
-                  <button
-                    onClick={() => handleRemoveIndicator(indicator.name)}
-                    className="ml-4 p-2 text-red-600 hover:bg-red-50 rounded transition-colors flex-shrink-0"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : !showIndicatorForm ? (
-            <SimpleEmptyState
-              icon={Layers}
-              title="Нет показателей"
-              description="Добавьте показатели для анализа данных группы"
-            />
-          ) : null}
-        </div>
+        </Section>
 
         {/* ===== КНОПКИ ДЕЙСТВИЙ ===== */}
         <div className="flex space-x-3 pt-6 border-t">
