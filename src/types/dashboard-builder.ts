@@ -1,10 +1,13 @@
 export type ChartType = 'bar' | 'line' | 'pie' | 'area' | 'metric' | 'table';
+export type DataSource = 'groups' | 'sql' | 'raw';
+export type DataScope = 'hierarchy' | 'global';
 
 export interface ChartConfig {
   id: string;
   type: ChartType;
   title: string;
-  dataSource: 'groups' | 'sql' | 'raw';
+  dataSource: DataSource;
+  dataScope?: DataScope; // Новое поле: учитывать ли иерархические фильтры
   
   // Для groups
   groupIds?: string[];
@@ -23,20 +26,11 @@ export interface ChartConfig {
   showLegend?: boolean;
   showGrid?: boolean;
   
-  // Позиция
+  // Позиция в сетке
   x: number;
   y: number;
-  w: number; // ширина в единицах сетки
-  h: number; // высота в единицах сетки
-}
-
-export interface Dashboard {
-  id: string;
-  name: string;
-  description?: string;
-  charts: ChartConfig[];
-  createdAt: number;
-  updatedAt: number;
+  w: number; // ширина в единицах сетки (1-12)
+  h: number; // высота в единицах сетки (1-12)
 }
 
 export interface DashboardFilter {
@@ -57,7 +51,7 @@ export interface Dashboard {
   name: string;
   description?: string;
   charts: ChartConfig[];
-  filters: DashboardFilter[]; // Добавляем фильтры
+  filters: DashboardFilter[];
   createdAt: number;
   updatedAt: number;
 }
