@@ -85,7 +85,6 @@ export function ChartGrid({
                   isEditMode={isEditMode}
                   onEdit={() => onEditChart(chart)}
                   onDelete={() => onDeleteChart(chart.id)}
-                  className="h-full" as any
                 />
               </div>
             </div>
