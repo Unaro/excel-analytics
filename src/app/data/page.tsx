@@ -18,6 +18,8 @@ import {
   List,
   Grid,
 } from 'lucide-react';
+import { Card, SimpleEmptyState } from '@/components/common';
+import { Table, TBody, TD, TH, THead, TR } from '@/components/common/table';
 
 interface ColumnVisibility {
   [key: string]: boolean;
@@ -232,9 +234,11 @@ export default function DataPage() {
 
   if (!sheets || sheets.length === 0) {
     return (
-      <div className="text-center py-12">
-        <p className="text-xl text-gray-600">Нет загруженных данных</p>
-      </div>
+      <SimpleEmptyState
+        icon={List}
+        title="Нет загруженных данных"
+        description="Загрузите Excel/CSV на главной странице, чтобы начать работу"
+      />
     );
   }
 
@@ -249,7 +253,7 @@ export default function DataPage() {
       </div>
 
       {/* Панель инструментов */}
-      <div className="bg-white rounded-xl shadow-lg p-4 mb-6 space-y-4">
+      <Card title="Панель инструментов">
         {/* Строка 1: Основные действия */}
         <div className="flex flex-wrap items-center gap-3">
           {/* Поиск */}
@@ -415,11 +419,11 @@ export default function DataPage() {
             </div>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Статистика по выбранным колонкам */}
       {columnStats && (
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl shadow-lg p-4 mb-6">
+        <Card title="Статистика по выбранным колонкам">
           <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <BarChart3 size={20} />
             Статистика по выбранным колонкам
@@ -453,111 +457,82 @@ export default function DataPage() {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Таблица или карточки */}
       {viewMode === 'table' ? (
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+        <Card title="Данные">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  {/* <th className="px-4 py-3 text-left">
-                    <input
-                      type="checkbox"
-                      className="w-4 h-4"
-                      title="Выбрать все колонки для статистики"
-                    />
-                  </th> */}
+            <Table>
+              <THead>
+                <TR>
                   {visibleHeaders.map((header) => (
-                    <th
+                    <TH
                       key={header}
+                      className="cursor-pointer"
                       onClick={() => handleSort(header)}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span>{header}</span>
                         <div className="flex flex-col">
                           <ChevronUp
                             size={14}
-                            className={`${
-                              sortColumn === header && sortDirection === 'asc'
-                                ? 'text-blue-600'
-                                : 'text-gray-300'
-                            }`}
+                            className={sortColumn === header && sortDirection === 'asc' ? 'text-blue-600' : 'text-gray-300'}
                           />
                           <ChevronDown
                             size={14}
-                            className={`-mt-1 ${
-                              sortColumn === header && sortDirection === 'desc'
-                                ? 'text-blue-600'
-                                : 'text-gray-300'
-                            }`}
+                            className={`-mt-1 ${sortColumn === header && sortDirection === 'desc' ? 'text-blue-600' : 'text-gray-300'}`}
                           />
                         </div>
                       </div>
-                    </th>
+                    </TH>
                   ))}
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+                </TR>
+              </THead>
+              <TBody>
                 {paginatedRows.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                    {/* <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        className="w-4 h-4"
-                        title="Выбрать для статистики"
-                      />
-                    </td> */}
+                  <TR key={idx}>
                     {visibleHeaders.map((header) => (
-                      <td
+                      <TD
                         key={header}
                         onClick={() => toggleColumnSelection(header)}
-                        className={`px-6 py-4 whitespace-nowrap text-sm ${
-                          selectedColumns.has(header)
-                            ? 'bg-blue-50 font-semibold text-blue-900'
-                            : 'text-gray-900'
-                        } cursor-pointer`}
+                        className={selectedColumns.has(header) ? 'bg-blue-50 font-semibold text-blue-900 cursor-pointer' : 'cursor-pointer'}
                       >
                         {typeof row[header] === 'number'
                           ? row[header].toLocaleString('ru-RU')
                           : row[header]}
-                      </td>
+                      </TD>
                     ))}
-                  </tr>
+                  </TR>
                 ))}
-              </tbody>
-            </table>
+              </TBody>
+            </Table>
           </div>
-        </div>
+        </Card>
       ) : (
-        /* Режим карточек */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {paginatedRows.map((row, idx) => (
-            <div
-              key={idx}
-              className="bg-white rounded-lg shadow-lg p-4 hover:shadow-xl transition-shadow border border-gray-200"
-            >
-              <div className="space-y-2">
-                {visibleHeaders.map((header) => (
-                  <div key={header} className="flex justify-between items-start">
-                    <span className="text-sm font-medium text-gray-600 mr-2">
-                      {header}:
-                    </span>
-                    <span className="text-sm text-gray-900 text-right">
-                      {typeof row[header] === 'number'
-                        ? row[header].toLocaleString('ru-RU')
-                        : row[header]}
-                    </span>
-                  </div>
-                ))}
+        <Card title="Данные (карточки)">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {paginatedRows.map((row, idx) => (
+              <div key={idx} className="bg-white rounded-lg border border-gray-200 p-4 hover:shadow transition-shadow">
+                <div className="space-y-2">
+                  {visibleHeaders.map((header) => (
+                    <div key={header} className="flex justify-between items-start">
+                      <span className="text-sm font-medium text-gray-600 mr-2">{header}:</span>
+                      <span className="text-sm text-gray-900 text-right">
+                        {typeof row[header] === 'number'
+                          ? row[header].toLocaleString('ru-RU')
+                          : row[header]}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </Card>
       )}
+
 
       {/* Пагинация */}
       <div className="mt-6 flex flex-wrap items-center justify-between gap-4 bg-white rounded-xl shadow-lg p-4">

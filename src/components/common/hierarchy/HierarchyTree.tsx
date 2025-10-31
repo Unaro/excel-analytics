@@ -14,9 +14,9 @@ export interface TreeNode {
 }
 
 interface HierarchyTreeProps {
-  data: any[];
-  levels: string[]; // порядок уровней иерархии
-  selectedPath: string[] | null; // один выбранный путь
+  data: Record<string, string | number | boolean | null | undefined>[];
+  levels: string[];
+  selectedPath: string[] | null;
   onSelectionChange: (path: string[] | null) => void;
   maxHeight?: string;
 }

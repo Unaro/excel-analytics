@@ -1,4 +1,4 @@
-// src/components/common/Card.tsx
+// src/components/common/Card.tsx (обновленная версия)
 'use client';
 
 import { ReactNode } from 'react';
@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 
 export interface CardProps {
   title: string;
-  subtitle?: ReactNode; // Изменили с string на ReactNode
+  subtitle?: ReactNode;
   color?: string;
   href?: string;
   rightBadge?: ReactNode;
@@ -15,6 +15,7 @@ export interface CardProps {
   footer?: ReactNode;
   className?: string;
   hoverEffect?: boolean;
+  shadow?: 'sm' | 'md' | 'lg' | 'xl' | 'none';
 }
 
 export function Card({
@@ -26,19 +27,30 @@ export function Card({
   children,
   footer,
   className,
-  hoverEffect = true,
+  hoverEffect = false, // по умолчанию отключен
+  shadow = 'lg',
 }: CardProps) {
+  const shadowClasses = {
+    none: '',
+    sm: 'shadow-sm',
+    md: 'shadow-md', 
+    lg: 'shadow-lg',
+    xl: 'shadow-xl'
+  };
+
   const cardContent = (
     <div
       className={cn(
         'group relative overflow-hidden bg-gradient-to-br from-white to-gray-50',
-        'rounded-xl shadow-lg border-l-4',
-        hoverEffect && 'hover:shadow-2xl transition-all duration-300 cursor-pointer transform hover:scale-105',
+        'rounded-xl border-l-4',
+        shadowClasses[shadow],
+        hoverEffect && 'hover:shadow-2xl transition-shadow duration-300',
+        href && 'cursor-pointer',
         className
       )}
       style={{ borderLeftColor: color }}
     >
-      {/* Градиентный фон */}
+      {/* Градиентный фон - только при hover эффекте */}
       {hoverEffect && (
         <div 
           className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl opacity-20 group-hover:opacity-30 transition-opacity"
@@ -52,7 +64,7 @@ export function Card({
           <div className="flex-1 min-w-0">
             <h3 className={cn(
               'text-xl font-bold text-gray-900 mb-2',
-              href && 'group-hover:text-blue-600 transition-colors'
+              href && hoverEffect && 'group-hover:text-blue-600 transition-colors'
             )}>
               {title}
             </h3>
