@@ -67,7 +67,6 @@ export function DashboardHeader({
     if (file) {
       onImportDashboard(file);
     }
-    // Сбрасываем значение input для повторного выбора того же файла
     e.target.value = '';
   };
 
@@ -97,7 +96,6 @@ export function DashboardHeader({
       <div className="bg-white shadow-md sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            {/* Название и селектор дашборда */}
             <div className="flex items-center gap-4 flex-1">
               <Layout size={32} className="text-blue-600" />
               <div className="flex-1">
@@ -134,8 +132,8 @@ export function DashboardHeader({
                     <select
                       value={currentDashboard?.id || ''}
                       onChange={(e) => {
-                        const dashboard = dashboards.find(d => d.id === e.target.value);
-                        onDashboardChange(dashboard || null);
+                        const dashboard = dashboards.find(d => d.id === e.target.value) || null;
+                        onDashboardChange(dashboard);
                       }}
                       className="text-xl font-bold border-none bg-transparent focus:outline-none cursor-pointer pr-2"
                     >
@@ -171,7 +169,6 @@ export function DashboardHeader({
               </div>
             </div>
 
-            {/* Действия */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowCreateDialog(true)}
@@ -238,7 +235,6 @@ export function DashboardHeader({
         </div>
       </div>
 
-      {/* Диалог создания дашборда */}
       {showCreateDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4">
