@@ -81,7 +81,10 @@ export default function DashboardBuilderPage() {
 
   const handleImportDashboard = async (file: File) => {
     const success = await dashboardManager.importDashboard(file);
-    setNotification({ type: success ? 'success' : 'error', message: success ? 'Дашборд успешно импортирован' : (dashboardManager.error || 'Ошибка импорта') });
+    setNotification({ 
+      type: success ? 'success' : 'error', 
+      message: success ? 'Дашборд успешно импортирован' : (dashboardManager.error || 'Ошибка импорта') 
+    });
     setTimeout(() => setNotification(null), 3000);
   };
 
@@ -116,7 +119,11 @@ export default function DashboardBuilderPage() {
 
   const activeFiltersCount = (
     Object.keys(hierarchyFilters).length +
-    (dashboardManager.currentDashboard?.filters.filter(f => (f.selectedValues && f.selectedValues.length > 0) || f.rangeMin != null || f.rangeMax != null || f.dateFrom || f.dateTo || f.searchTerm).length || 0)
+    (dashboardManager.currentDashboard?.filters.filter(f => 
+      (f.selectedValues && f.selectedValues.length > 0) || 
+      f.rangeMin != null || f.rangeMax != null || 
+      f.dateFrom || f.dateTo || f.searchTerm
+    ).length || 0)
   );
 
   const handleDashboardChange = (dashboard: Dashboard | null) => {
@@ -146,10 +153,16 @@ export default function DashboardBuilderPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
       {notification && (
-        <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg animate-slide-in-right ${notification.type === 'success' ? 'bg-green-100 border border-green-200 text-green-800' : notification.type === 'error' ? 'bg-red-100 border border-red-200 text-red-800' : 'bg-blue-100 border border-blue-200 text-blue-800'}`}>
+        <div className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg animate-slide-in-right ${
+          notification.type === 'success' ? 'bg-green-100 border border-green-200 text-green-800' : 
+          notification.type === 'error' ? 'bg-red-100 border border-red-200 text-red-800' : 
+          'bg-blue-100 border border-blue-200 text-blue-800'
+        }`}>
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <span className="font-medium">{notification.message}</span>
-          <button onClick={() => setNotification(null)} className="ml-2 p-1 hover:bg-black hover:bg-opacity-10 rounded transition-colors">×</button>
+          <button onClick={() => setNotification(null)} className="ml-2 p-1 hover:bg-black hover:bg-opacity-10 rounded transition-colors">
+            ×
+          </button>
         </div>
       )}
 
@@ -164,7 +177,11 @@ export default function DashboardBuilderPage() {
         onDeleteDashboard={handleDeleteDashboard}
         onExportDashboard={handleExportDashboard}
         onImportDashboard={handleImportDashboard}
-        onRenameDashboard={(name) => { if (dashboardManager.currentDashboard) { dashboardManager.renameDashboard(dashboardManager.currentDashboard.id, name); } }}
+        onRenameDashboard={(name) => {
+          if (dashboardManager.currentDashboard) {
+            dashboardManager.renameDashboard(dashboardManager.currentDashboard.id, name);
+          }
+        }}
         activeFiltersCount={activeFiltersCount}
       />
 
@@ -172,11 +189,18 @@ export default function DashboardBuilderPage() {
         {dashboardManager.currentDashboard ? (
           <div className="space-y-6">
             {isEditMode && (
-              <DashboardToolbar dashboard={dashboardManager.currentDashboard} onAddChart={() => setEditingChart({})} />
+              <DashboardToolbar 
+                dashboard={dashboardManager.currentDashboard} 
+                onAddChart={() => setEditingChart({})} 
+              />
             )}
 
             {chartDataManager.filterStats.hasFilters && (
-              <FilterStats totalRows={chartDataManager.filterStats.totalRows} filteredRows={chartDataManager.filterStats.filteredRows} percentage={chartDataManager.filterStats.filterPercentage} />
+              <FilterStats 
+                totalRows={chartDataManager.filterStats.totalRows} 
+                filteredRows={chartDataManager.filterStats.filteredRows} 
+                percentage={chartDataManager.filterStats.filterPercentage} 
+              />
             )}
 
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
@@ -206,16 +230,14 @@ export default function DashboardBuilderPage() {
               </div>
 
               <div className="xl:col-span-3">
-                <div className="grid grid-cols-12 gap-4 auto-rows-auto">
-                  <ChartGrid
-                    charts={dashboardManager.currentDashboard.charts}
-                    getChartData={chartDataManager.getChartData}
-                    isEditMode={isEditMode}
-                    onEditChart={setEditingChart}
-                    onDeleteChart={handleDeleteChart}
-                    onAddChart={() => setEditingChart({})}
-                  />
-                </div>
+                <ChartGrid
+                  charts={dashboardManager.currentDashboard.charts}
+                  getChartData={chartDataManager.getChartData}
+                  isEditMode={isEditMode}
+                  onEditChart={setEditingChart}
+                  onDeleteChart={handleDeleteChart}
+                  onAddChart={() => setEditingChart({})}
+                />
               </div>
             </div>
           </div>
@@ -233,8 +255,13 @@ export default function DashboardBuilderPage() {
       {editingChart && (
         <ChartEditor
           config={editingChart}
-          availableGroups={chartDataManager.groupsData.map(g => ({ id: g.id, name: g.name, indicators: g.indicators }))}
+          availableGroups={chartDataManager.groupsData.map(g => ({ 
+            id: g.id, 
+            name: g.name, 
+            indicators: g.indicators 
+          }))}
           availableColumns={sheets[0]?.headers || []}
+          getAvailableIndicators={chartDataManager.getAvailableIndicators}
           onSave={handleSaveChart}
           onCancel={() => setEditingChart(null)}
         />
