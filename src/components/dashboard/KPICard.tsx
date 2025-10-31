@@ -1,3 +1,5 @@
+// src/components/dashboard/KPICard.tsx (рефакторинг)
+import { Card, ValueWithTrend } from '@/components/common';
 import { LucideIcon } from 'lucide-react';
 
 interface KPICardProps {
@@ -10,6 +12,7 @@ interface KPICardProps {
     value: number;
     isPositive: boolean;
   };
+  className?: string;
 }
 
 export default function KPICard({
@@ -19,34 +22,46 @@ export default function KPICard({
   icon: Icon,
   color = '#3b82f6',
   trend,
+  className,
 }: KPICardProps) {
-  return (
-    <div className="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow border-l-4"
-      style={{ borderLeftColor: color }}
+  const rightBadge = (
+    <div 
+      className="w-12 h-12 rounded-lg flex items-center justify-center"
+      style={{ backgroundColor: `${color}20` }}
     >
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1">
-          <p className="text-sm font-medium text-gray-600 mb-1">{title}</p>
-          <p className="text-3xl font-bold text-gray-900">{value}</p>
-          {subtitle && (
-            <p className="text-sm text-gray-500 mt-1">{subtitle}</p>
-          )}
-          {trend && (
-            <div className={`flex items-center gap-1 mt-2 text-sm font-semibold ${
-              trend.isPositive ? 'text-green-600' : 'text-red-600'
-            }`}>
-              <span>{trend.isPositive ? '↑' : '↓'}</span>
-              <span>{Math.abs(trend.value)}%</span>
-            </div>
-          )}
-        </div>
-        <div 
-          className="w-12 h-12 rounded-lg flex items-center justify-center"
-          style={{ backgroundColor: `${color}20` }}
-        >
-          <Icon size={24} style={{ color }} />
-        </div>
-      </div>
+      <Icon size={24} style={{ color }} />
     </div>
+  );
+
+  const subtitleNode = subtitle ? (
+    <span className="text-sm text-gray-600">{subtitle}</span>
+  ) : undefined;
+
+  const content = (
+    <div className="space-y-2">
+      <div className="text-3xl font-bold text-gray-900">
+        {typeof value === 'number' ? value.toFixed(2) : value}
+      </div>
+      {trend && (
+        <ValueWithTrend
+          value={`${Math.abs(trend.value)}%`}
+          trend={trend.isPositive ? 'up' : 'down'}
+          className="text-sm font-semibold"
+        />
+      )}
+    </div>
+  );
+
+  return (
+    <Card
+      title={title}
+      subtitle={subtitleNode}
+      color={color}
+      rightBadge={rightBadge}
+      className={className}
+      hoverEffect
+    >
+      {content}
+    </Card>
   );
 }
