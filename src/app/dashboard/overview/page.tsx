@@ -167,6 +167,10 @@ export default function OverviewPage(): React.ReactNode {
           />
         )}
 
+        {selectedGroups.length > 0 && tableData.length > 0 && (
+          <SummaryTable data={tableData} />
+        )}
+
         {selectedIndicators.length === 0 && selectedGroups.length > 0 && (
           <PlaceholderCard
             icon={RefreshCw}
