@@ -2,10 +2,10 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { X, Layers, Check, AlertCircle, Info, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Layers, AlertCircle, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/common/Card';
 import { useSubGroupCreator } from '@/hooks/useSubGroupCreator';
-import type { Group, Indicator } from '@/lib/data-store';
+import type { Group } from '@/lib/data-store';
 import type { ExcelRow } from '@/types';
 
 interface CreateSubGroupsModalProps {
@@ -125,7 +125,7 @@ export function CreateSubGroupsModal({
               ) : !currentLevel ? (
                 <p>Группа не имеет иерархических фильтров</p>
               ) : (
-                <p>Группа находится на последнем уровне иерархии "{nextLevel || currentLevel}"</p>
+                <p>Группа находится на последнем уровне иерархии &quot;{nextLevel || currentLevel}&quot;</p>
               )}
             </div>
             
@@ -154,7 +154,7 @@ export function CreateSubGroupsModal({
           title="Создание подгрупп"
           subtitle={
             <div className="flex items-center gap-2">
-              <span>{nextLevelValues.length} групп для уровня "{nextLevel}"</span>
+              <span>{nextLevelValues.length} групп для уровня &quot;{nextLevel}&quot;</span>
               {currentLevel && (
                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
                   Из: {currentLevel}
@@ -176,7 +176,7 @@ export function CreateSubGroupsModal({
                 <p className="font-medium mb-1">Будет создано {nextLevelValues.length} подгрупп</p>
                 <p>
                   Каждая подгруппа будет содержать все фильтры родительской группы плюс 
-                  фильтр по "{nextLevel}". Выберите, какие показатели копировать.
+                  фильтр по &quot;{nextLevel}&quot;. Выберите, какие показатели копировать.
                 </p>
               </div>
             </div>
@@ -198,7 +198,7 @@ export function CreateSubGroupsModal({
                     disabled={isCreating}
                   />
                   <p className="mt-1 text-xs text-gray-500">
-                    Пример: "{namePrefix || parentGroup.name} - {nextLevelValues[0] || 'Значение'}"
+                    Пример: &quot;{namePrefix || parentGroup.name} - {nextLevelValues[0] || 'Значение'}&quot;
                   </p>
                 </div>
 
@@ -312,7 +312,7 @@ export function CreateSubGroupsModal({
                   <div className="bg-gray-50 rounded-lg p-4">
                     <div className="text-center text-gray-600">
                       <Layers className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">Нажмите "Показать" для просмотра превью</p>
+                      <p className="text-sm">Нажмите &quot;Показать&quot; для просмотра превью</p>
                     </div>
                   </div>
                 )}
