@@ -32,24 +32,20 @@ export function useChartData({
         return dashboardFilters.every(filter => {
           const value = row[filter.column];
 
-          // SELECT фильтр
           if (filter.type === 'select' && filter.selectedValues && filter.selectedValues.length > 0) {
             return filter.selectedValues.includes(String(value));
           }
 
-          // MULTISELECT фильтр
           if (filter.type === 'multiselect' && filter.selectedValues && filter.selectedValues.length > 0) {
             return filter.selectedValues.includes(String(value));
           }
 
-          // RANGE фильтр
           if (filter.type === 'range') {
             if (typeof value !== 'number') return true;
             if (filter.rangeMin != null && value < filter.rangeMin) return false;
             if (filter.rangeMax != null && value > filter.rangeMax) return false;
           }
 
-          // DATE фильтр
           if (filter.type === 'date') {
             if (!value || typeof value === 'boolean') return true;
             
@@ -59,7 +55,6 @@ export function useChartData({
             if (filter.dateTo && dateValue > new Date(filter.dateTo)) return false;
           }
 
-          // SEARCH фильтр
           if (filter.type === 'search' && filter.searchTerm) {
             if (!value) return false;
             return String(value).toLowerCase().includes(filter.searchTerm.toLowerCase());
@@ -84,25 +79,22 @@ export function useChartData({
     };
   }, [hierarchyFilters]);
   
-  // Получение отфильтрованных данных
-  const filteredData = useMemo(() => {
+  // Получаем базовые данные с учётом фильтров дашборда
+  const baseFilteredData = useMemo(() => {
     if (!sheets || sheets.length === 0) return [];
-    
-    let data = sheets[0].rows;
-    
-    // Применяем фильтры в порядке: сначала иерархические, потом остальные
-    data = applyHierarchyFilters(data);
-    data = applyDashboardFilters(data);
-    
-    return data;
-  }, [sheets, applyHierarchyFilters, applyDashboardFilters]);
+    return applyDashboardFilters(sheets[0].rows);
+  }, [sheets, applyDashboardFilters]);
+  
+  // Получаем данные с учётом всех фильтров (для совместимости)
+  const filteredData = useMemo(() => {
+    return applyHierarchyFilters(baseFilteredData);
+  }, [baseFilteredData, applyHierarchyFilters]);
   
   // Вычисление данных для групп с учетом фильтров
   const groupsData = useMemo(() => {
     if (!sheets || sheets.length === 0 || groups.length === 0) return [];
 
     return groups.map(group => {
-      // Получаем самый глубокий фильтр из иерархических
       const getDeepestHierarchyFilter = (hierarchyFilters: Record<string, string> | undefined) => {
         if (!hierarchyFilters || !hierarchyConfig.length) return null;
         
@@ -119,7 +111,6 @@ export function useChartData({
 
       const deepestFilter = getDeepestHierarchyFilter(group.hierarchyFilters);
       
-      // Создаем массив всех фильтров группы
       const groupFilters = [
         ...group.filters,
         ...(deepestFilter ? [{
@@ -130,13 +121,9 @@ export function useChartData({
         }] : []),
       ];
 
-      // Применяем фильтры группы
       let groupData = applyFilters(sheets[0].rows, groupFilters);
-      
-      // Применяем дашбордные фильтры (но не иерархические)
       groupData = applyDashboardFilters(groupData);
 
-      // Вычисляем показатели
       const indicators = group.indicators.map(indicator => {
         try {
           const value = evaluateFormula(indicator.formula, groupData, sheets[0].headers);
@@ -156,20 +143,17 @@ export function useChartData({
     });
   }, [sheets, groups, hierarchyConfig, applyDashboardFilters]);
   
-  // Глобальные показатели (без групп)
+  // Глобальные показатели с учётом иерархических фильтров
   const globalIndicators = useMemo(() => {
     if (!sheets || sheets.length === 0) return [];
     
-    // Получаем все уникальные показатели из всех групп
-    const allIndicators = new Map<string, string>(); // name -> formula
-    
+    const allIndicators = new Map<string, string>();
     groups.forEach(group => {
       group.indicators.forEach(indicator => {
         allIndicators.set(indicator.name, indicator.formula);
       });
     });
     
-    // Вычисляем показатели на основе отфильтрованных данных
     const indicators = Array.from(allIndicators.entries()).map(([name, formula]) => {
       try {
         const value = evaluateFormula(formula, filteredData, sheets[0].headers);
@@ -182,15 +166,40 @@ export function useChartData({
     return indicators;
   }, [sheets, groups, filteredData]);
   
+  // Глобальные показатели без иерархических фильтров
+  const pureGlobalIndicators = useMemo(() => {
+    if (!sheets || sheets.length === 0) return [];
+    
+    const allIndicators = new Map<string, string>();
+    groups.forEach(group => {
+      group.indicators.forEach(indicator => {
+        allIndicators.set(indicator.name, indicator.formula);
+      });
+    });
+    
+    const indicators = Array.from(allIndicators.entries()).map(([name, formula]) => {
+      try {
+        const value = evaluateFormula(formula, baseFilteredData, sheets[0].headers);
+        return { name, value };
+      } catch {
+        return { name, value: 0 };
+      }
+    });
+    
+    return indicators;
+  }, [sheets, groups, baseFilteredData]);
+  
   // Функция для получения данных для конкретного графика
   const getChartData = useMemo(() => {
     return (config: ChartConfig): ChartDataPoint[] => {
+      // Определяем область данных
+      const useHierarchyFiltering = config.dataScope === 'hierarchy';
+      
       if (config.dataSource === 'groups' && config.groupIds && config.groupIds.length > 0) {
         // Данные из выбранных групп
         const selectedGroups = groupsData.filter(g => config.groupIds!.includes(g.id));
         
         if (config.indicators && config.indicators.length > 0) {
-          // Много показателей - создаем мульти-серийные данные
           return selectedGroups.map(group => {
             const result: ChartDataPoint = { name: group.name };
             config.indicators!.forEach(indicatorName => {
@@ -200,73 +209,108 @@ export function useChartData({
             return result;
           });
         } else {
-          // Один показатель - используем первый доступный
           return selectedGroups.map(group => ({
             name: group.name,
             value: group.data[0]?.value || 0,
           }));
         }
-      } else if (config.dataSource === 'raw' || !config.groupIds || config.groupIds.length === 0) {
-        // Глобальные показатели по всем данным
+      } else {
+        // Глобальные показатели
+        const sourceIndicators = useHierarchyFiltering ? globalIndicators : pureGlobalIndicators;
+        
         if (config.indicators && config.indicators.length > 0) {
           return config.indicators.map(indicatorName => {
-            const indicator = globalIndicators.find(i => i.name === indicatorName);
+            const indicator = sourceIndicators.find(i => i.name === indicatorName);
             return {
               name: indicatorName,
               value: indicator ? indicator.value : 0,
             };
           });
         } else {
-          return globalIndicators.map(indicator => ({
+          return sourceIndicators.map(indicator => ({
             name: indicator.name,
             value: indicator.value,
           }));
         }
       }
-      
-      return [];
     };
-  }, [groupsData, globalIndicators]);
+  }, [groupsData, globalIndicators, pureGlobalIndicators]);
   
-  // Получение доступных показателей
-  const availableIndicators = useMemo(() => {
-    const indicators = new Set<string>();
-    
-    groups.forEach(group => {
-      group.indicators.forEach(indicator => {
-        indicators.add(indicator.name);
-      });
-    });
-    
-    return Array.from(indicators).sort();
+  // Получение доступных показателей для выбранных групп
+  const getAvailableIndicators = useMemo(() => {
+    return (selectedGroupIds?: string[]): string[] => {
+      if (!selectedGroupIds || selectedGroupIds.length === 0) {
+        // Если группы не выбраны, возвращаем все показатели из библиотеки
+        const allIndicators = new Set<string>();
+        groups.forEach(group => {
+          group.indicators.forEach(indicator => {
+            allIndicators.add(indicator.name);
+          });
+        });
+        return Array.from(allIndicators).sort();
+      }
+      
+      // Находим общие показатели для выбранных групп
+      const selectedGroups = groups.filter(g => selectedGroupIds.includes(g.id));
+      
+      if (selectedGroups.length === 0) return [];
+      if (selectedGroups.length === 1) {
+        return selectedGroups[0].indicators.map(i => i.name).sort();
+      }
+      
+      // Находим пересечение показателей
+      const firstGroupIndicators = selectedGroups[0].indicators.map(i => i.name);
+      const commonIndicators = firstGroupIndicators.filter(indicator =>
+        selectedGroups.every(group => 
+          group.indicators.some(i => i.name === indicator)
+        )
+      );
+      
+      return commonIndicators.sort();
+    };
   }, [groups]);
+  
+  // Получение всех доступных показателей
+  const availableIndicators = useMemo(() => {
+    return getAvailableIndicators();
+  }, [getAvailableIndicators]);
   
   // Статистика по фильтрации
   const filterStats = useMemo(() => {
     const totalRows = sheets?.[0]?.rows.length || 0;
-    const filteredRows = filteredData.length;
-    const filterPercentage = totalRows > 0 ? Math.round((filteredRows / totalRows) * 100) : 0;
+    const baseFilteredRows = baseFilteredData.length;
+    const hierarchyFilteredRows = filteredData.length;
     
     return {
       totalRows,
-      filteredRows,
-      filterPercentage,
+      filteredRows: hierarchyFilteredRows,
+      baseFilteredRows,
+      filterPercentage: totalRows > 0 ? Math.round((hierarchyFilteredRows / totalRows) * 100) : 0,
       hasFilters: Object.keys(hierarchyFilters).length > 0 || dashboardFilters.some(f => 
         (f.selectedValues && f.selectedValues.length > 0) ||
         f.rangeMin != null || f.rangeMax != null ||
         f.dateFrom || f.dateTo || f.searchTerm
       ),
+      hasDashboardFilters: dashboardFilters.some(f => 
+        (f.selectedValues && f.selectedValues.length > 0) ||
+        f.rangeMin != null || f.rangeMax != null ||
+        f.dateFrom || f.dateTo || f.searchTerm
+      ),
+      hasHierarchyFilters: Object.keys(hierarchyFilters).length > 0,
     };
-  }, [sheets, filteredData, hierarchyFilters, dashboardFilters]);
+  }, [sheets, baseFilteredData, filteredData, hierarchyFilters, dashboardFilters]);
   
   return {
     // Обработанные данные
     filteredData,
+    baseFilteredData,
     groupsData,
     globalIndicators,
+    pureGlobalIndicators,
     
     // Функции для графиков
     getChartData,
+    getAvailableIndicators,
     
     // Метаданные
     availableIndicators,
