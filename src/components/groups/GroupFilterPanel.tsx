@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { Plus, X, Filter as FilterIcon } from 'lucide-react';
+import { Plus, X, Filter as FilterIcon, Info } from 'lucide-react';
 import { FieldSelect } from '@/components/common/FieldSelect';
 import { getConditionalFilterAllowedColumns } from '@/lib/metadata-manager';
 import { getFieldTypes, initializeFieldTypes } from '@/lib/field-type-store';
@@ -107,7 +107,7 @@ export function GroupFilterPanel({
   if (!initialized) {
     return (
       <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-        ℹ️ Инициализация типов полей...
+        <Info /> Инициализация типов полей...
       </div>
     );
   }
@@ -118,7 +118,7 @@ export function GroupFilterPanel({
         <p className="font-medium">⚠️ Нет доступных полей для условных фильтров</p>
         <p>
           Все ваши поля либо скрыты, либо используются в иерархии. Проверьте в настройках
-          (раздел "Основные"), что нужные поля отмечены как "Видимо в фильтрах и формулах".
+          (раздел &quot;Основные&quot;), что нужные поля отмечены как &quot;Видимо в фильтрах и формулах&quot;.
         </p>
       </div>
     );

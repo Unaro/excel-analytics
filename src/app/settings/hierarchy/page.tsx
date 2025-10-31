@@ -233,15 +233,15 @@ export default function SettingsHierarchyPage() {
         <ul className="text-sm text-amber-800 space-y-2">
           <li className="flex items-start gap-2">
             <span className="text-amber-600 flex-shrink-0">•</span>
-            <span>Поле должно быть типа "Категориальное"</span>
+            <span>Поле должно быть типа &quot;Категориальное&quot;</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="text-amber-600 flex-shrink-0">•</span>
-            <span>Поле должно быть отмечено как "Видимо в фильтрах и формулах"</span>
+            <span>Поле должно быть отмечено как &quot;Видимо в фильтрах и формулах&quot;</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="text-amber-600 flex-shrink-0">•</span>
-            <span>Поле должно быть отмечено как "Использовать в иерархии" в основных настройках</span>
+            <span>Поле должно быть отмечено как &quot;Использовать в иерархии&quot; в основных настройках</span>
           </li>
           <li className="flex items-start gap-2">
             <span className="text-amber-600 flex-shrink-0">•</span>
