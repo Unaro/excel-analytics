@@ -3,9 +3,10 @@
 
 import ChartRenderer from './ChartRenderer';
 import { EmptyDashboardState } from './DashboardToolbar';
+import { ResizableChart } from './ResizableChart';
 import type { ChartConfig } from '@/types/dashboard-builder';
 import type { ChartDataPoint } from '@/types/dashboard';
-import { Plus } from 'lucide-react';
+import { Plus, BarChart3, Zap } from 'lucide-react';
 
 interface ChartGridProps {
   charts: ChartConfig[];
@@ -13,6 +14,7 @@ interface ChartGridProps {
   isEditMode: boolean;
   onEditChart: (chart: ChartConfig) => void;
   onDeleteChart: (chartId: string) => void;
+  onUpdateChart: (chartId: string, updates: Partial<ChartConfig>) => void;
   onAddChart: () => void;
 }
 
@@ -22,6 +24,7 @@ export function ChartGrid({
   isEditMode,
   onEditChart,
   onDeleteChart,
+  onUpdateChart,
   onAddChart,
 }: ChartGridProps) {
   if (charts.length === 0) {
@@ -35,7 +38,7 @@ export function ChartGrid({
         className="grid gap-4"
         style={{
           gridTemplateColumns: 'repeat(12, 1fr)',
-          gridAutoRows: '120px', // Базовая высота строки
+          gridAutoRows: '120px',
         }}
       >
         {/* Графики */}
@@ -43,42 +46,34 @@ export function ChartGrid({
           const chartData = getChartData(chart);
           
           return (
-            <div
+            <ResizableChart
               key={chart.id}
-              style={{
-                gridColumn: `span ${Math.min(chart.w, 12)}`,
-                gridRow: `span ${Math.min(chart.h, 12)}`,
-              }}
-              className="relative"
+              config={chart}
+              data={chartData}
+              isEditMode={isEditMode}
+              onConfigChange={(updates) => onUpdateChart(chart.id, updates)}
+              onEdit={() => onEditChart(chart)}
+              onDelete={() => onDeleteChart(chart.id)}
             >
               <ChartRenderer
                 config={chart}
                 data={chartData}
-                isEditMode={isEditMode}
-                onEdit={() => onEditChart(chart)}
-                onDelete={() => onDeleteChart(chart.id)}
+                isEditMode={false} // ResizableChart уже обрабатывает режим редактирования
               />
-              
-              {/* Индикатор размера в режиме редактирования */}
-              {isEditMode && (
-                <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                  {chart.w}x{chart.h}
-                </div>
-              )}
-            </div>
+            </ResizableChart>
           );
         })}
         
-        {/* Плейсхолдер для добавления нового графика */}
+        {/* Улучшенный плейсхолдер для добавления графика */}
         {isEditMode && (
           <div 
             style={{
               gridColumn: 'span 6',
-              gridRow: 'span 3',
+              gridRow: 'span 4',
             }}
-            className="min-h-[360px]"
+            className="min-h-[480px]"
           >
-            <AddChartPlaceholder onAddChart={onAddChart} />
+            <EnhancedAddChartPlaceholder onAddChart={onAddChart} />
           </div>
         )}
       </div>
@@ -86,30 +81,46 @@ export function ChartGrid({
   );
 }
 
-// Отдельный компонент для плейсхолдера
-function AddChartPlaceholder({ onAddChart }: { onAddChart: () => void }) {
+// Улучшенный плейсхолдер для добавления графика
+function EnhancedAddChartPlaceholder({ onAddChart }: { onAddChart: () => void }) {
   return (
     <button
       onClick={onAddChart}
-      className="w-full h-full border-3 border-dashed border-blue-300 hover:border-blue-500 bg-gradient-to-br from-blue-50 to-purple-50 hover:from-blue-100 hover:to-purple-100 rounded-xl transition-all duration-300 flex flex-col items-center justify-center group shadow-sm hover:shadow-lg"
+      className="w-full h-full border-3 border-dashed border-blue-300 hover:border-blue-500 bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 hover:from-blue-100 hover:via-purple-100 hover:to-pink-100 rounded-2xl transition-all duration-500 flex flex-col items-center justify-center group shadow-lg hover:shadow-2xl transform hover:scale-[1.02]"
     >
-      <div className="mb-6">
-        <div className="p-6 bg-white group-hover:bg-blue-500 rounded-full shadow-lg group-hover:shadow-xl transition-all duration-300 transform group-hover:scale-110">
-          <Plus className="w-12 h-12 text-blue-500 group-hover:text-white transition-colors duration-300" />
+      {/* Иконка */}
+      <div className="mb-8">
+        <div className="p-8 bg-white group-hover:bg-blue-500 rounded-full shadow-xl group-hover:shadow-2xl transition-all duration-500 transform group-hover:scale-110 group-hover:rotate-12">
+          <Plus className="w-16 h-16 text-blue-500 group-hover:text-white transition-colors duration-500" />
         </div>
       </div>
       
-      <div className="text-center space-y-3">
-        <h3 className="text-2xl font-bold text-gray-700 group-hover:text-blue-600 transition-colors duration-300">
+      {/* Текст */}
+      <div className="text-center space-y-4 max-w-sm">
+        <h3 className="text-3xl font-bold text-gray-700 group-hover:text-blue-600 transition-colors duration-300">
           Добавить график
         </h3>
         
-        <p className="text-gray-500 group-hover:text-blue-500 transition-colors duration-300 max-w-xs leading-relaxed">
-          Создайте новую визуализацию для ваших данных
+        <p className="text-lg text-gray-500 group-hover:text-blue-500 transition-colors duration-300 leading-relaxed">
+          Создайте новую визуализацию данных
+          <br />
+          с мощными настройками фильтрации
         </p>
         
-        <div className="flex items-center justify-center gap-2 text-sm text-blue-600 font-medium">
-          <span>Кликните для настройки</span>
+        {/* Свойства */}
+        <div className="flex items-center justify-center gap-6 text-sm text-blue-600 font-medium opacity-80 group-hover:opacity-100">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            <span>5 типов</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4" />
+            <span>Интерактивные</span>
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-center gap-2 text-sm text-blue-600 font-semibold">
+          <span>Кликните для начала</span>
           <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
         </div>
       </div>
@@ -129,15 +140,26 @@ export function FilterStats({
   if (totalRows === filteredRows) return null;
   
   return (
-    <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-      <div className="flex items-center gap-2">
-        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-        <span className="font-medium text-blue-800">
-          Отфильтровано: {filteredRows.toLocaleString()} из {totalRows.toLocaleString()} строк
-        </span>
+    <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl shadow-sm">
+      <div className="flex items-center gap-3">
+        <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
+        <div>
+          <div className="font-bold text-blue-800 text-lg">
+            {filteredRows.toLocaleString()} строк
+          </div>
+          <div className="text-sm text-blue-600">
+            из {totalRows.toLocaleString()} общего объёма
+          </div>
+        </div>
       </div>
-      <div className="text-blue-600 font-bold">
-        {percentage}%
+      
+      <div className="text-right">
+        <div className="text-3xl font-bold text-blue-700">
+          {percentage}%
+        </div>
+        <div className="text-xs text-blue-500 uppercase tracking-wider">
+          Отфильтровано
+        </div>
       </div>
     </div>
   );
