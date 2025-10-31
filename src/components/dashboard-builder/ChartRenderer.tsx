@@ -1,12 +1,12 @@
 'use client';
 
 import { useMemo } from 'react';
-import { ChartConfig } from '@/types/dashboard-builder';
+import type { ChartConfig } from '@/types/barrel';
 import BarChart from '@/components/charts/BarChart';
 import LineChart from '@/components/charts/LineChart';
 import PieChart from '@/components/charts/PieChart';
 import { Edit2, Trash2 } from 'lucide-react';
-import { ChartDataPoint } from '@/types/dashboard';
+import type { ChartDataPoint } from '@/types/dashboard';
 import { chartDataPointsToPieData } from '@/lib/data-converters';
 
 interface ChartRendererProps {
@@ -25,7 +25,7 @@ export default function ChartRenderer({
   isEditMode = false,
 }: ChartRendererProps) {
   const chartData = useMemo(() => {
-    if (!data || data.length === 0) return [];
+    if (!data || data.length === 0) return [] as ChartDataPoint[];
     return data;
   }, [data]);
 
@@ -41,43 +41,23 @@ export default function ChartRenderer({
       );
     }
 
-    const height = config.h * 80 - 100; // Высота в пикселях
+    const height = config.h * 80 - 100;
 
     switch (config.type) {
       case 'bar':
         return (
-          <BarChart
-            data={chartData}
-            indicators={config.indicators || 'value'}
-            height={height}
-            showLegend={config.showLegend}
-          />
+          <BarChart data={chartData} indicators={config.indicators || 'value'} height={height} showLegend={config.showLegend} />
         );
-
       case 'line':
         return (
-          <LineChart
-            data={chartData}
-            indicators={config.indicators || 'value'}
-            height={height}
-            showLegend={config.showLegend}
-          />
+          <LineChart data={chartData} indicators={config.indicators || 'value'} height={height} showLegend={config.showLegend} />
         );
-
-      case 'pie':
-        // Определяем какое поле использовать для value
+      case 'pie': {
         const valueField = config.indicators?.[0] || 'value';
         const pieData = chartDataPointsToPieData(chartData, valueField);
-
-        return (
-            <PieChart
-            data={pieData}
-            height={height}
-            showLegend={config.showLegend}
-            />
-        );
-
-      case 'metric':
+        return <PieChart data={pieData} height={height} showLegend={config.showLegend} />;
+      }
+      case 'metric': {
         const value = chartData.length > 0 && config.indicators?.[0]
           ? chartData.reduce((sum, d) => sum + (Number(d[config.indicators![0]]) || 0), 0)
           : 0;
@@ -89,8 +69,8 @@ export default function ChartRenderer({
             </div>
           </div>
         );
-
-      case 'table':
+      }
+      case 'table': {
         const headers = chartData.length > 0 ? Object.keys(chartData[0]) : [];
         return (
           <div className="overflow-auto h-full">
@@ -98,10 +78,7 @@ export default function ChartRenderer({
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
                   {headers.map(header => (
-                    <th
-                      key={header}
-                      className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase"
-                    >
+                    <th key={header} className="px-4 py-2 text-left text-xs font-semibold text-gray-700 uppercase">
                       {header}
                     </th>
                   ))}
@@ -112,9 +89,7 @@ export default function ChartRenderer({
                   <tr key={idx} className="hover:bg-gray-50">
                     {headers.map(header => (
                       <td key={header} className="px-4 py-2 text-sm text-gray-900">
-                        {typeof row[header] === 'number'
-                          ? row[header].toFixed(2)
-                          : String(row[header])}
+                        {typeof row[header] === 'number' ? (row[header] as number).toFixed(2) : String(row[header])}
                       </td>
                     ))}
                   </tr>
@@ -123,50 +98,30 @@ export default function ChartRenderer({
             </table>
           </div>
         );
-
+      }
       default:
         return <div>Неизвестный тип графика</div>;
     }
   };
 
   return (
-    <div
-      className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden group relative"
-      style={{
-        gridColumn: `span ${config.w}`,
-        gridRow: `span ${config.h}`,
-      }}
-    >
-      {/* Заголовок */}
+    <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden group relative">
       <div className="bg-gradient-to-r from-blue-50 to-purple-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
         <h3 className="font-bold text-gray-900">{config.title}</h3>
-        {/* Индикатор фильтрации */}
         {data.length > 0 && (
-        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">
-            {data.length}
-        </span>
+          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">{data.length}</span>
         )}
         {isEditMode && (
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={onEdit}
-              className="p-1.5 hover:bg-blue-100 rounded transition-colors"
-              title="Редактировать"
-            >
+            <button onClick={onEdit} className="p-1.5 hover:bg-blue-100 rounded transition-colors" aria-label="Редактировать">
               <Edit2 size={16} className="text-blue-600" />
             </button>
-            <button
-              onClick={onDelete}
-              className="p-1.5 hover:bg-red-100 rounded transition-colors"
-              title="Удалить"
-            >
+            <button onClick={onDelete} className="p-1.5 hover:bg-red-100 rounded transition-colors" aria-label="Удалить">
               <Trash2 size={16} className="text-red-600" />
             </button>
           </div>
         )}
       </div>
-
-      {/* Контент */}
       <div className="p-4" style={{ height: `calc(100% - 60px)` }}>
         {renderChart()}
       </div>
