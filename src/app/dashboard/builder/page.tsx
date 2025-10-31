@@ -15,6 +15,7 @@ import { ChartGrid } from '@/components/dashboard-builder/ChartGrid';
 import ChartEditor from '@/components/dashboard-builder/ChartEditor';
 import FilterPanel from '@/components/dashboard-builder/FilterPanel';
 import EmptyState from '@/components/dashboard/EmptyState';
+import FilterStats from '@/components/common/FilterStats';
 import type { SheetData, HierarchyFilters } from '@/types';
 import type { ChartConfig, Dashboard } from '@/types/dashboard-builder';
 import type { Group } from '@/lib/data-store';
@@ -72,14 +73,11 @@ export default function DashboardBuilderPage() {
     }
   };
 
-  const handleDeleteDashboard = (chartId: string) => {
-    if (!dashboardManager.currentDashboard || !confirm('Удалить этот график?')) return;
-    const updated = {
-      ...dashboardManager.currentDashboard,
-      charts: dashboardManager.currentDashboard.charts.filter(c => c.id !== chartId),
-      updatedAt: Date.now(),
-    };
-    dashboardManager.updateDashboard(updated.id, { charts: updated.charts });
+  const handleDeleteChart = (chartId: string) => {
+    if (!dashboardManager.currentDashboard) return;
+    if (!confirm('Удалить этот график?')) return;
+    const nextCharts = dashboardManager.currentDashboard.charts.filter(c => c.id !== chartId);
+    dashboardManager.updateDashboard(dashboardManager.currentDashboard.id, { charts: nextCharts });
     setNotification({ type: 'info', message: 'График удален' });
     setTimeout(() => setNotification(null), 2000);
   };
@@ -205,21 +203,13 @@ export default function DashboardBuilderPage() {
               />
             )}
 
-            {/* Инъекция статистики фильтров, если есть активные */}
             {chartDataManager.filterStats.hasFilters && (
-              <div className="mb-2">
-                <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    <span className="font-medium text-blue-800">
-                      Отфильтровано: {chartDataManager.filterStats.filteredRows.toLocaleString()} из {chartDataManager.filterStats.totalRows.toLocaleString()} строк
-                    </span>
-                  </div>
-                  <div className="text-blue-600 font-bold">
-                    {chartDataManager.filterStats.filterPercentage}%
-                  </div>
-                </div>
-              </div>
+              <FilterStats
+                totalRows={chartDataManager.filterStats.totalRows}
+                filteredRows={chartDataManager.filterStats.filteredRows}
+                percentage={chartDataManager.filterStats.filterPercentage}
+                className="mb-2"
+              />
             )}
 
             <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
@@ -254,7 +244,7 @@ export default function DashboardBuilderPage() {
                   getChartData={chartDataManager.getChartData}
                   isEditMode={isEditMode}
                   onEditChart={setEditingChart}
-                  onDeleteChart={(id) => handleDeleteDashboard(id)}
+                  onDeleteChart={handleDeleteChart}
                   onUpdateChart={handleUpdateChart}
                   onAddChart={() => setEditingChart({})}
                 />
