@@ -71,12 +71,16 @@ export default function DashboardBuilderPage() {
     }
   };
 
-  const handleDeleteDashboard = () => {
-    if (!dashboardManager.currentDashboard || !confirm(`Удалить дашборд "${dashboardManager.currentDashboard.name}"?`)) return;
-    const name = dashboardManager.currentDashboard.name;
-    dashboardManager.deleteDashboard(dashboardManager.currentDashboard.id);
-    setNotification({ type: 'info', message: `Дашборд "${name}" удален` });
-    setTimeout(() => setNotification(null), 3000);
+  const handleDeleteDashboard = (chartId: string) => {
+    if (!dashboardManager.currentDashboard || !confirm('Удалить этот график?')) return;
+    const updated = {
+      ...dashboardManager.currentDashboard,
+      charts: dashboardManager.currentDashboard.charts.filter(c => c.id !== chartId),
+      updatedAt: Date.now(),
+    };
+    dashboardManager.updateDashboard(updated.id, { charts: updated.charts });
+    setNotification({ type: 'info', message: 'График удален' });
+    setTimeout(() => setNotification(null), 2000);
   };
 
   const handleImportDashboard = async (file: File) => {
@@ -102,11 +106,12 @@ export default function DashboardBuilderPage() {
     setTimeout(() => setNotification(null), 2000);
   };
 
-  const handleDeleteChart = (chartId: string) => {
-    if (!confirm('Удалить этот график?')) return;
-    dashboardManager.deleteChart(chartId);
-    setNotification({ type: 'info', message: 'График удален' });
-    setTimeout(() => setNotification(null), 2000);
+  const handleUpdateChart = (chartId: string, updates: Partial<ChartConfig>) => {
+    if (!dashboardManager.currentDashboard) return;
+    const nextCharts = dashboardManager.currentDashboard.charts.map(c => 
+      c.id === chartId ? { ...c, ...updates } : c
+    );
+    dashboardManager.updateDashboard(dashboardManager.currentDashboard.id, { charts: nextCharts });
   };
 
   const handleHierarchyFiltersChange = (filters: HierarchyFilters) => {
@@ -174,7 +179,11 @@ export default function DashboardBuilderPage() {
         onToggleEditMode={() => setIsEditMode(!isEditMode)}
         onCreateDashboard={handleCreateDashboard}
         onDuplicateDashboard={handleDuplicateDashboard}
-        onDeleteDashboard={handleDeleteDashboard}
+        onDeleteDashboard={() => {
+          if (dashboardManager.currentDashboard && confirm(`Удалить дашборд "${dashboardManager.currentDashboard.name}"?`)) {
+            dashboardManager.deleteDashboard(dashboardManager.currentDashboard.id);
+          }
+        }}
         onExportDashboard={handleExportDashboard}
         onImportDashboard={handleImportDashboard}
         onRenameDashboard={(name) => {
@@ -236,6 +245,7 @@ export default function DashboardBuilderPage() {
                   isEditMode={isEditMode}
                   onEditChart={setEditingChart}
                   onDeleteChart={handleDeleteChart}
+                  onUpdateChart={handleUpdateChart}
                   onAddChart={() => setEditingChart({})}
                 />
               </div>
