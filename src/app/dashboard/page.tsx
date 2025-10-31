@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import Loader from '@/components/loader';
+import { Loader } from 'lucide-react';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -13,6 +13,8 @@ export default function DashboardPage() {
   }, [router]);
 
   return (
-    <Loader title='Переход к обзору...' />
+    <>
+    <Loader /> <span>Переход к обзору...</span>
+    </>
   );
 }
