@@ -19,3 +19,5 @@ export { Section } from './Section';
 export { ToggleTabs } from './ToggleTabs';
 
 export * from './form';
+
+export * from './data-table';

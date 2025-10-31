@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
 export interface CardProps {
-  title: string;
+  title?: string; // теперь опциональный
   subtitle?: ReactNode;
   color?: string;
   href?: string;
@@ -27,7 +27,7 @@ export function Card({
   children,
   footer,
   className,
-  hoverEffect = false, // по умолчанию отключен
+  hoverEffect = false,
   shadow = 'lg',
 }: CardProps) {
   const shadowClasses = {
@@ -59,33 +59,37 @@ export function Card({
       )}
 
       <div className="relative p-6">
-        {/* Заголовок */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex-1 min-w-0">
-            <h3 className={cn(
-              'text-xl font-bold text-gray-900 mb-2',
-              href && hoverEffect && 'group-hover:text-blue-600 transition-colors'
-            )}>
-              {title}
-            </h3>
-            
-            {subtitle && (
-              <div className="text-sm text-gray-600">
-                {subtitle}
+        {/* Заголовок - только если есть title, subtitle или rightBadge */}
+        {(title || subtitle || rightBadge) && (
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1 min-w-0">
+              {title && (
+                <h3 className={cn(
+                  'text-xl font-bold text-gray-900 mb-2',
+                  href && hoverEffect && 'group-hover:text-blue-600 transition-colors'
+                )}>
+                  {title}
+                </h3>
+              )}
+              
+              {subtitle && (
+                <div className="text-sm text-gray-600">
+                  {subtitle}
+                </div>
+              )}
+            </div>
+
+            {rightBadge && (
+              <div className="flex-shrink-0 ml-4">
+                {rightBadge}
               </div>
             )}
           </div>
-
-          {rightBadge && (
-            <div className="flex-shrink-0 ml-4">
-              {rightBadge}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Основной контент */}
         {children && (
-          <div className="mb-4">
+          <div className={title || subtitle || rightBadge ? "mb-4" : ""}>
             {children}
           </div>
         )}

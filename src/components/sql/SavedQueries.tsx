@@ -1,101 +1,150 @@
+// src/components/sql/SavedQueries.tsx (обновленная версия)
 'use client';
 
-import { Play, Trash2, Edit2, Copy, Clock } from 'lucide-react';
-
-export interface SavedQuery {
-  id: string;
-  name: string;
-  sql: string;
-  createdAt: number;
-  lastUsed?: number;
-  usageCount: number;
-}
+import { useState } from 'react';
+import { Clock, Trash2, Play, Edit } from 'lucide-react';
+import type { SavedQuery } from '@/types/sql'; // используем общий тип
+import { SimpleEmptyState } from '@/components/common/SimpleEmptyState';
 
 interface SavedQueriesProps {
   queries: SavedQuery[];
   onLoad: (query: SavedQuery) => void;
   onDelete: (id: string) => void;
-  onEdit?: (query: SavedQuery) => void;
+  onEdit?: (id: string, changes: { name: string; sql: string }) => void;
 }
 
-export default function SavedQueries({ queries, onLoad, onDelete, onEdit }: SavedQueriesProps) {
+export default function SavedQueries({ 
+  queries, 
+  onLoad, 
+  onDelete, 
+  onEdit 
+}: SavedQueriesProps) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
+  const formatDate = (timestamp: number): string => {
+    return new Date(timestamp).toLocaleDateString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const handleStartEdit = (query: SavedQuery) => {
+    setEditingId(query.id);
+    setEditName(query.name);
+  };
+
+  const handleSaveEdit = (query: SavedQuery) => {
+    if (onEdit && editName.trim() && editName !== query.name) {
+      onEdit(query.id, { name: editName.trim(), sql: query.sql });
+    }
+    setEditingId(null);
+    setEditName('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setEditName('');
+  };
+
   if (queries.length === 0) {
     return (
-      <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-        <p className="text-gray-500">Нет сохранённых запросов</p>
-        <p className="text-sm text-gray-400 mt-1">Выполните запрос и сохраните его</p>
-      </div>
+      <SimpleEmptyState
+        icon={Clock}
+        title="Нет сохраненных запросов"
+        description="Сохраните запрос, чтобы использовать его позже"
+      />
     );
   }
 
+  // Сортируем по последнему использованию
+  const sortedQueries = [...queries].sort((a, b) => b.lastUsed - a.lastUsed);
+
   return (
-    <div className="bg-white rounded-xl shadow-lg p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">Сохранённые запросы</h3>
-      <div className="space-y-3">
-        {queries
-          .sort((a, b) => (b.lastUsed || b.createdAt) - (a.lastUsed || a.createdAt))
-          .map((query) => (
-            <div
-              key={query.id}
-              className="group border-2 border-gray-200 rounded-lg p-4 hover:border-blue-400 hover:shadow-md transition-all"
-            >
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex-1">
-                  <h4 className="font-semibold text-gray-900 mb-1">{query.name}</h4>
-                  <div className="flex items-center gap-3 text-xs text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <Clock size={12} />
-                      {new Date(query.createdAt).toLocaleDateString('ru-RU')}
-                    </span>
-                    <span>Использован {query.usageCount}x</span>
-                  </div>
-                </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => onLoad(query)}
-                    className="p-1.5 hover:bg-green-100 rounded transition-colors"
-                    title="Загрузить"
-                  >
-                    <Play size={14} className="text-green-600" />
-                  </button>
-                  {onEdit && (
-                    <button
-                      onClick={() => onEdit(query)}
-                      className="p-1.5 hover:bg-blue-100 rounded transition-colors"
-                      title="Редактировать"
-                    >
-                      <Edit2 size={14} className="text-blue-600" />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(query.sql);
-                      alert('SQL скопирован!');
-                    }}
-                    className="p-1.5 hover:bg-gray-100 rounded transition-colors"
-                    title="Копировать"
-                  >
-                    <Copy size={14} className="text-gray-600" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm('Удалить этот запрос?')) {
-                        onDelete(query.id);
-                      }
-                    }}
-                    className="p-1.5 hover:bg-red-100 rounded transition-colors"
-                    title="Удалить"
-                  >
-                    <Trash2 size={14} className="text-red-600" />
-                  </button>
-                </div>
+    <div className="space-y-2 max-h-96 overflow-y-auto">
+      {sortedQueries.map((query) => (
+        <div
+          key={query.id}
+          className="p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+        >
+          <div className="flex items-start justify-between gap-2 mb-2">
+            {editingId === query.id ? (
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onBlur={() => handleSaveEdit(query)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveEdit(query);
+                  if (e.key === 'Escape') handleCancelEdit();
+                }}
+                className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-blue-500"
+                autoFocus
+              />
+            ) : (
+              <div className="flex-1 min-w-0">
+                <h4 
+                  className="font-medium text-gray-900 text-sm truncate cursor-pointer"
+                  onClick={() => handleStartEdit(query)}
+                  title={query.name}
+                >
+                  {query.name}
+                </h4>
               </div>
-              <pre className="text-xs bg-gray-900 text-green-400 p-2 rounded font-mono overflow-x-auto">
-                {query.sql}
-              </pre>
+            )}
+
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button
+                onClick={() => onLoad(query)}
+                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                title="Загрузить запрос"
+              >
+                <Play className="w-3.5 h-3.5" />
+              </button>
+              
+              {onEdit && editingId !== query.id && (
+                <button
+                  onClick={() => handleStartEdit(query)}
+                  className="p-1.5 text-gray-600 hover:bg-gray-50 rounded transition-colors"
+                  title="Переименовать"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              <button
+                onClick={() => onDelete(query.id)}
+                className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors"
+                title="Удалить"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
             </div>
-          ))}
-      </div>
+          </div>
+
+          {/* Превью SQL */}
+          <code className="text-xs bg-gray-50 px-2 py-1 rounded text-gray-700 block truncate mb-2">
+            {query.sql}
+          </code>
+
+          {/* Метаданные */}
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>
+              Создан: {formatDate(query.createdAt)}
+            </span>
+            <div className="flex items-center gap-3">
+              <span>
+                Использований: {query.usageCount}
+              </span>
+              <span>
+                Последний раз: {formatDate(query.lastUsed)}
+              </span>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
