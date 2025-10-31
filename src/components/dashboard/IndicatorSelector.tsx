@@ -1,52 +1,53 @@
+// src/components/dashboard/IndicatorSelector.tsx (рефакторинг)
+import { SelectorHeader, OptionChip, EmptyHint } from '@/components/common/selector';
+
 interface IndicatorSelectorProps {
   indicators: string[];
   selectedIndicators: string[];
   onChange: (indicators: string[]) => void;
   multiple?: boolean;
   emptyMessage?: string;
+  title?: string;
+  subtitle?: string;
 }
 
-export function IndicatorSelector({ 
-  indicators, 
-  selectedIndicators, 
-  onChange, 
+export function IndicatorSelector({
+  indicators,
+  selectedIndicators,
+  onChange,
   multiple = true,
-  emptyMessage = 'Нет доступных показателей'
+  emptyMessage = 'Нет доступных показателей',
+  title = 'Выбор показателей',
+  subtitle,
 }: IndicatorSelectorProps) {
   if (indicators.length === 0) {
-    return (
-      <div className="text-center py-4 text-gray-500">
-        {emptyMessage}
-      </div>
-    );
+    return <EmptyHint text={emptyMessage} />;
   }
 
   const handleToggle = (indicator: string) => {
     if (multiple) {
-      const newIndicators = selectedIndicators.includes(indicator)
-        ? selectedIndicators.filter(i => i !== indicator)
+      const next = selectedIndicators.includes(indicator)
+        ? selectedIndicators.filter((i) => i !== indicator)
         : [...selectedIndicators, indicator];
-      onChange(newIndicators);
+      onChange(next);
     } else {
       onChange([indicator]);
     }
   };
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {indicators.map(indicator => (
-        <button
-          key={indicator}
-          onClick={() => handleToggle(indicator)}
-          className={`px-4 py-2 rounded transition-colors ${
-            selectedIndicators.includes(indicator)
-              ? 'bg-blue-500 text-white hover:bg-blue-600'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          {indicator}
-        </button>
-      ))}
+    <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
+      <SelectorHeader title={title} subtitle={subtitle} />
+      <div className="flex flex-wrap gap-2">
+        {indicators.map((indicator) => (
+          <OptionChip
+            key={indicator}
+            label={indicator}
+            selected={selectedIndicators.includes(indicator)}
+            onClick={() => handleToggle(indicator)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
