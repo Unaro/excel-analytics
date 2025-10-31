@@ -71,14 +71,11 @@ export default function DashboardBuilderPage() {
     }
   };
 
-  const handleDeleteDashboard = (chartId: string) => {
-    if (!dashboardManager.currentDashboard || !confirm('Удалить этот график?')) return;
-    const updated = {
-      ...dashboardManager.currentDashboard,
-      charts: dashboardManager.currentDashboard.charts.filter(c => c.id !== chartId),
-      updatedAt: Date.now(),
-    };
-    dashboardManager.updateDashboard(updated.id, { charts: updated.charts });
+  const handleDeleteChart = (chartId: string) => {
+    if (!dashboardManager.currentDashboard) return;
+    if (!confirm('Удалить этот график?')) return;
+    const nextCharts = dashboardManager.currentDashboard.charts.filter(c => c.id !== chartId);
+    dashboardManager.updateDashboard(dashboardManager.currentDashboard.id, { charts: nextCharts });
     setNotification({ type: 'info', message: 'График удален' });
     setTimeout(() => setNotification(null), 2000);
   };
