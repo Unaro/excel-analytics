@@ -1,6 +1,13 @@
+// src/lib/data-store.ts (рефакторинг под storage.ts ключи)
 import { ExcelRow, FilterCondition, HierarchyFilters } from '@/types';
 import { applyFilters, evaluateFormula } from './excel-parser';
-import { getExcelData } from './storage';
+import {
+  getExcelData,         // читает excelAnalyticsData
+  getGroups as storageGetGroups,
+  saveGroups as storageSaveGroups,
+  getIndicatorLibrary as storageGetIndicatorLibrary,
+  saveIndicatorLibrary as storageSaveIndicatorLibrary,
+} from './storage';
 
 // ==================== ТИПЫ ====================
 
@@ -33,20 +40,11 @@ export interface GroupWithData extends Group {
   rowCount: number;
   indicators: IndicatorWithValue[];
 }
+
 // ==================== DATA STORE ====================
 
 class DataStore {
   private static instance: DataStore;
-  
-  // Ключи для localStorage
-  private readonly KEYS = {
-    GROUPS: 'analyticsGroups',
-    INDICATOR_LIBRARY: 'indicatorLibrary',
-    EXCEL_DATA: 'uploadedExcelData',
-    METADATA: 'datasetMetadata',
-    DASHBOARDS: 'dashboards',
-    SQL_QUERIES: 'savedSQLQueries',
-  };
 
   private constructor() {}
 
@@ -57,16 +55,12 @@ class DataStore {
     return DataStore.instance;
   }
 
-  // ==================== EXCEL DATA ====================
+  // ==================== EXCEL DATA (read-only, через storage) ====================
 
-  /**
-   * Получить сырые данные из Excel
-   */
   getRawData(): ExcelRow[] {
     try {
-      const sheets = getExcelData();
+      const sheets = getExcelData(); // читает excelAnalyticsData из storage.ts
       if (!sheets || sheets.length === 0) return [];
-      // Берем первый лист (или можно добавить параметр sheetIndex)
       return sheets[0].rows;
     } catch (error) {
       console.error('Ошибка получения данных:', error);
@@ -74,9 +68,6 @@ class DataStore {
     }
   }
 
-  /**
-   * Получить заголовки колонок
-   */
   getHeaders(): string[] {
     try {
       const sheets = getExcelData();
@@ -88,39 +79,27 @@ class DataStore {
     }
   }
 
-  /**
-   * Проверить наличие данных
-   */
   hasData(): boolean {
     return this.getRawData().length > 0;
   }
 
-  // ==================== GROUPS ====================
+  // ==================== GROUPS (через storage.ts API) ====================
 
-  /**
-   * Получить все группы
-   */
   getGroups(): Group[] {
     try {
-      const data = localStorage.getItem(this.KEYS.GROUPS);
-      return data ? JSON.parse(data) : [];
+      const raw = storageGetGroups(); // строка или null
+      return raw ? JSON.parse(raw) as Group[] : [];
     } catch (error) {
       console.error('Ошибка загрузки групп:', error);
       return [];
     }
   }
 
-  /**
-   * Получить группу по ID
-   */
   getGroupById(id: string): Group | null {
     const groups = this.getGroups();
     return groups.find(g => g.id === id) || null;
-  }
+    }
 
-  /**
-   * Получить группу с вычисленными данными
-   */
   getGroupWithData(id: string): GroupWithData | null {
     const group = this.getGroupById(id);
     if (!group) return null;
@@ -135,9 +114,7 @@ class DataStore {
     if (group.hierarchyFilters) {
       Object.entries(group.hierarchyFilters).forEach(([column, values]) => {
         if (values && values.length > 0) {
-          filteredData = filteredData.filter(row => 
-            values.includes(String(row[column]))
-          );
+          filteredData = filteredData.filter(row => values.includes(String(row[column])));
         }
       });
     }
@@ -146,19 +123,16 @@ class DataStore {
     const indicatorsWithValues: IndicatorWithValue[] = group.indicators.map(indicator => ({
       name: indicator.name,
       formula: indicator.formula,
-      value: evaluateFormula(indicator.formula, filteredData, headers)
+      value: evaluateFormula(indicator.formula, filteredData, headers),
     }));
 
     return {
       ...group,
       rowCount: filteredData.length,
-      indicators: indicatorsWithValues
+      indicators: indicatorsWithValues,
     };
   }
 
-  /**
-   * Получить все группы с данными
-   */
   getAllGroupsWithData(): GroupWithData[] {
     const groups = this.getGroups();
     return groups
@@ -166,20 +140,14 @@ class DataStore {
       .filter((g): g is GroupWithData => g !== null);
   }
 
-  /**
-   * Сохранить группы
-   */
-  saveGroups(groups: Group[]): void {
+  private persistGroups(groups: Group[]): void {
     try {
-      localStorage.setItem(this.KEYS.GROUPS, JSON.stringify(groups));
+      storageSaveGroups(JSON.stringify(groups));
     } catch (error) {
       console.error('Ошибка сохранения групп:', error);
     }
   }
 
-  /**
-   * Создать группу
-   */
   createGroup(group: Omit<Group, 'id' | 'createdAt' | 'updatedAt'>): Group {
     const newGroup: Group = {
       ...group,
@@ -187,220 +155,156 @@ class DataStore {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    
+
     const groups = this.getGroups();
     groups.push(newGroup);
-    this.saveGroups(groups);
-    
+    this.persistGroups(groups);
     return newGroup;
   }
 
-  /**
-   * Обновить группу
-   */
   updateGroup(id: string, updates: Partial<Omit<Group, 'id' | 'createdAt'>>): Group | null {
     const groups = this.getGroups();
     const index = groups.findIndex(g => g.id === id);
-    
     if (index === -1) return null;
-    
+
     groups[index] = {
       ...groups[index],
       ...updates,
       updatedAt: Date.now(),
     };
-    
-    this.saveGroups(groups);
+    this.persistGroups(groups);
     return groups[index];
   }
 
-  /**
-   * Удалить группу
-   */
   deleteGroup(id: string): boolean {
     const groups = this.getGroups();
     const filtered = groups.filter(g => g.id !== id);
-    
     if (filtered.length === groups.length) return false;
-    
-    this.saveGroups(filtered);
+    this.persistGroups(filtered);
     return true;
   }
 
-  // ==================== INDICATOR LIBRARY ====================
+  clearAllGroups(): void {
+    this.persistGroups([]);
+  }
 
-  /**
-   * Получить библиотеку показателей
-   */
+  // ==================== INDICATOR LIBRARY (через storage.ts API) ====================
+
   getIndicatorLibrary(): Indicator[] {
     try {
-      const data = localStorage.getItem(this.KEYS.INDICATOR_LIBRARY);
-      return data ? JSON.parse(data) : [];
+      const raw = storageGetIndicatorLibrary(); // строка или null
+      return raw ? JSON.parse(raw) as Indicator[] : [];
     } catch (error) {
       console.error('Ошибка загрузки библиотеки показателей:', error);
       return [];
     }
   }
 
-  /**
-   * Сохранить библиотеку показателей
-   */
-  saveIndicatorLibrary(indicators: Indicator[]): void {
+  private persistIndicatorLibrary(list: Indicator[]): void {
     try {
-      localStorage.setItem(this.KEYS.INDICATOR_LIBRARY, JSON.stringify(indicators));
+      storageSaveIndicatorLibrary(JSON.stringify(list));
     } catch (error) {
       console.error('Ошибка сохранения библиотеки показателей:', error);
     }
   }
 
-  /**
-   * Добавить показатель в библиотеку
-   */
   addIndicatorToLibrary(indicator: Indicator): void {
     const library = this.getIndicatorLibrary();
     library.push(indicator);
-    this.saveIndicatorLibrary(library);
+    this.persistIndicatorLibrary(library);
   }
 
-  /**
-   * Удалить показатель из библиотеки
-   */
   removeIndicatorFromLibrary(name: string): boolean {
     const library = this.getIndicatorLibrary();
     const filtered = library.filter(i => i.name !== name);
-    
     if (filtered.length === library.length) return false;
-    
-    this.saveIndicatorLibrary(filtered);
+    this.persistIndicatorLibrary(filtered);
     return true;
   }
 
-  // ==================== COMMON INDICATORS ====================
+  clearIndicatorLibrary(): void {
+    this.persistIndicatorLibrary([]);
+  }
 
-  /**
-   * Найти общие показатели между группами
-   */
+  // ==================== ANALYTICS HELPERS ====================
+
   findCommonIndicators(groupIds: string[]): string[] {
     if (groupIds.length === 0) return [];
-    
     const groups = groupIds
       .map(id => this.getGroupById(id))
       .filter((g): g is Group => g !== null);
-    
     if (groups.length === 0) return [];
-    
-    const indicatorSets = groups.map(g => 
-      new Set(g.indicators.map(i => i.name))
-    );
-    
-    return Array.from(indicatorSets[0]).filter(indicator =>
-      indicatorSets.every(set => set.has(indicator))
-    );
+
+    const sets = groups.map(g => new Set(g.indicators.map(i => i.name)));
+    return Array.from(sets[0]).filter(ind => sets.every(s => s.has(ind)));
   }
 
-  /**
-   * Получить все уникальные показатели из групп
-   */
   getAllUniqueIndicators(groupIds: string[]): string[] {
     const groups = groupIds
       .map(id => this.getGroupById(id))
       .filter((g): g is Group => g !== null);
-    
-    const indicatorSet = new Set<string>();
-    groups.forEach(group => {
-      group.indicators.forEach(ind => indicatorSet.add(ind.name));
-    });
-    
-    return Array.from(indicatorSet);
+    const set = new Set<string>();
+    groups.forEach(g => g.indicators.forEach(i => set.add(i.name)));
+    return Array.from(set);
   }
 
-  // ==================== COMPARISON DATA ====================
-
-  /**
-   * Получить данные для сравнения групп по показателю
-   */
   getComparisonData(groupIds: string[], indicatorName: string) {
     return groupIds
       .map(id => {
-        const groupWithData = this.getGroupWithData(id);
-        if (!groupWithData) return null;
-        
-        const indicator = groupWithData.indicators.find(i => i.name === indicatorName);
-        if (!indicator) return null;
-        
-        return {
-          name: groupWithData.name,
-          value: indicator.value,
-          groupId: groupWithData.id
-        };
+        const g = this.getGroupWithData(id);
+        if (!g) return null;
+        const ind = g.indicators.find(i => i.name === indicatorName);
+        if (!ind) return null;
+        return { name: g.name, value: ind.value, groupId: g.id };
       })
-      .filter((item): item is NonNullable<typeof item> => item !== null);
+      .filter((x): x is NonNullable<typeof x> => x !== null);
   }
 
-  // ==================== SUMMARY DATA ====================
-
-  /**
-   * Получить данные для сводной таблицы
-   */
   getSummaryData(groupIds?: string[]) {
-    const groups = groupIds 
+    const groups = groupIds
       ? groupIds.map(id => this.getGroupWithData(id)).filter((g): g is GroupWithData => g !== null)
       : this.getAllGroupsWithData();
-    
-    return groups.map(group => ({
-      groupId: group.id,
-      groupName: group.name,
-      indicators: group.indicators,
-      rowCount: group.rowCount
+
+    return groups.map(g => ({
+      groupId: g.id,
+      groupName: g.name,
+      indicators: g.indicators,
+      rowCount: g.rowCount,
     }));
   }
 
-  // ==================== UTILITY ====================
+  // ==================== MAINTENANCE ====================
 
   /**
-   * Очистить все данные приложения
+   * Мягкая очистка доменов (не трогает другие ключи, полностью совместима со storage.ts)
    */
   clearAllData(): void {
-    Object.values(this.KEYS).forEach(key => {
-      try {
-        localStorage.removeItem(key);
-      } catch (error) {
-        console.error(`Ошибка очистки ${key}:`, error);
-      }
-    });
+    try {
+      this.clearAllGroups();
+      this.clearIndicatorLibrary();
+      // Excel-данные очищаются через storage.clearExcelData() при необходимости — вызывать снаружи
+    } catch (error) {
+      console.error('Ошибка очистки доменных данных:', error);
+    }
   }
 
   /**
-   * Экспорт данных (для миграции)
+   * Экспорт доменных данных (совместим со storage.ts)
    */
   exportData(): Record<string, unknown> {
-    const data: Record<string, unknown> = {};
-    Object.entries(this.KEYS).forEach(([name, key]) => {
-      try {
-        const item = localStorage.getItem(key);
-        data[name] = item ? JSON.parse(item) : null;
-      } catch (error) {
-        console.error(`Ошибка экспорта ${name}:`, error);
-        data[name] = null;
-      }
-    });
-    return data;
+    return {
+      groups: this.getGroups(),
+      indicatorLibrary: this.getIndicatorLibrary(),
+      // Excel-данные экспортируй отдельно через storage.getExcelData()
+    };
   }
 
   /**
-   * Импорт данных (для миграции)
+   * Импорт доменных данных (совместим со storage.ts)
    */
-  importData(data: Record<string, unknown>): void {
-    Object.entries(data).forEach(([name, value]) => {
-      const key = this.KEYS[name as keyof typeof this.KEYS];
-      if (key && value !== null) {
-        try {
-          localStorage.setItem(key, JSON.stringify(value));
-        } catch (error) {
-          console.error(`Ошибка импорта ${name}:`, error);
-        }
-      }
-    });
+  importData(data: Partial<{ groups: Group[]; indicatorLibrary: Indicator[] }>): void {
+    if (data.groups) this.persistGroups(data.groups);
+    if (data.indicatorLibrary) this.persistIndicatorLibrary(data.indicatorLibrary);
   }
 }
 
