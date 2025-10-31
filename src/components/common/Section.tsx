@@ -1,5 +1,7 @@
+import { LucideIcon } from "lucide-react";
+
 // src/components/common/Section.tsx
-export function Section({ title, icon: Icon, children }: { title: string; icon?: any; children: React.ReactNode }) {
+export function Section({ title, icon: Icon, children }: { title: string; icon?: LucideIcon; children: React.ReactNode }) {
   return (
     <div className="border-t pt-6">
       {title && (
