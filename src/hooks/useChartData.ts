@@ -86,7 +86,7 @@ export function useChartData({
         return null;
       };
 
-      const deepest = getDeepestHierarchyFilter((group as any).hierarchyFilters);
+      const deepest = getDeepestHierarchyFilter(group.hierarchyFilters as Record<string, string> | undefined);
       const groupFilters = [
         ...(group.filters ?? []),
         ...(deepest ? [{ id: 'hier_deepest', column: deepest.column, operator: '=' as const, value: deepest.value }] : []),
@@ -151,24 +151,16 @@ export function useChartData({
         });
       }
 
-      // 2) Источник raw (без групп) — ДОЛЖЕН РАБОТАТЬ ДЛЯ ВСЕХ ТИПОВ
+      // 2) Источник raw (без групп)
       if (config.dataSource === 'raw' || !config.groupIds?.length) {
-        // База строк для вычисления показателей: учитываем иерархию или нет
         const rows = useHierarchy ? hierarchyFilteredData : baseFilteredData;
-
-        // Если индикаторы заданы в конфиге — используем их. Иначе берём все из библиотеки
         const names = (config.indicators && config.indicators.length)
           ? config.indicators
           : Array.from(indicatorsLibrary.keys());
-
         const computed = computeIndicators(rows, names);
-
-        // Возвращаем данные в формате: [{ name: indicatorName, value: number } | многомерно]
-        // Для унификации отдадим как массив точек, где name — это название показателя, value — значение
         return computed.map(ind => ({ name: ind.name, value: ind.value } as ChartDataPoint));
       }
 
-      // Fallback
       return [];
     };
   }, [groupsData, baseFilteredData, hierarchyFilteredData, indicatorsLibrary]);
