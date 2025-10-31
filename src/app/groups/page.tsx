@@ -215,32 +215,48 @@ export default function GroupsPage() {
         </div>
       )}
 
-      {/* Вкладка обмена */}
+      {/* Вкладка экспорта */}
       {viewMode === 'exchange' && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <FileJson className="w-6 h-6 text-purple-600" />
-            <h2 className="text-xl font-semibold text-gray-900">Экспорт</h2>
-          </div>
-
-          {allIndicators.length === 0 ? (
-            <p className="text-gray-600">Создайте группу с показателями, чтобы их экспортировать</p>
-          ) : (
-            <>
-              <p className="text-gray-600 mb-6">
-                Экспортируйте показатели из всех групп, чтобы поделиться ими или создать резервную
-                копию. Импортируйте показатели, которые получили от других пользователей.
-              </p>
-
-              <IndicatorExchange
-                indicators={allIndicators}
-                onImport={handleImportIndicators}
-                isLoading={importLoading}
-              />
-            </>
-          )}
+      <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <FileJson className="w-6 h-6 text-purple-600" />
+          <h2 className="text-xl font-semibold text-gray-900">Экспорт показателей</h2>
         </div>
-      )}
+
+        <IndicatorExchange
+          libraryIndicators={indicators}
+          groups={groups}
+          onImportIndicators={async (newIndicators: Indicator[]) => {
+            setImportLoading(true);
+            try {
+              for (const indicator of newIndicators) {
+                const exists = indicators.some((ind) => ind.name === indicator.name);
+                if (!exists) {
+                  addIndicator(indicator);
+                }
+              }
+            } finally {
+              setImportLoading(false);
+            }
+          }}
+          onImportGroups={async (newGroups: Group[]) => {
+            setImportLoading(true);
+            try {
+              for (const group of newGroups) {
+                // Проверяем дубликаты по имени
+                const exists = groups.some((g) => g.name === group.name);
+                if (!exists) {
+                  createGroup(group);
+                }
+              }
+            } finally {
+              setImportLoading(false);
+            }
+          }}
+          isLoading={importLoading}
+        />
+      </div>
+    )}
 
       {viewMode === 'library' && (
         <IndicatorLibrary
