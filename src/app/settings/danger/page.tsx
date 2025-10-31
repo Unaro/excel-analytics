@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertTriangle, Trash2, Database, RotateCcw, Zap } from 'lucide-react';
 import { dataStore } from '@/lib/data-store';
 import { clearFieldTypes } from '@/lib/field-type-store';
@@ -18,54 +18,61 @@ interface StorageItem {
 export default function SettingsDangerPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleted, setDeleted] = useState<string | null>(null);
+  const [storageItems, setStorageItems] = useState<StorageItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const storageItems: StorageItem[] = [
-    {
-      key: 'uploadedExcelData',
-      label: 'Данные Excel',
-      description: 'Удаляет все загруженные данные из файла',
-      icon: <Database className="w-5 h-5" />,
-      getValue: () => (dataStore.getRawData().length > 0 ? `✓ ${dataStore.getRawData().length} строк` : '✗ Нет'),
-      onDelete: () => {
-        localStorage.removeItem('uploadedExcelData');
-        dataStore.clearAllData();
+  useEffect(() => {
+    // Инициализируй storageItems только на клиенте
+    const items: StorageItem[] = [
+      {
+        key: 'uploadedExcelData',
+        label: 'Данные Excel',
+        description: 'Удаляет все загруженные данные из файла',
+        icon: <Database className="w-5 h-5" />,
+        getValue: () => (dataStore.getRawData().length > 0 ? `✓ ${dataStore.getRawData().length} строк` : '✗ Нет'),
+        onDelete: () => {
+          localStorage.removeItem('uploadedExcelData');
+          dataStore.clearAllData();
+        },
+        danger: 'high',
       },
-      danger: 'high',
-    },
-    {
-      key: 'analyticsGroups',
-      label: 'Группы показателей',
-      description: 'Удаляет все созданные группы с фильтрами и формулами',
-      icon: <Zap className="w-5 h-5" />,
-      getValue: () => {
-        const groups = JSON.parse(localStorage.getItem('analyticsGroups') || '[]') as unknown[];
-        return `${groups.length} групп${groups.length !== 1 ? '' : 'а'}`;
+      {
+        key: 'analyticsGroups',
+        label: 'Группы показателей',
+        description: 'Удаляет все созданные группы с фильтрами и формулами',
+        icon: <Zap className="w-5 h-5" />,
+        getValue: () => {
+          const groups = JSON.parse(localStorage.getItem('analyticsGroups') || '[]') as unknown[];
+          return `${groups.length} групп${groups.length !== 1 ? '' : 'а'}`;
+        },
+        onDelete: () => localStorage.removeItem('analyticsGroups'),
+        danger: 'high',
       },
-      onDelete: () => localStorage.removeItem('analyticsGroups'),
-      danger: 'high',
-    },
-    {
-      key: 'hierarchyConfig',
-      label: 'Конфигурация иерархии',
-      description: 'Удаляет настроенную структуру иерархии фильтрации',
-      icon: <RotateCcw className="w-5 h-5" />,
-      getValue: () => {
-        const config = JSON.parse(localStorage.getItem('hierarchyConfig') || '[]') as unknown[];
-        return `${config.length} уровн${config.length !== 1 ? 'ей' : 'я'}`;
+      {
+        key: 'hierarchyConfig',
+        label: 'Конфигурация иерархии',
+        description: 'Удаляет настроенную структуру иерархии фильтрации',
+        icon: <RotateCcw className="w-5 h-5" />,
+        getValue: () => {
+          const config = JSON.parse(localStorage.getItem('hierarchyConfig') || '[]') as unknown[];
+          return `${config.length} уровн${config.length !== 1 ? 'ей' : 'я'}`;
+        },
+        onDelete: () => localStorage.removeItem('hierarchyConfig'),
+        danger: 'high',
       },
-      onDelete: () => localStorage.removeItem('hierarchyConfig'),
-      danger: 'high',
-    },
-    {
-      key: 'fieldTypes',
-      label: 'Типы полей',
-      description: 'Удаляет настройки типов данных колонок (будут определены автоматически)',
-      icon: <Database className="w-5 h-5" />,
-      getValue: () => (localStorage.getItem('fieldTypes') ? '✓ Есть' : '✗ Нет'),
-      onDelete: () => clearFieldTypes(),
-      danger: 'high',
-    },
-  ];
+      {
+        key: 'fieldTypes',
+        label: 'Типы полей',
+        description: 'Удаляет настройки типов данных колонок (будут определены автоматически)',
+        icon: <Database className="w-5 h-5" />,
+        getValue: () => (localStorage.getItem('fieldTypes') ? '✓ Есть' : '✗ Нет'),
+        onDelete: () => clearFieldTypes(),
+        danger: 'high',
+      },
+    ];
+    setStorageItems(items);
+    setIsLoading(false);
+  }, []);
 
   const handleDelete = (key: string, item: StorageItem): void => {
     item.onDelete();
@@ -89,6 +96,10 @@ export default function SettingsDangerPage() {
       }, 2000);
     }
   };
+
+  if (isLoading) {
+    return <div className="p-6 text-center text-gray-600">Загрузка...</div>;
+  }
 
   return (
     <div className="space-y-8">
