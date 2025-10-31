@@ -70,7 +70,7 @@ export default function DashboardBuilderPage() {
     const dashboard = dashboardManager.createDashboard(name);
     setNotification({
       type: 'success',
-      message: `Дашборд "${dashboard.name}" создан`
+      message: `Дашборд \"${dashboard.name}\" создан`
     });
     setTimeout(() => setNotification(null), 3000);
   };
@@ -89,13 +89,13 @@ export default function DashboardBuilderPage() {
   };
 
   const handleDeleteDashboard = () => {
-    if (!dashboardManager.currentDashboard || !confirm(`Удалить дашборд "${dashboardManager.currentDashboard.name}"?`)) return;
+    if (!dashboardManager.currentDashboard || !confirm(`Удалить дашборд \"${dashboardManager.currentDashboard.name}\"?`)) return;
     
     const name = dashboardManager.currentDashboard.name;
     dashboardManager.deleteDashboard(dashboardManager.currentDashboard.id);
     setNotification({
       type: 'info',
-      message: `Дашборд "${name}" удален`
+      message: `Дашборд \"${name}\" удален`
     });
     setTimeout(() => setNotification(null), 3000);
   };
@@ -255,7 +255,7 @@ export default function DashboardBuilderPage() {
               <div className="xl:col-span-1 space-y-6">
                 {/* Иерархические фильтры */}
                 <HierarchicalFilter
-                  hierarchyConfig={useHierarchy().config}
+                  hierarchyConfig={hierarchyConfig}
                   data={sheets[0]?.rows || []}
                   currentFilters={hierarchyFilters}
                   onFiltersChange={handleHierarchyFiltersChange}
@@ -275,7 +275,7 @@ export default function DashboardBuilderPage() {
                     const updated = dashboardManager.currentDashboard!.filters.filter(f => f.id !== filterId);
                     handleDashboardFiltersChange(updated);
                   }}
-                  className="xl:sticky xl:top-6"
+                  className="xl:sticky xl:top-6" as any
                 />
               </div>
               
