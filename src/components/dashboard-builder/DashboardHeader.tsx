@@ -15,6 +15,7 @@ import {
   Save,
   X
 } from 'lucide-react';
+import Button from '@/components/common/Button';
 import type { Dashboard } from '@/types/dashboard-builder';
 
 interface DashboardHeaderProps {
@@ -112,20 +113,12 @@ export function DashboardHeader({
                       }}
                       autoFocus
                     />
-                    <button
-                      onClick={handleRename}
-                      className="p-1 text-green-600 hover:bg-green-50 rounded"
-                      title="Сохранить"
-                    >
+                    <Button variant="secondary" size="icon" onClick={handleRename} aria-label="Сохранить">
                       <Save className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={cancelRename}
-                      className="p-1 text-red-600 hover:bg-red-50 rounded"
-                      title="Отмена"
-                    >
+                    </Button>
+                    <Button variant="danger" size="icon" onClick={cancelRename} aria-label="Отмена">
                       <X className="w-4 h-4" />
-                    </button>
+                    </Button>
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
@@ -144,13 +137,9 @@ export function DashboardHeader({
                     </select>
                     
                     {currentDashboard && (
-                      <button
-                        onClick={startRenaming}
-                        className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-                        title="Переименовать"
-                      >
+                      <Button variant="ghost" size="icon" onClick={startRenaming} aria-label="Переименовать">
                         <Edit3 className="w-4 h-4" />
-                      </button>
+                      </Button>
                     )}
                   </div>
                 )}
@@ -170,49 +159,29 @@ export function DashboardHeader({
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowCreateDialog(true)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 font-semibold transition-colors"
-              >
-                <Plus size={18} />
+              <Button variant="primary" size="md" onClick={() => setShowCreateDialog(true)}>
+                <Plus className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Новый</span>
-              </button>
+              </Button>
               
-              <button
-                onClick={onToggleEditMode}
-                className={`px-4 py-2 rounded-lg flex items-center gap-2 font-semibold transition-colors ${
-                  isEditMode
-                    ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                    : 'bg-green-600 hover:bg-green-700 text-white'
-                }`}
-              >
-                {isEditMode ? <EyeOff size={18} /> : <Eye size={18} />}
-                <span className="hidden md:inline">
-                  {isEditMode ? 'Просмотр' : 'Редактирование'}
-                </span>
-              </button>
+              <Button variant={isEditMode ? 'accent' : 'primary'} size="md" onClick={onToggleEditMode}>
+                {isEditMode ? <EyeOff className="w-4 h-4 mr-2" /> : <Eye className="w-4 h-4 mr-2" />}
+                <span className="hidden md:inline">{isEditMode ? 'Просмотр' : 'Редактирование'}</span>
+              </Button>
 
               {currentDashboard && (
                 <>
-                  <button
-                    onClick={onDuplicateDashboard}
-                    className="px-3 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg transition-colors"
-                    title="Дублировать"
-                  >
-                    <Copy size={18} />
-                  </button>
+                  <Button variant="secondary" size="md" onClick={onDuplicateDashboard} aria-label="Дублировать">
+                    <Copy className="w-4 h-4" />
+                  </Button>
                   
-                  <button
-                    onClick={onExportDashboard}
-                    className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors"
-                    title="Экспорт"
-                  >
-                    <Download size={18} />
-                  </button>
+                  <Button variant="accent" size="md" onClick={onExportDashboard} aria-label="Экспорт">
+                    <Download className="w-4 h-4" />
+                  </Button>
                   
                   <label className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg cursor-pointer transition-colors"
-                         title="Импорт">
-                    <Upload size={18} />
+                         aria-label="Импорт">
+                    <Upload className="w-4 h-4" />
                     <input
                       type="file"
                       accept=".json"
@@ -221,13 +190,9 @@ export function DashboardHeader({
                     />
                   </label>
                   
-                  <button
-                    onClick={onDeleteDashboard}
-                    className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                    title="Удалить"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  <Button variant="danger" size="md" onClick={onDeleteDashboard} aria-label="Удалить">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
                 </>
               )}
             </div>
@@ -255,22 +220,12 @@ export function DashboardHeader({
               }}
             />
             <div className="flex gap-3">
-              <button
-                onClick={handleCreateDashboard}
-                disabled={!newDashboardName.trim()}
-                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white rounded-lg font-semibold transition-colors"
-              >
+              <Button onClick={handleCreateDashboard} disabled={!newDashboardName.trim()} className="flex-1">
                 Создать
-              </button>
-              <button
-                onClick={() => {
-                  setShowCreateDialog(false);
-                  setNewDashboardName('');
-                }}
-                className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-900 rounded-lg font-semibold transition-colors"
-              >
+              </Button>
+              <Button variant="secondary" onClick={() => { setShowCreateDialog(false); setNewDashboardName(''); }} className="flex-1">
                 Отмена
-              </button>
+              </Button>
             </div>
           </div>
         </div>
