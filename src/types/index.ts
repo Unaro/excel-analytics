@@ -4,10 +4,12 @@ export interface ExcelRow {
 
 export type HierarchyFilters = Record<string, string>;
 
+export type FilterOperator = '=' | '!=' | '>' | '<' | '>=' | '<=' | 'contains';
+
 export interface FilterCondition {
   id: string;
   column: string;
-  operator: '=' | '>' | '<' | '>=' | '<=' | '!=' | 'contains';
+  operator: FilterOperator;
   value: string | number;
 }
 export interface GroupDefinition {

@@ -31,7 +31,7 @@ export function IndicatorForm({
 }: IndicatorFormProps) {
   const [name, setName] = useState('');
   const [formula, setFormula] = useState('');
-  const [saveToLibrary, setSaveToLibrary] = useState(false);
+  const [saveToLibrary, setSaveToLibrary] = useState(true);
   const [errors, setErrors] = useState<{ name?: string; formula?: string }>({});
 
   const validate = (): boolean => {

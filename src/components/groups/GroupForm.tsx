@@ -177,7 +177,7 @@ export function GroupForm({
             <h3 className="text-lg font-semibold">Условные фильтры</h3>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            Добавьте дополнительные условия фильтрации (только категориальные поля):
+            Добавьте дополнительные условия фильтрации:
           </p>
           <GroupFilterPanel
             data={rawData}
@@ -264,7 +264,7 @@ export function GroupForm({
                 onCancel={() => setShowIndicatorForm(false)}
                 availableFields={availableFields}
                 existingNames={existingIndicatorNames}
-                isInlineMode={true}
+                isInlineMode={false}
                 onAddToLibrary={onAddIndicatorToLibrary}
               />
             </div>
