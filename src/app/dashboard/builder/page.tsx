@@ -226,7 +226,6 @@ export default function DashboardBuilderPage() {
             description="Дашборды позволяют визуализировать данные с помощью графиков и таблиц. Создавайте интерактивные отчёты для анализа."
             actionLabel="Создать дашборд"
             actionHref="#"
-            onAction={() => handleCreateDashboard('Мой первый дашборд')}
           />
         )}
       </div>
