@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import { applyFilters, evaluateFormula } from '@/lib/excel-parser';
 import type { ExcelRow, HierarchyFilters } from '@/types';
-import type { ChartConfig, DashboardFilter } from '@/types/dashboard-builder';
+import type { ChartConfig, DashboardFilter } from '@/types/barrel';
 import type { ChartDataPoint } from '@/types/dashboard';
 import type { Group } from '@/lib/data-store';
 
@@ -21,7 +21,6 @@ export function useChartData({
   hierarchyFilters,
   dashboardFilters,
 }: UseChartDataProps) {
-  // ---- Вспомогательные фильтры ----
   const applyDashboardFilters = useMemo(() => {
     return (data: ExcelRow[]): ExcelRow[] => {
       if (!dashboardFilters || dashboardFilters.length === 0) return data;
@@ -64,19 +63,16 @@ export function useChartData({
     };
   }, [hierarchyFilters]);
 
-  // ---- Базовые наборы данных ----
   const baseRows = useMemo(() => (sheets?.[0]?.rows ?? []), [sheets]);
   const baseFilteredData = useMemo(() => applyDashboardFilters(baseRows), [applyDashboardFilters, baseRows]);
   const hierarchyFilteredData = useMemo(() => applyHierarchy(baseFilteredData), [applyHierarchy, baseFilteredData]);
 
-  // ---- Данные по группам ----
   const groupsData = useMemo(() => {
     if (!sheets?.length || !groups.length) return [] as Array<{
       id: string; name: string; indicators: string[]; data: { name: string; value: number }[]; rowCount: number;
     }>;
 
     return groups.map(group => {
-      // выбрать самый глубокий иерархический фильтр из group.hierarchyFilters
       const getDeepestHierarchyFilter = (hf: Record<string, string> | undefined) => {
         if (!hf || !hierarchyConfig.length) return null;
         for (let i = hierarchyConfig.length - 1; i >= 0; i--) {
@@ -108,14 +104,12 @@ export function useChartData({
     });
   }, [sheets, groups, hierarchyConfig, applyDashboardFilters, baseRows]);
 
-  // ---- Индикаторы библиотеки (по всем группам) ----
   const indicatorsLibrary = useMemo(() => {
     const map = new Map<string, string>();
     groups.forEach(g => g.indicators.forEach(ind => map.set(ind.name, ind.formula)));
     return map;
   }, [groups]);
 
-  // Помощник: вычислить массив значений для выбранных индикаторов на основе набора строк
   const computeIndicators = (rows: ExcelRow[], indicatorNames: string[]): { name: string; value: number }[] => {
     return indicatorNames.map(name => {
       const formula = indicatorsLibrary.get(name);
@@ -129,12 +123,10 @@ export function useChartData({
     });
   };
 
-  // ---- Главная функция получения данных для графика ----
   const getChartData = useMemo(() => {
     return (config: ChartConfig): ChartDataPoint[] => {
       const useHierarchy = config.dataScope === 'hierarchy';
 
-      // 1) Источник groups
       if (config.dataSource === 'groups' && config.groupIds?.length) {
         const selectedGroups = groupsData.filter(g => config.groupIds!.includes(g.id));
         const names = (config.indicators && config.indicators.length)
@@ -151,7 +143,6 @@ export function useChartData({
         });
       }
 
-      // 2) Источник raw (без групп)
       if (config.dataSource === 'raw' || !config.groupIds?.length) {
         const rows = useHierarchy ? hierarchyFilteredData : baseFilteredData;
         const names = (config.indicators && config.indicators.length)
@@ -165,7 +156,6 @@ export function useChartData({
     };
   }, [groupsData, baseFilteredData, hierarchyFilteredData, indicatorsLibrary]);
 
-  // ---- API ----
   const getAvailableIndicators = useMemo(() => {
     return (selectedGroupIds?: string[]): string[] => {
       if (!selectedGroupIds || selectedGroupIds.length === 0) {
@@ -205,14 +195,11 @@ export function useChartData({
   }, [baseRows, baseFilteredData, hierarchyFilteredData, hierarchyFilters, dashboardFilters]);
 
   return {
-    // Наборы данных
     filteredData: hierarchyFilteredData,
     baseFilteredData,
     groupsData,
-    // Функции
     getChartData,
     getAvailableIndicators,
-    // Метаданные
     availableIndicators,
     filterStats,
   };
