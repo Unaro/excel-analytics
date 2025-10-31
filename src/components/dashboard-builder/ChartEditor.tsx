@@ -58,7 +58,6 @@ export default function ChartEditor({
     { type: 'table', icon: Table, label: 'Таблица', description: 'Детальные данные' },
   ];
 
-  // Получаем доступные показатели на основе выбранных групп
   const availableIndicators = useMemo(() => {
     return getAvailableIndicators(editConfig.groupIds);
   }, [editConfig.groupIds, getAvailableIndicators]);
@@ -96,7 +95,6 @@ export default function ChartEditor({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[95vh] overflow-hidden">
-        {/* Header */}
         <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-4 flex items-center justify-between">
           <h2 className="text-2xl font-bold">
             {config.id ? 'Редактировать график' : 'Новый график'}
@@ -108,9 +106,7 @@ export default function ChartEditor({
 
         <div className="overflow-y-auto" style={{ maxHeight: 'calc(95vh - 140px)' }}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 p-6">
-            {/* Левая колонка - основные настройки */}
             <div className="space-y-6">
-              {/* Название */}
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-2">
                   Название графика *
@@ -124,7 +120,6 @@ export default function ChartEditor({
                 />
               </div>
 
-              {/* Тип графика */}
               <div>
                 <label className="block text-sm font-bold text-gray-700 mb-3">
                   Тип графика *
@@ -143,6 +138,7 @@ export default function ChartEditor({
                       <type.icon 
                         size={24} 
                         className={editConfig.type === type.type ? 'text-blue-600' : 'text-gray-600'} 
+                        aria-label={type.label}
                       />
                       <div>
                         <div className={`font-medium ${
@@ -157,7 +153,6 @@ export default function ChartEditor({
                 </div>
               </div>
 
-              {/* Размеры */}
               <Card title="Размеры в сетке" className="bg-gray-50">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -193,13 +188,11 @@ export default function ChartEditor({
               </Card>
             </div>
 
-            {/* Правая колонка - данные и фильтры */}
             <div className="space-y-6">
-              {/* Область данных */}
               <Card 
                 title="Область данных" 
                 rightBadge={
-                  <Info className="w-4 h-4 text-blue-500" title="Определяет, как фильтры влияют на график" />
+                  <Info className="w-4 h-4 text-blue-500" aria-label="Определяет, как фильтры влияют на график" />
                 }
               >
                 <div className="space-y-3">
@@ -223,8 +216,8 @@ export default function ChartEditor({
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           {scope === 'hierarchy' ? 
-                            <Filter className="w-4 h-4 text-purple-600" /> : 
-                            <Globe className="w-4 h-4 text-green-600" />
+                            <Filter className="w-4 h-4 text-purple-600" aria-label="Иерархические фильтры" /> : 
+                            <Globe className="w-4 h-4 text-green-600" aria-label="Глобальная область" />
                           }
                           <span className={`font-medium ${
                             editConfig.dataScope === scope ? 'text-purple-900' : 'text-gray-700'
@@ -244,7 +237,6 @@ export default function ChartEditor({
                 </div>
               </Card>
 
-              {/* Источник данных */}
               <Card title="Источник данных">
                 <div className="grid grid-cols-3 gap-3">
                   {(['groups', 'raw', 'sql'] as const).map((source) => (
@@ -263,7 +255,6 @@ export default function ChartEditor({
                 </div>
               </Card>
 
-              {/* Настройки для групп */}
               {editConfig.dataSource === 'groups' && (
                 <>
                   <Card title="Выберите группы">
@@ -306,12 +297,11 @@ export default function ChartEditor({
                     </div>
                   </Card>
 
-                  {/* Показатели */}
                   <Card 
                     title="Показатели" 
                     subtitle={`Доступно: ${availableIndicators.length} показателей`}
                     rightBadge={
-                      <Eye className="w-4 h-4 text-green-500" title="Динамический список на основе выбранных групп" />
+                      <Eye className="w-4 h-4 text-green-500" aria-label="Динамический список на основе выбранных групп" />
                     }
                   >
                     {availableIndicators.length > 0 ? (
@@ -355,7 +345,6 @@ export default function ChartEditor({
                 </>
               )}
 
-              {/* Настройки отображения */}
               <Card title="Отображение">
                 <div className="space-y-3">
                   <label className="flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50">
@@ -380,7 +369,6 @@ export default function ChartEditor({
                 </div>
               </Card>
               
-              {/* Превью */}
               <Card title="Предпросмотр настроек" className="bg-blue-50">
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
@@ -389,7 +377,7 @@ export default function ChartEditor({
                       {chartTypes.find(t => t.type === editConfig.type)?.label || editConfig.type}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify между">
                     <span className="text-gray-600">Размер:</span>
                     <span className="font-medium">{editConfig.w}x{editConfig.h}</span>
                   </div>
@@ -417,7 +405,6 @@ export default function ChartEditor({
           </div>
         </div>
 
-        {/* Footer */}
         <div className="sticky bottom-0 bg-gray-50 px-6 py-4 flex gap-3 border-t border-gray-200">
           <button
             onClick={handleSave}
