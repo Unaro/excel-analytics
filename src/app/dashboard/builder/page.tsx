@@ -11,8 +11,8 @@ import { DashboardHeader } from '@/components/dashboard-builder/DashboardHeader'
 import { DashboardToolbar } from '@/components/dashboard-builder/DashboardToolbar';
 import { HierarchicalFilter } from '@/components/dashboard-builder/HierarchicalFilter';
 import { ChartGrid, FilterStats } from '@/components/dashboard-builder/ChartGrid';
-import { ChartEditor } from '@/components/dashboard-builder/ChartEditor';
-import { FilterPanel } from '@/components/dashboard-builder/FilterPanel';
+import ChartEditor from '@/components/dashboard-builder/ChartEditor';
+import FilterPanel from '@/components/dashboard-builder/FilterPanel';
 import EmptyState from '@/components/dashboard/EmptyState';
 import type { SheetData, HierarchyFilters } from '@/types';
 import type { ChartConfig } from '@/types/dashboard-builder';
@@ -255,7 +255,7 @@ export default function DashboardBuilderPage() {
               <div className="xl:col-span-1 space-y-6">
                 {/* Иерархические фильтры */}
                 <HierarchicalFilter
-                  hierarchyConfig={hierarchyConfig}
+                  hierarchyConfig={useHierarchy().config}
                   data={sheets[0]?.rows || []}
                   currentFilters={hierarchyFilters}
                   onFiltersChange={handleHierarchyFiltersChange}
@@ -316,7 +316,6 @@ export default function DashboardBuilderPage() {
             indicators: g.indicators,
           }))}
           availableColumns={sheets[0]?.headers || []}
-          globalIndicators={chartDataManager.availableIndicators}
           onSave={handleSaveChart}
           onCancel={() => setEditingChart(null)}
         />
