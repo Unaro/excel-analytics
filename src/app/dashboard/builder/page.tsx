@@ -8,6 +8,7 @@ import { Dashboard, ChartConfig } from '@/types/dashboard-builder';
 import { 
   FileSpreadsheet,
   Plus,
+  Save,
   Eye,
   EyeOff,
   Download,
@@ -15,8 +16,8 @@ import {
   Layout,
   Trash2,
   Copy,
+  Loader,
 } from 'lucide-react';
-import Loader from '@/components/loader';
 import EmptyState from '@/components/dashboard/EmptyState';
 import ChartEditor from '@/components/dashboard-builder/ChartEditor';
 import ChartRenderer from '@/components/dashboard-builder/ChartRenderer';
@@ -338,7 +339,7 @@ export default function DashboardBuilderPage() {
         localStorage.setItem('dashboards', JSON.stringify(updated));
         
         alert('Дашборд импортирован!');
-      } catch {
+      } catch (err) {
         alert('Ошибка импорта файла');
       }
     };
@@ -346,7 +347,7 @@ export default function DashboardBuilderPage() {
   };
 
   if (loading) {
-    return <Loader title="Загрузка конструктора..." />;
+    return <Loader />;
   }
 
   if (!sheets || sheets.length === 0) {

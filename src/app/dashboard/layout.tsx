@@ -9,6 +9,7 @@ import {
   Settings as SettingsIcon,
   AlertCircle,
   ArrowLeft,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { dataStore } from '@/lib/data-store';
@@ -58,7 +59,7 @@ export default function DashboardLayout({
     {
       href: '/dashboard/sql',
       label: 'SQL Builder',
-      icon: TrendingUp,
+      icon: FileSpreadsheet,
       description: 'SQL запросы',
     },
     {
