@@ -7,6 +7,11 @@ import { getExcelData } from './storage';
 export interface Indicator {
   name: string;
   formula: string;
+  type?: 'standard' | 'aggregation' | 'custom';
+  description?: string;
+  tags?: string[];
+  author?: string;
+  checksum?: string;
 }
 
 export interface IndicatorWithValue extends Indicator {
