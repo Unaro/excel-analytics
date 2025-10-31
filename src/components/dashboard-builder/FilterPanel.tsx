@@ -12,6 +12,7 @@ interface FilterPanelProps {
   onFiltersChange: (filters: DashboardFilter[]) => void;
   onAddFilter: (filter: DashboardFilter) => void;
   onRemoveFilter: (filterId: string) => void;
+  className?: string;
 }
 
 export default function FilterPanel({
@@ -21,6 +22,7 @@ export default function FilterPanel({
   onFiltersChange,
   onAddFilter,
   onRemoveFilter,
+  className = '',
 }: FilterPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showAddFilter, setShowAddFilter] = useState(false);
@@ -38,23 +40,21 @@ export default function FilterPanel({
   };
 
   // Определяем тип колонки
-    const getColumnType = (column: string): 'number' | 'string' | 'date' => {
-        if (data.length === 0) return 'string';
-        const sample = data[0][column];
-        
-        if (sample == null) return 'string';
-        if (typeof sample === 'number') return 'number';
-        if (typeof sample === 'boolean') return 'string'; // boolean как string
-        
-        // Проверка строки на формат даты
-        if (typeof sample === 'string' && /^\d{4}-\d{2}-\d{2}/.test(sample)) {
-            return 'date';
-        }
-        
-        return 'string';
-    };
+  const getColumnType = (column: string): 'number' | 'string' | 'date' => {
+    if (data.length === 0) return 'string';
+    const sample = data[0][column];
+    
+    if (sample == null) return 'string';
+    if (typeof sample === 'number') return 'number';
+    if (typeof sample === 'boolean') return 'string';
+    
+    if (typeof sample === 'string' && /^\d{4}-\d{2}-\d{2}/.test(sample)) {
+      return 'date';
+    }
+    
+    return 'string';
+  };
 
-  // Добавление нового фильтра
   const handleAddFilter = () => {
     if (!newFilterColumn) return;
 
@@ -75,7 +75,6 @@ export default function FilterPanel({
     setNewFilterColumn('');
   };
 
-  // Обновление значения фильтра
   const updateFilter = (filterId: string, updates: Partial<DashboardFilter>) => {
     const updated = filters.map(f => 
       f.id === filterId ? { ...f, ...updates } : f
@@ -83,7 +82,6 @@ export default function FilterPanel({
     onFiltersChange(updated);
   };
 
-  // Очистка всех фильтров
   const clearAllFilters = () => {
     const cleared = filters.map(f => ({
       ...f,
@@ -97,7 +95,6 @@ export default function FilterPanel({
     onFiltersChange(cleared);
   };
 
-  // Проверка, активен ли хотя бы один фильтр
   const hasActiveFilters = filters.some(f => 
     (f.selectedValues && f.selectedValues.length > 0) ||
     f.rangeMin != null || f.rangeMax != null ||
@@ -105,8 +102,7 @@ export default function FilterPanel({
   );
 
   return (
-    <div className="bg-white rounded-xl shadow-lg border-2 border-blue-200 overflow-hidden">
-      {/* Header */}
+    <div className={`bg-white rounded-xl shadow-lg border-2 border-blue-200 overflow-hidden ${className}`}>
       <div 
         className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 flex items-center justify-between cursor-pointer"
         onClick={() => setIsExpanded(!isExpanded)}
@@ -141,10 +137,8 @@ export default function FilterPanel({
         </div>
       </div>
 
-      {/* Content */}
       {isExpanded && (
         <div className="p-4 space-y-4">
-          {/* Существующие фильтры */}
           {filters.map((filter) => (
             <div key={filter.id} className="border-2 border-gray-200 rounded-lg p-3 hover:border-blue-300 transition-colors">
               <div className="flex items-center justify-between mb-2">
@@ -160,7 +154,6 @@ export default function FilterPanel({
                 </button>
               </div>
 
-              {/* Тип фильтра: SELECT */}
               {filter.type === 'select' && (
                 <select
                   value={filter.selectedValues?.[0] || ''}
@@ -176,7 +169,6 @@ export default function FilterPanel({
                 </select>
               )}
 
-              {/* Тип фильтра: MULTISELECT */}
               {filter.type === 'multiselect' && (
                 <div className="max-h-48 overflow-y-auto border-2 border-gray-300 rounded-lg p-2">
                   {getUniqueValues(filter.column).map(value => (
@@ -202,7 +194,6 @@ export default function FilterPanel({
                 </div>
               )}
 
-              {/* Тип фильтра: RANGE */}
               {filter.type === 'range' && (
                 <div className="grid grid-cols-2 gap-2">
                   <input
@@ -226,7 +217,6 @@ export default function FilterPanel({
                 </div>
               )}
 
-              {/* Тип фильтра: DATE */}
               {filter.type === 'date' && (
                 <div className="grid grid-cols-2 gap-2">
                   <input
@@ -244,7 +234,6 @@ export default function FilterPanel({
                 </div>
               )}
 
-              {/* Тип фильтра: SEARCH */}
               {filter.type === 'search' && (
                 <div className="relative">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -260,7 +249,6 @@ export default function FilterPanel({
             </div>
           ))}
 
-          {/* Кнопка добавления фильтра */}
           {!showAddFilter ? (
             <button
               onClick={() => setShowAddFilter(true)}
