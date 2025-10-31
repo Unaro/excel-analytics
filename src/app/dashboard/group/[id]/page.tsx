@@ -16,7 +16,6 @@ import {
   Calendar,
   Database,
   TreePine,
-  Plus,
   CheckCircle2
 } from 'lucide-react';
 import Link from 'next/link';
@@ -31,8 +30,18 @@ export default function GroupDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
-  // Хук для управления подгруппами
-  const subGroupsManager = groupWithData ? useSubGroupsManager({ parentGroup: groupWithData }) : null;
+  // Хук для управления подгруппами должен быть вызван безусловно
+  const subGroupsManager = useSubGroupsManager({ 
+    parentGroup: groupWithData || {
+      id: '',
+      name: '',
+      filters: [],
+      hierarchyFilters: {},
+      indicators: [],
+      createdAt: 0,
+      updatedAt: 0
+    }
+  });
 
   useEffect(() => {
     const data = dataStore.getGroupWithData(groupId);
@@ -42,8 +51,6 @@ export default function GroupDetailPage() {
 
   // Обработчик создания подгрупп
   const handleCreateSubGroups = async (groupsToCreate: Parameters<typeof subGroupsManager.createSubGroups>[0]) => {
-    if (!subGroupsManager) return;
-    
     const result = await subGroupsManager.createSubGroups(groupsToCreate);
     
     if (result.success) {
@@ -139,33 +146,31 @@ export default function GroupDetailPage() {
           </div>
           
           {/* Кнопка создания подгрупп */}
-          {subGroupsManager && (
-            <div className="flex-shrink-0 ml-6">
-              {subGroupsManager.subGroupInfo.canCreate ? (
-                <button
-                  onClick={subGroupsManager.openModal}
-                  className="flex items-center gap-2 px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-colors backdrop-blur-sm"
-                  title={`Создать ${subGroupsManager.subGroupInfo.count} подгрупп для уровня "${subGroupsManager.subGroupInfo.nextLevel}"`}
-                >
-                  <TreePine className="w-5 h-5" />
-                  <span className="hidden sm:inline">Создать подгруппы</span>
-                  <span className="text-xs bg-white bg-opacity-30 px-2 py-1 rounded">
-                    {subGroupsManager.subGroupInfo.count}
-                  </span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-2 px-4 py-2 bg-white bg-opacity-10 text-blue-200 rounded-lg cursor-not-allowed">
-                  <TreePine className="w-5 h-5 opacity-50" />
-                  <span className="hidden sm:inline text-sm">Подгруппы недоступны</span>
-                </div>
-              )}
-            </div>
-          )}
+          <div className="flex-shrink-0 ml-6">
+            {subGroupsManager.subGroupInfo.canCreate ? (
+              <button
+                onClick={subGroupsManager.openModal}
+                className="flex items-center gap-2 px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-lg transition-colors backdrop-blur-sm"
+                title={`Создать ${subGroupsManager.subGroupInfo.count} подгрупп для уровня "${subGroupsManager.subGroupInfo.nextLevel}"`}
+              >
+                <TreePine className="w-5 h-5" />
+                <span className="hidden sm:inline">Создать подгруппы</span>
+                <span className="text-xs bg-white bg-opacity-30 px-2 py-1 rounded">
+                  {subGroupsManager.subGroupInfo.count}
+                </span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 px-4 py-2 bg-white bg-opacity-10 text-blue-200 rounded-lg cursor-not-allowed">
+                <TreePine className="w-5 h-5 opacity-50" />
+                <span className="hidden sm:inline text-sm">Подгруппы недоступны</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Информационная панель о возможности создания подгрупп */}
-      {subGroupsManager && !subGroupsManager.subGroupInfo.canCreate && (
+      {!subGroupsManager.subGroupInfo.canCreate && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
@@ -321,16 +326,14 @@ export default function GroupDetailPage() {
       </div>
 
       {/* Модальное окно создания подгрупп */}
-      {subGroupsManager && (
-        <CreateSubGroupsModal
-          isOpen={subGroupsManager.isModalOpen}
-          onClose={subGroupsManager.closeModal}
-          parentGroup={groupWithData}
-          hierarchyConfig={subGroupsManager.modalProps.hierarchyConfig}
-          data={subGroupsManager.modalProps.data}
-          onCreateGroups={handleCreateSubGroups}
-        />
-      )}
+      <CreateSubGroupsModal
+        isOpen={subGroupsManager.isModalOpen}
+        onClose={subGroupsManager.closeModal}
+        parentGroup={groupWithData}
+        hierarchyConfig={subGroupsManager.modalProps.hierarchyConfig}
+        data={subGroupsManager.modalProps.data}
+        onCreateGroups={handleCreateSubGroups}
+      />
     </div>
   );
 }
