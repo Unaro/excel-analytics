@@ -27,7 +27,6 @@ export default function DashboardBuilderPage() {
   const [hierarchyFilters, setHierarchyFilters] = useState<HierarchyFilters>({});
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info', message: string } | null>(null);
 
-  // Хуки
   const { config: hierarchyConfig } = useHierarchy();
   const dashboardManager = useDashboardManager();
   
@@ -39,7 +38,6 @@ export default function DashboardBuilderPage() {
     dashboardFilters: dashboardManager.currentDashboard?.filters || [],
   });
 
-  // Загрузка данных
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -227,7 +225,8 @@ export default function DashboardBuilderPage() {
             title="Создайте свой первый дашборд"
             description="Дашборды позволяют визуализировать данные с помощью графиков и таблиц. Создавайте интерактивные отчёты для анализа."
             actionLabel="Создать дашборд"
-            actionOnClick={() => handleCreateDashboard('Мой первый дашборд')}
+            actionHref="#"
+            onAction={() => handleCreateDashboard('Мой первый дашборд')}
           />
         )}
       </div>
