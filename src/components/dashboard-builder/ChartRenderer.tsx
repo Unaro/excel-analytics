@@ -28,7 +28,6 @@ export default function ChartRenderer({
     if (!data || data.length === 0) return [] as ChartDataPoint[];
     return data;
   }, [data]);
-
   const renderChart = () => {
     if (chartData.length === 0) {
       return (
@@ -45,12 +44,21 @@ export default function ChartRenderer({
 
     switch (config.type) {
       case 'bar':
+        // const barData: {
+        //   [key: string]: string | number;
+        //   name: string;
+        // }[] = []
+        // chartData.map(value => {
+        //   barData.push({name: value.name, [value.name]: value.value})
+        // })
+
+        //Создать wrapper
         return (
-          <BarChart data={chartData} indicators={config.indicators || 'value'} height={height} showLegend={config.showLegend} />
+          <BarChart data={chartData} indicators={'value'} height={height} showLegend={config.showLegend} />
         );
       case 'line':
         return (
-          <LineChart data={chartData} indicators={config.indicators || 'value'} height={height} showLegend={config.showLegend} />
+          <LineChart data={chartData} indicators={'value'} height={height} showLegend={config.showLegend} />
         );
       case 'pie': {
         const valueField = config.indicators?.[0] || 'value';
@@ -59,8 +67,8 @@ export default function ChartRenderer({
       }
       case 'metric': {
         const value = chartData.length > 0 && config.indicators?.[0]
-          ? chartData.reduce((sum, d) => sum + (Number(d[config.indicators![0]]) || 0), 0)
-          : 0;
+          ? chartData.reduce((sum, d)=> typeof d.value === 'number' ? sum + d.value : sum + 0, 0)
+          : typeof chartData[0]?.value === 'number' ? chartData[0]?.value ?? 0 : 0;
         return (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">

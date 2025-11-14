@@ -42,7 +42,6 @@ export function ChartGrid({
       >
         {charts.map((chart) => {
           const chartData = getChartData(chart);
-          
           return (
             <ResizableChart
               key={chart.id}

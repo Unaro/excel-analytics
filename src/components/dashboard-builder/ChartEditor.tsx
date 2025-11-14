@@ -167,7 +167,7 @@ export default function ChartEditor({
 
               {editConfig.dataSource === 'groups' && (
                 <>
-                  <Card title="Выберите группы">
+                  {editConfig.dataScope !== 'hierarchy' && <Card title="Выберите группы">
                     <div className="space-y-2 max-h-48 overflow-y-auto">
                       {availableGroups.length > 0 ? (
                         availableGroups.map((group) => (
@@ -189,7 +189,7 @@ export default function ChartEditor({
                         </div>
                       )}
                     </div>
-                  </Card>
+                  </Card>}
 
                   <Card title="Показатели" subtitle={`Доступно: ${availableIndicators.length} показателей`} rightBadge={<Eye className="w-4 h-4 text-green-500" aria-label="Динамический список на основе выбранных групп" />}>
                     {availableIndicators.length > 0 ? (

@@ -59,7 +59,8 @@ export default function BarChart({
         
         {isMultiple ? (
           // Множественные показатели
-          (indicators as string[]).map((name, idx) => (
+          (indicators as string[]).map((name, idx) => {
+            return (
             <Bar 
               key={name}
               dataKey={name} 
@@ -67,7 +68,7 @@ export default function BarChart({
               radius={[8, 8, 0, 0]}
               stackId={stacked ? 'stack' : undefined}
             />
-          ))
+          )})
         ) : (
           // Один показатель с разными цветами для каждой категории
           <Bar dataKey={indicators as string} radius={[8, 8, 0, 0]}>

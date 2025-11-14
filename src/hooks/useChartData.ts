@@ -143,7 +143,7 @@ export function useChartData({
         });
       }
 
-      if (config.dataSource === 'raw' || !config.groupIds?.length) {
+      if (config.dataSource === 'groups' || !(config.groupIds?.length)) {
         const rows = useHierarchy ? hierarchyFilteredData : baseFilteredData;
         const names = (config.indicators && config.indicators.length)
           ? config.indicators
