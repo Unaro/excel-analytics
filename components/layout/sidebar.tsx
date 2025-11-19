@@ -1,0 +1,119 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { 
+  LayoutDashboard, 
+  Database, 
+  Calculator, 
+  Layers, 
+  GitMerge, 
+  FileSpreadsheet,
+  LucideIcon,
+  Settings
+} from 'lucide-react';
+import { useExcelDataStore } from '@/lib/stores/excel-data-store';
+import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
+import { ThemeToggle } from './theme-toggle';
+
+type MenuItemLink = {
+  type: 'link';
+  href: string;
+  label: string;
+  icon: LucideIcon;
+};
+
+type MenuItemDivider = {
+  type: 'divider';
+};
+
+type MenuItem = MenuItemLink | MenuItemDivider;
+
+export function Sidebar() {
+  const pathname = usePathname();
+  const hydrated = useStoreHydration();
+  const fileName = useExcelDataStore(s => s.metadata?.fileName);
+
+  const menuItems: MenuItem[] = [
+    { type: 'link', href: '/dashboards', label: 'Дашборды', icon: LayoutDashboard },
+    { type: 'divider' },
+    { type: 'link', href: '/groups', label: 'Группы показателей', icon: Layers },
+    { type: 'link', href: '/metrics', label: 'Метрики (Правила)', icon: Calculator },
+    { type: 'divider' },
+    { type: 'link', href: '/setup', label: 'Данные и Колонки', icon: Database },
+    { type: 'link', href: '/hierarchy', label: 'Иерархия', icon: GitMerge },  
+    { type: 'divider' },
+    { type: 'link', href: '/settings', label: 'Настройки', icon: Settings },
+  ];
+
+  return (
+    <div className="w-64 h-screen bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col fixed left-0 top-0 z-50 transition-colors duration-300">
+      {/* Логотип */}
+      <div className="p-6 border-b border-gray-100 dark:border-slate-800">
+        <div className="flex items-center gap-3 font-bold text-xl text-gray-900 dark:text-white">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
+            <LayoutDashboard size={18} />
+          </div>
+          <span className="tracking-tight">Urban<span className="text-indigo-600 dark:text-indigo-400">Analytics</span></span>
+        </div>
+      </div>
+
+      {/* Статус файла */}
+      <div className="px-4 py-4 bg-gray-50/50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800 backdrop-blur-sm">
+        <div className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-2">
+          Активный dataset
+        </div>
+        {hydrated && fileName ? (
+          <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 p-2.5 rounded-lg border border-emerald-100 dark:border-emerald-900/50 truncate group cursor-help transition-colors">
+            <FileSpreadsheet size={16} className="shrink-0 opacity-70" />
+            <span className="truncate font-medium" title={fileName}>{fileName}</span>
+          </div>
+        ) : (
+          <Link 
+            href="/setup" 
+            className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 p-2 rounded-lg border border-dashed border-indigo-200 dark:border-indigo-800 transition-colors"
+          >
+            <Database size={16} />
+            <span className="font-medium">Загрузить файл</span>
+          </Link>
+        )}
+      </div>
+
+      {/* Меню */}
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
+        {menuItems.map((item, idx) => {
+          if (item.type === 'divider') {
+            return <div key={`div-${idx}`} className="h-px bg-gray-100 dark:bg-slate-800 my-4 mx-2" />;
+          }
+
+          const Icon = item.icon;
+          const isActive = pathname.startsWith(item.href);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`
+                flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
+                ${isActive 
+                  ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 shadow-sm' 
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'}
+              `}
+            >
+              <Icon size={18} className={isActive ? 'text-indigo-600 dark:text-indigo-400' : 'opacity-70'} />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Футер */}
+      <div className="p-4 border-t border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/50">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-medium text-slate-400">Тема интерфейса</span>
+        </div>
+        <ThemeToggle />
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,288 @@
+'use client';
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { 
+  ChevronRight, 
+  ChevronDown, 
+  Folder, 
+  FolderOpen, 
+  Loader2, 
+  Check, 
+  X
+} from 'lucide-react';
+import { buildHierarchyTree } from '@/app/actions/hierarchy';
+import { useHierarchyStore } from '@/lib/stores/hierarchy-store';
+import { useExcelDataStore } from '@/lib/stores/excel-data-store';
+import { 
+  HierarchyLevel, 
+  HierarchyFilterValue, 
+  HierarchyNode 
+} from '@/types';
+import { useFilterActions } from '@/lib/hooks/use-filter-actions';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+interface TreeProps {
+  dashboardId: string;
+  currentFilters: HierarchyFilterValue[];
+}
+
+export function HierarchyTree({ dashboardId, currentFilters }: TreeProps) {
+  const levels = useHierarchyStore(s => s.levels);
+  const { resetAll } = useFilterActions(dashboardId);
+  
+  // Ключ для полного пересоздания дерева при смене структуры
+  const structureKey = useMemo(() => {
+    return levels.map(l => l.id).join('-');
+  }, [levels]);
+
+  // Self-Healing: Сброс, если фильтры не совпадают с уровнями
+  useEffect(() => {
+    if (currentFilters.length > 0 && levels.length > 0) {
+      const isConfigValid = currentFilters.every(filter => 
+        levels.some(l => l.id === filter.levelId)
+      );
+      const isOrderValid = currentFilters.every((filter, index) => {
+        return levels[index]?.id === filter.levelId;
+      });
+
+      if (!isConfigValid || !isOrderValid) {
+        resetAll();
+      }
+    }
+  }, [structureKey, currentFilters, levels, resetAll]);
+
+  const sheets = useExcelDataStore(s => s.data);
+  const rawData = useMemo(() => {
+    if (!sheets) return [];
+    return sheets.flatMap(s => s.rows);
+  }, [sheets]);
+
+  if (levels.length === 0) {
+    return (
+      <div className="text-gray-400 text-sm p-4 text-center border-2 border-dashed rounded-xl m-2">
+        Иерархия не настроена.
+      </div>
+    );
+  }
+
+  return (
+    <div className="border rounded-xl bg-white dark:bg-slate-900 shadow-sm dark:border-slate-800 overflow-hidden flex flex-col h-[600px]">
+      <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm flex justify-between items-center">
+        <span className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">Структура</span>
+        {currentFilters.length > 0 && (
+          <Button
+            variant="ghost" 
+            size="sm" 
+            onClick={resetAll} 
+            className="h-6 px-2 text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+          >
+            <X size={12} className="mr-1" /> Сброс
+          </Button>
+        )}
+      </div>
+      
+      <div className="overflow-y-auto flex-1 p-2 custom-scrollbar">
+        <TreeNode 
+          key={structureKey} 
+          dashboardId={dashboardId}
+          levelIndex={0}
+          parentPath={[]} 
+          levels={levels}
+          allData={rawData}
+          activeFilters={currentFilters}
+        />
+      </div>
+    </div>
+  );
+}
+// --- Рекурсивный Узел Дерева ---
+
+interface TreeNodeProps {
+  dashboardId: string;
+  levelIndex: number;
+  parentPath: HierarchyFilterValue[];
+  levels: HierarchyLevel[];
+  allData: any[];
+  activeFilters: HierarchyFilterValue[];
+}
+
+function TreeNode({ 
+  dashboardId, 
+  levelIndex, 
+  parentPath, 
+  levels, 
+  allData, 
+  activeFilters 
+}: TreeNodeProps) {
+  const [nodes, setNodes] = useState<HierarchyNode[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const currentLevel = levels[levelIndex];
+  const { selectNode } = useFilterActions(dashboardId);
+
+  // Текущий активный фильтр для этого уровня (если есть)
+  const activeFilterAtThisLevel = activeFilters[levelIndex];
+
+  // Проверяем, нужно ли автоматически раскрыть этот узел
+  // Это нужно, если мы загружаем страницу и у нас уже выбран фильтр "Россия -> Москва"
+  // Тогда узел "Россия" должен быть раскрыт.
+  const shouldBeExpanded = useMemo(() => {
+    if (levelIndex === 0) return true; // Корень всегда пытаемся грузить
+    
+    // Если родительский путь совпадает с активными фильтрами - мы на верном пути
+    // Проверяем совпадение родительского узла с фильтром
+    const parentFilter = activeFilters[levelIndex - 1];
+    const parentNode = parentPath[parentPath.length - 1];
+    
+    if (parentFilter && parentNode && String(parentFilter.value) === String(parentNode.value)) {
+       return true;
+    }
+    return false;
+  }, [levelIndex, activeFilters, parentPath]);
+
+  // Стабилизируем зависимость parentPath
+  const parentPathKey = JSON.stringify(parentPath);
+
+  const loadNodes = useCallback(async () => {
+    if (!currentLevel) return;
+    if (nodes.length > 0) return; // Уже загружено
+    
+    setIsLoading(true);
+    try {
+      const res = await buildHierarchyTree({
+        data: allData,
+        levels,
+        parentFilters: parentPath,
+        includeRecordCount: true
+      });
+      setNodes(res.nodes);
+    } catch (e) {
+        console.error(e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [allData, levels, parentPath, nodes.length, parentPathKey, currentLevel]); 
+
+  // Эффект: Если мы должны быть раскрыты (из-за фильтров) - грузим данные и раскрываемся
+  useEffect(() => {
+    let mounted = true;
+    if (!currentLevel) return;
+
+    const init = async () => {
+      if (shouldBeExpanded) {
+        if (nodes.length === 0 && !isLoading) {
+            await loadNodes();
+        }
+        // Если этот узел является частью активного пути (но не последним), раскрываем его
+        // Если activeFilterAtThisLevel существует, значит что-то выбрано на этом уровне или глубже -> Expand
+        if (activeFilterAtThisLevel && mounted) {
+           setIsExpanded(true);
+        }
+      }
+    };
+    
+    init();
+    return () => { mounted = false; };
+  }, [shouldBeExpanded, activeFilterAtThisLevel, loadNodes, nodes.length, isLoading, currentLevel]);
+
+  const handleToggle = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isExpanded && nodes.length === 0) {
+      await loadNodes();
+    }
+    setIsExpanded(!isExpanded);
+  };
+
+  const handleSelect = (node: HierarchyNode) => {
+    selectNode(node);
+    // При выборе узла мы его не обязательно раскрываем, если там нет детей,
+    // но если есть - можно раскрыть для удобства:
+    // setIsExpanded(true); 
+  };
+
+  if (!currentLevel) return null;
+
+  if (isLoading && nodes.length === 0) {
+    return <div className="pl-4 py-1"><Loader2 size={14} className="animate-spin text-gray-400"/></div>;
+  }
+
+  return (
+    <ul className="space-y-0.5">
+      {nodes.map(node => {
+        const isSelected = activeFilterAtThisLevel && String(activeFilterAtThisLevel.value) === String(node.value);
+        const hasChildren = levelIndex + 1 < levels.length;
+
+        return (
+          <li key={node.value}>
+            <div 
+              className={cn(
+                "flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none transition-all duration-200 text-sm",
+                isSelected 
+                  ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300 font-medium" 
+                  : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              )}
+              onClick={() => selectNode(node)}
+            >
+              <div 
+                className={cn(
+                  "p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors",
+                  !hasChildren && "opacity-0 pointer-events-none"
+                )}
+                onClick={hasChildren ? handleToggle : undefined}
+              >
+                {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </div>
+
+              <div className={isSelected ? 'text-indigo-500 dark:text-indigo-400' : 'text-slate-400'}>
+                {isSelected ? <FolderOpen size={16} /> : <Folder size={16} />}
+              </div>
+
+              <span className="truncate flex-1">{node.displayValue}</span>
+
+              {node.recordCount > 0 && (
+                <span className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded-full",
+                  isSelected ? "bg-indigo-100 dark:bg-indigo-500/30 text-indigo-600 dark:text-indigo-200" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-500"
+                )}>
+                  {node.recordCount}
+                </span>
+              )}
+            </div>
+
+            {hasChildren && isExpanded && (
+              <div className="pl-4 ml-2.5 border-l border-slate-100 dark:border-slate-800 my-1">
+                <TreeNode 
+                  dashboardId={dashboardId}
+                  levelIndex={levelIndex + 1}
+                  parentPath={[...parentPath, {
+                    levelId: currentLevel.id,
+                    levelIndex: currentLevel.order,
+                    columnName: currentLevel.columnName,
+                    value: node.value
+                  }]}
+                  levels={levels}
+                  allData={allData}
+                  activeFilters={activeFilters}
+                />
+              </div>
+            )}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function ResetButton({ dashboardId }: { dashboardId: string }) {
+  const { resetAll } = useFilterActions(dashboardId);
+  return (
+    <button 
+      onClick={resetAll}
+      className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors"
+    >
+      Сбросить
+    </button>
+  );
+}
