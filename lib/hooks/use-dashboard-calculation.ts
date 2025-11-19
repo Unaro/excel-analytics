@@ -1,5 +1,5 @@
 // lib/hooks/use-dashboard-calculation.ts
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useExcelDataStore } from '@/lib/stores/excel-data-store';
 import { useIndicatorGroupStore } from '@/lib/stores/indicator-group-store';
 import { useMetricTemplateStore } from '@/lib/stores/metric-template-store';
@@ -82,9 +82,7 @@ export function useDashboardCalculation(dashboardId: string) {
       runCalculation();
     }
   }, [
-    dashboard?.hierarchyFilters, 
-    dashboard?.indicatorGroups,
-    dashboard?.virtualMetrics,
+    dashboard,
     excelData,
     result,
     isComputing,

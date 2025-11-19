@@ -3,7 +3,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { parse, MathNode } from 'mathjs';
 import { useColumnConfigStore } from '@/lib/stores/column-config-store';
-import { useMetricTemplateStore } from '@/lib/stores/metric-template-store';
 
 // Расширяем базовый тип для TypeScript
 interface MathSymbolNode extends MathNode {
@@ -20,9 +19,6 @@ export function useFormulaValidation() {
   const numericColumns = useMemo(() => {
     return configs.filter(c => c.classification === 'numeric');
   }, [configs]);
-  
-  // Доступные шаблоны
-  const templates = useMetricTemplateStore((s) => s.templates);
 
   const [isValid, setIsValid] = useState(true);
   const [error, setError] = useState<string | null>(null);

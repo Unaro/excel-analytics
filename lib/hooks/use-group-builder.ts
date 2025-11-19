@@ -31,6 +31,7 @@ export function useGroupBuilder(existingGroupId?: string) {
     if (existingGroupId && !isInitialized) {
       const group = getGroup(existingGroupId);
       if (group) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setName((prev) => (prev !== group.name ? group.name : prev));
         
         // 1. Сначала восстанавливаем структуру, генерируя tempId
@@ -94,12 +95,11 @@ export function useGroupBuilder(existingGroupId?: string) {
         });
 
         setSelectedMetrics(fixedMetrics);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsInitialized(true);
       }
     }
   }, [existingGroupId, getGroup, isInitialized, templates]);
-
-  // ... (Весь остальной код addMetricToGroup, updateVariableType и т.д. остается БЕЗ ИЗМЕНЕНИЙ)
   
   const addMetricToGroup = useCallback((templateId: string) => {
     const template = templates.find(t => t.id === templateId);

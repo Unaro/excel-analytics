@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import { DashboardComputationResult } from '@/types';
 import { Card } from '@/components/ui/card';
-import { BarChart3, PieChart, Hexagon } from 'lucide-react';
+import { BarChart3, Hexagon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ChartsSectionProps {
@@ -15,6 +15,20 @@ interface ChartsSectionProps {
 }
 
 type ChartType = 'bar' | 'radar';
+
+// Типизация для Tooltip
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    value: number;
+    payload: {
+      formatted: string;
+      name: string;
+      [key: string]: string | number;
+    };
+  }>;
+  label?: string;
+}
 
 export function ChartsSection({ result }: ChartsSectionProps) {
   const [activeMetricId, setActiveMetricId] = useState<string>(
@@ -146,11 +160,7 @@ export function ChartsSection({ result }: ChartsSectionProps) {
     </div>
   );
 }
-interface CustomTooltipProps {
-  active?: boolean;
-  payload?: any[]; // Используем any[] для payload, так как Recharts вкладывает туда сложные объекты
-  label?: string;
-}
+
 
 // Кастомный тултип для стилизации
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
@@ -163,7 +173,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
           <div className="w-2 h-2 rounded-full bg-indigo-500" />
           <span className="text-slate-500 dark:text-slate-400">Значение:</span>
           <span className="font-mono font-medium text-indigo-600 dark:text-indigo-400">
-            {data?.formatted || data?.value}
+            {data.formatted}
           </span>
         </div>
       </div>

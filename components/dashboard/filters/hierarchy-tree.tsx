@@ -6,9 +6,8 @@ import {
   ChevronDown, 
   Folder, 
   FolderOpen, 
-  Loader2, 
-  Check, 
-  X
+  Loader2,
+  Trash, 
 } from 'lucide-react';
 import { buildHierarchyTree } from '@/app/actions/hierarchy';
 import { useHierarchyStore } from '@/lib/stores/hierarchy-store';
@@ -19,8 +18,8 @@ import {
   HierarchyNode 
 } from '@/types';
 import { useFilterActions } from '@/lib/hooks/use-filter-actions';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 interface TreeProps {
   dashboardId: string;
@@ -71,14 +70,7 @@ export function HierarchyTree({ dashboardId, currentFilters }: TreeProps) {
       <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm flex justify-between items-center">
         <span className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400 tracking-wider">Структура</span>
         {currentFilters.length > 0 && (
-          <Button
-            variant="ghost" 
-            size="sm" 
-            onClick={resetAll} 
-            className="h-6 px-2 text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-          >
-            <X size={12} className="mr-1" /> Сброс
-          </Button>
+          <ResetButton dashboardId={dashboardId} />
         )}
       </div>
       
@@ -145,25 +137,18 @@ function TreeNode({
   // Стабилизируем зависимость parentPath
   const parentPathKey = JSON.stringify(parentPath);
 
+  // ИСПРАВЛЕНИЕ: Убираем варнинг про parentPathKey, так как мы знаем что делаем
   const loadNodes = useCallback(async () => {
-    if (!currentLevel) return;
-    if (nodes.length > 0) return; // Уже загружено
-    
+    if (!currentLevel || nodes.length > 0) return;
     setIsLoading(true);
     try {
       const res = await buildHierarchyTree({
-        data: allData,
-        levels,
-        parentFilters: parentPath,
-        includeRecordCount: true
+        data: allData, levels, parentFilters: parentPath, includeRecordCount: true
       });
       setNodes(res.nodes);
-    } catch (e) {
-        console.error(e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [allData, levels, parentPath, nodes.length, parentPathKey, currentLevel]); 
+    } finally { setIsLoading(false); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allData, levels, parentPathKey, nodes.length, currentLevel]); 
 
   // Эффект: Если мы должны быть раскрыты (из-за фильтров) - грузим данные и раскрываемся
   useEffect(() => {
@@ -278,11 +263,11 @@ function TreeNode({
 function ResetButton({ dashboardId }: { dashboardId: string }) {
   const { resetAll } = useFilterActions(dashboardId);
   return (
-    <button 
+    <Button 
       onClick={resetAll}
       className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded transition-colors"
     >
-      Сбросить
-    </button>
+      <Trash size={14} className="mr-1" /> Сбросить
+    </Button>
   );
 }
