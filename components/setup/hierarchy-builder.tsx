@@ -26,9 +26,10 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { HierarchyLevel } from '@/types';
 
 // Компонент сортируемого элемента
-function SortableLevelItem({ level, index, onDelete }: { level: any, index: number, onDelete: (id: string) => void }) {
+function SortableLevelItem({ level, index, onDelete }: { level: HierarchyLevel, index: number, onDelete: (id: string) => void }) {
   const {
     attributes,
     listeners,
