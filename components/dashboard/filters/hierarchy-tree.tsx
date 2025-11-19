@@ -21,6 +21,7 @@ import {
 import { useFilterActions } from '@/lib/hooks/use-filter-actions';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { getHierarchyNodesLocal } from '@/lib/logic/hierarchy-client';
 
 interface TreeProps {
   dashboardId: string;
@@ -101,102 +102,59 @@ interface TreeNodeProps {
 }
 
 function TreeNode({ 
-  dashboardId, 
-  levelIndex, 
-  parentPath, 
-  levels, 
-  allData, 
-  activeFilters 
+  dashboardId, levelIndex, parentPath, levels, allData, activeFilters 
 }: TreeNodeProps) {
-  const [nodes, setNodes] = useState<HierarchyNode[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  
+  // Нам больше не нужен state 'nodes', мы можем вычислить их прямо во время рендера (useMemo)
+  // Это и есть "Мгновенная структура"
   const [isExpanded, setIsExpanded] = useState(false);
   
   const currentLevel = levels[levelIndex];
   const { selectNode } = useFilterActions(dashboardId);
-
-  // Текущий активный фильтр для этого уровня (если есть)
   const activeFilterAtThisLevel = activeFilters[levelIndex];
 
-  // Проверяем, нужно ли автоматически раскрыть этот узел
-  // Это нужно, если мы загружаем страницу и у нас уже выбран фильтр "Россия -> Москва"
-  // Тогда узел "Россия" должен быть раскрыт.
+  // АВТО-РАСКРЫТИЕ
   const shouldBeExpanded = useMemo(() => {
-    if (levelIndex === 0) return true; // Корень всегда пытаемся грузить
-    
-    // Если родительский путь совпадает с активными фильтрами - мы на верном пути
-    // Проверяем совпадение родительского узла с фильтром
+    if (levelIndex === 0) return true;
     const parentFilter = activeFilters[levelIndex - 1];
     const parentNode = parentPath[parentPath.length - 1];
-    
-    if (parentFilter && parentNode && String(parentFilter.value) === String(parentNode.value)) {
-       return true;
-    }
-    return false;
+    // Проверка на существование и совпадение (с приведением к строке)
+    return parentFilter && parentNode && String(parentFilter.value) === String(parentNode.value);
   }, [levelIndex, activeFilters, parentPath]);
 
-  // Стабилизируем зависимость parentPath
-  const parentPathKey = JSON.stringify(parentPath);
-
-  // ИСПРАВЛЕНИЕ: Убираем варнинг про parentPathKey, так как мы знаем что делаем
-  const loadNodes = useCallback(async () => {
-    if (!currentLevel || nodes.length > 0) return;
-    setIsLoading(true);
-    try {
-      const res = await buildHierarchyTree({
-        data: allData, levels, parentFilters: parentPath, includeRecordCount: true
-      });
-      setNodes(res.nodes);
-    } finally { setIsLoading(false); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allData, levels, parentPathKey, nodes.length, currentLevel]); 
-
-  // Эффект: Если мы должны быть раскрыты (из-за фильтров) - грузим данные и раскрываемся
+  // ИНИЦИАЛИЗАЦИЯ РАСКРЫТИЯ
   useEffect(() => {
-    let mounted = true;
-    if (!currentLevel) return;
-
-    const init = async () => {
-      if (shouldBeExpanded) {
-        if (nodes.length === 0 && !isLoading) {
-            await loadNodes();
-        }
-        // Если этот узел является частью активного пути (но не последним), раскрываем его
-        // Если activeFilterAtThisLevel существует, значит что-то выбрано на этом уровне или глубже -> Expand
-        if (activeFilterAtThisLevel && mounted) {
-           setIsExpanded(true);
-        }
-      }
-    };
-    
-    init();
-    return () => { mounted = false; };
-  }, [shouldBeExpanded, activeFilterAtThisLevel, loadNodes, nodes.length, isLoading, currentLevel]);
-
-  const handleToggle = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!isExpanded && nodes.length === 0) {
-      await loadNodes();
+    if (shouldBeExpanded || (activeFilterAtThisLevel && shouldBeExpanded)) {
+      setIsExpanded(true);
     }
-    setIsExpanded(!isExpanded);
-  };
+  }, [shouldBeExpanded, activeFilterAtThisLevel]);
 
-  const handleSelect = (node: HierarchyNode) => {
-    selectNode(node);
-    // При выборе узла мы его не обязательно раскрываем, если там нет детей,
-    // но если есть - можно раскрыть для удобства:
-    // setIsExpanded(true); 
+  // --- ГЛАВНОЕ ИЗМЕНЕНИЕ: ВЫЧИСЛЕНИЕ УЗЛОВ НА КЛИЕНТЕ ---
+  // Мы используем useMemo, чтобы пересчитывать только когда меняются данные или путь
+  const nodes = useMemo(() => {
+    if (!currentLevel || !allData) return [];
+
+    // Вызываем нашу синхронную функцию
+    return getHierarchyNodesLocal(
+      allData,
+      currentLevel,
+      parentPath,
+      levelIndex + 1 < levels.length // Есть ли следующий уровень?
+    );
+  }, [allData, currentLevel, parentPath, levelIndex, levels.length]);
+
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsExpanded(!isExpanded); // Просто переключаем, данные уже есть
   };
 
   if (!currentLevel) return null;
 
-  if (isLoading && nodes.length === 0) {
-    return <div className="pl-4 py-1"><Loader2 size={14} className="animate-spin text-gray-400"/></div>;
-  }
-
   return (
-    <ul className="space-y-0.5">
+    <ul className="space-y-0.5 animate-in fade-in duration-200 slide-in-from-left-1">
       {nodes.map(node => {
+        // Используем String() для надежного сравнения (как мы чинили в фильтрах)
         const isSelected = activeFilterAtThisLevel && String(activeFilterAtThisLevel.value) === String(node.value);
         const hasChildren = levelIndex + 1 < levels.length;
 
@@ -211,6 +169,7 @@ function TreeNode({
               )}
               onClick={() => selectNode(node)}
             >
+              {/* Стрелка */}
               <div 
                 className={cn(
                   "p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors",
@@ -221,6 +180,7 @@ function TreeNode({
                 {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </div>
 
+              {/* Иконка */}
               <div className={isSelected ? 'text-indigo-500 dark:text-indigo-400' : 'text-slate-400'}>
                 {isSelected ? <FolderOpen size={16} /> : <Folder size={16} />}
               </div>
@@ -237,6 +197,7 @@ function TreeNode({
               )}
             </div>
 
+            {/* Рендер детей */}
             {hasChildren && isExpanded && (
               <div className="pl-4 ml-2.5 border-l border-slate-100 dark:border-slate-800 my-1">
                 <TreeNode 
