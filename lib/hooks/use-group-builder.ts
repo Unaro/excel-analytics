@@ -31,7 +31,7 @@ export function useGroupBuilder(existingGroupId?: string) {
     if (existingGroupId && !isInitialized) {
       const group = getGroup(existingGroupId);
       if (group) {
-        setName(group.name);
+        setName((prev) => (prev !== group.name ? group.name : prev));
         
         // 1. Сначала восстанавливаем структуру, генерируя tempId
         const restoredMetrics: FormMetricState[] = group.metrics.map(m => {
@@ -94,8 +94,8 @@ export function useGroupBuilder(existingGroupId?: string) {
         });
 
         setSelectedMetrics(fixedMetrics);
+        setIsInitialized(true);
       }
-      setIsInitialized(true);
     }
   }, [existingGroupId, getGroup, isInitialized, templates]);
 

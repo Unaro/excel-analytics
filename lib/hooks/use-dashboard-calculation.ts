@@ -85,8 +85,10 @@ export function useDashboardCalculation(dashboardId: string) {
     dashboard?.hierarchyFilters, 
     dashboard?.indicatorGroups,
     dashboard?.virtualMetrics,
-    // Теперь excelData стабильна благодаря useMemo
-    excelData 
+    excelData,
+    result,
+    isComputing,
+    runCalculation
   ]);
 
   return {

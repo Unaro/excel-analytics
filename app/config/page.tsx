@@ -50,7 +50,7 @@ export default function ConfigPage() {
             {activeTab === 'templates' ? (
               <div className="animate-in fade-in duration-300">
                 <div className="mb-6 p-4 bg-blue-50 text-blue-800 rounded-lg text-sm">
-                  <strong>Шаг 1:</strong> Создайте абстрактные правила расчета. Например: "Сумма", "Среднее", "Формула A/B".
+                  <strong>Шаг 1:</strong> Создайте абстрактные правила расчета. Например: &quot;Сумма&quot;, &quot;Среднее&quot;, &quot;Формула A/B&quot;.
                   Здесь мы не привязываемся к конкретным колонкам Excel.
                 </div>
                 <TemplateManager />
@@ -66,7 +66,7 @@ export default function ConfigPage() {
             ) : (
               <div className="animate-in fade-in duration-300">
                 <div className="mb-6 p-4 bg-green-50 text-green-800 rounded-lg text-sm">
-                  <strong>Шаг 2:</strong> Создайте реальные группы (например, "Школы"). 
+                  <strong>Шаг 2:</strong> Создайте реальные группы (например, &quot;Школы&quot;). 
                   Добавьте в них метрики из шаблонов и укажите, из каких колонок Excel брать данные.
                 </div>
                 <GroupBuilder />

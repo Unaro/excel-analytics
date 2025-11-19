@@ -8,13 +8,12 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
-  // Ждем маунта на клиенте, чтобы избежать ошибок гидратации
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
   if (!mounted) {
-    // Рендерим заглушку того же размера, чтобы интерфейс не прыгал
     return <div className="w-[108px] h-[36px] bg-gray-100 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700" />;
   }
 

@@ -157,8 +157,15 @@ export function DashboardBuilder({ dashboardId }: { dashboardId?: string }) {
   );
 }
 
-function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, onRemove }: any) {
-  const fullGroup = allGroups.find((g: any) => g.id === groupConfig.groupId);
+function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, onRemove }: {
+  // Типизируем пропсы
+  groupConfig: IndicatorGroupInDashboard;
+  virtualMetrics: VirtualMetric[];
+  allGroups: IndicatorGroup[];
+  onUpdateBinding: (gid: string, vid: string, mid: string) => void;
+  onRemove: () => void;
+}) {
+  const fullGroup = allGroups.find((g) => g.id === groupConfig.groupId);
   const templates = useMetricTemplateStore(s => s.templates);
   
   if (!fullGroup) return null;
@@ -169,7 +176,7 @@ function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, o
         {fullGroup.name}
       </td>
       {virtualMetrics.map((vm: VirtualMetric) => {
-        const binding = groupConfig.virtualMetricBindings?.find((b: any) => b.virtualMetricId === vm.id);
+        const binding = groupConfig.virtualMetricBindings?.find((b) => b.virtualMetricId === vm.id);
         return (
           <td key={vm.id} className="px-4 py-2">
             <select
@@ -183,7 +190,7 @@ function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, o
               onChange={(e) => onUpdateBinding(groupConfig.groupId, vm.id, e.target.value)}
             >
               <option value="">—</option>
-              {fullGroup.metrics.map((metric: any) => {
+              {fullGroup.metrics.map((metric) => {
                 const tpl = templates.find(t => t.id === metric.templateId);
                 return <option key={metric.id} value={metric.id}>{tpl?.name || 'Metric'}</option>;
               })}

@@ -21,7 +21,7 @@ export default function HierarchyPage() {
         <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Настройка Иерархии</h1>
         <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-3xl">
           Определите структуру вложенности данных (например: <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1 rounded text-xs">Регион → Район → Город</span>).
-          Это позволит создавать фильтры "проводникового" типа на дашбордах.
+          Это позволит создавать фильтры &quot;проводникового&quot; типа на дашбордах.
           <br/>
           <span className="text-xs opacity-70 mt-1 block">
             * В список попадают только колонки, отмеченные как <strong>Категория</strong> в разделе настройки данных.

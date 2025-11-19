@@ -14,6 +14,7 @@ import { X, Variable, Plus, Type } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { nanoid } from 'nanoid';
 
 // Типы токенов
 type TokenType = 'variable' | 'operator' | 'number' | 'function';
@@ -129,7 +130,7 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
 
   const addToken = (type: TokenType, value: string) => {
     const newToken: Token = {
-      id: `token-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      id: `token-${nanoid()}`,
       type,
       value
     };

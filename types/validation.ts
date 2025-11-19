@@ -22,7 +22,7 @@ export interface ValidationError {
   field?: string;
   metricId?: string;           // ID проблемной метрики
   dependencyAlias?: string;    // Алиас проблемной зависимости
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 }
 
 /**

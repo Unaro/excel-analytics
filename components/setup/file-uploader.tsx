@@ -17,17 +17,15 @@ export function FileUploader({ onSuccess }: FileUploaderProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const processFile = async (file: File) => {
+  const processFile = useCallback(async (file: File) => {
     const success = await importFile(file);
     if (success) {
       toast.success('Файл успешно загружен');
-      // Вызываем колбэк перехода
       if (onSuccess) {
-        // Небольшая задержка для плавности анимации прогрессбара
         setTimeout(() => onSuccess(), 500);
       }
     }
-  };
+  }, [importFile, onSuccess]); // Добавляем зависимости
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -41,9 +39,9 @@ export function FileUploader({ onSuccess }: FileUploaderProps) {
     if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.csv'))) {
       processFile(file);
     }
-  }, [importFile]); // processFile зависит от importFile
+  }, [processFile]); // Теперь зависим от processFile
 
-  // ... (Остальной JSX рендер без изменений)
+
   return (
     <div className="w-full max-w-2xl mx-auto">
       <div 

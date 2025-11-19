@@ -3,11 +3,10 @@
 import { useState, useMemo } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend
+  Cell, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar
 } from 'recharts';
-import { DashboardComputationResult, VirtualMetric } from '@/types';
+import { DashboardComputationResult } from '@/types';
 import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { BarChart3, PieChart, Hexagon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -147,9 +146,14 @@ export function ChartsSection({ result }: ChartsSectionProps) {
     </div>
   );
 }
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: any[]; // Используем any[] для payload, так как Recharts вкладывает туда сложные объекты
+  label?: string;
+}
 
 // Кастомный тултип для стилизации
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
@@ -159,7 +163,7 @@ function CustomTooltip({ active, payload, label }: any) {
           <div className="w-2 h-2 rounded-full bg-indigo-500" />
           <span className="text-slate-500 dark:text-slate-400">Значение:</span>
           <span className="font-mono font-medium text-indigo-600 dark:text-indigo-400">
-            {data.formatted}
+            {data?.formatted || data?.value}
           </span>
         </div>
       </div>
