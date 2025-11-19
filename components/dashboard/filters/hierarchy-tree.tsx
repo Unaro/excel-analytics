@@ -15,7 +15,8 @@ import { useExcelDataStore } from '@/lib/stores/excel-data-store';
 import { 
   HierarchyLevel, 
   HierarchyFilterValue, 
-  HierarchyNode 
+  HierarchyNode, 
+  ExcelRow
 } from '@/types';
 import { useFilterActions } from '@/lib/hooks/use-filter-actions';
 import { cn } from '@/lib/utils';
@@ -95,7 +96,7 @@ interface TreeNodeProps {
   levelIndex: number;
   parentPath: HierarchyFilterValue[];
   levels: HierarchyLevel[];
-  allData: any[];
+  allData: ExcelRow[];
   activeFilters: HierarchyFilterValue[];
 }
 
