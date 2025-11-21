@@ -96,10 +96,10 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6">
         
         {/* --- ЛЕВАЯ КОЛОНКА: Фильтры --- */}
-        <div className="lg:col-span-3 space-y-4">
+        <div className="lg:col-span-3 space-y-2">
           <HierarchyTree 
              dashboardId={dashboardId} 
              currentFilters={dashboard.hierarchyFilters} 
@@ -118,7 +118,7 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
         </div>
 
         {/* --- ПРАВАЯ КОЛОНКА: Данные --- */}
-        <div className="lg:col-span-9 space-y-4">
+        <div className="lg:col-span-9 space-y-6">
           
           {/* Блок Графиков (показываем только если есть результат) */}
           {result && (

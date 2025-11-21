@@ -3,33 +3,25 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
-  LayoutDashboard, 
-  Database, 
-  Calculator, 
-  Layers, 
-  GitMerge, 
-  FileSpreadsheet,
-  LucideIcon,
-  Settings
+  LayoutDashboard, Database, Calculator, Layers, GitMerge, 
+  FileSpreadsheet, LucideIcon, X 
 } from 'lucide-react';
 import { useExcelDataStore } from '@/lib/stores/excel-data-store';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
 import { ThemeToggle } from './theme-toggle';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
-type MenuItemLink = {
-  type: 'link';
-  href: string;
-  label: string;
-  icon: LucideIcon;
-};
-
-type MenuItemDivider = {
-  type: 'divider';
-};
-
+type MenuItemLink = { type: 'link'; href: string; label: string; icon: LucideIcon; };
+type MenuItemDivider = { type: 'divider'; };
 type MenuItem = MenuItemLink | MenuItemDivider;
 
-export function Sidebar() {
+interface SidebarProps {
+  className?: string;
+  onClose?: () => void; // Проп для закрытия на мобильных
+}
+
+export function Sidebar({ className, onClose }: SidebarProps) {
   const pathname = usePathname();
   const hydrated = useStoreHydration();
   const fileName = useExcelDataStore(s => s.metadata?.fileName);
@@ -41,21 +33,29 @@ export function Sidebar() {
     { type: 'link', href: '/metrics', label: 'Метрики (Правила)', icon: Calculator },
     { type: 'divider' },
     { type: 'link', href: '/setup', label: 'Данные и Колонки', icon: Database },
-    { type: 'link', href: '/hierarchy', label: 'Иерархия', icon: GitMerge },  
-    { type: 'divider' },
-    { type: 'link', href: '/settings', label: 'Настройки', icon: Settings },
+    { type: 'link', href: '/hierarchy', label: 'Иерархия', icon: GitMerge },
   ];
 
   return (
-    <div className="w-64 h-screen bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col fixed left-0 top-0 z-50 transition-colors duration-300">
-      {/* Логотип */}
-      <div className="p-6 border-b border-gray-100 dark:border-slate-800">
+    <div className={cn(
+      "flex flex-col h-full bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 transition-colors duration-300",
+      className
+    )}>
+      {/* Логотип и кнопка закрытия (только для мобильных) */}
+      <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center">
         <div className="flex items-center gap-3 font-bold text-xl text-gray-900 dark:text-white">
           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
             <LayoutDashboard size={18} />
           </div>
           <span className="tracking-tight">Urban<span className="text-indigo-600 dark:text-indigo-400">Analytics</span></span>
         </div>
+        
+        {/* Кнопка закрытия (видна только если передан onClose) */}
+        {onClose && (
+          <Button variant="ghost" size="icon" onClick={onClose} className="lg:hidden">
+            <X size={20} />
+          </Button>
+        )}
       </div>
 
       {/* Статус файла */}
@@ -71,6 +71,7 @@ export function Sidebar() {
         ) : (
           <Link 
             href="/setup" 
+            onClick={onClose} // Закрываем меню при клике
             className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 p-2 rounded-lg border border-dashed border-indigo-200 dark:border-indigo-800 transition-colors"
           >
             <Database size={16} />
@@ -93,12 +94,13 @@ export function Sidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`
-                flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
-                ${isActive 
-                  ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 shadow-sm' 
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'}
-              `}
+              onClick={onClose} // Закрываем меню при навигации
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
+                isActive 
+                  ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 shadow-sm" 
+                  : "text-slate-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200"
+              )}
             >
               <Icon size={18} className={isActive ? 'text-indigo-600 dark:text-indigo-400' : 'opacity-70'} />
               {item.label}
