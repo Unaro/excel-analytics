@@ -2,7 +2,7 @@
 import { ExcelRow, HierarchyLevel, HierarchyFilterValue, HierarchyNode } from '@/types';
 
 // Хелпер нормализации (тот же, что мы обсуждали)
-function normalizeValue(value: any): string {
+function normalizeValue(value: unknown): string {
   if (value === null || value === undefined) return '';
   return String(value).trim();
 }

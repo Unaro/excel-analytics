@@ -124,9 +124,18 @@ function TreeNode({
 
   // ИНИЦИАЛИЗАЦИЯ РАСКРЫТИЯ
   useEffect(() => {
+    let mounted = true;
+
     if (shouldBeExpanded || (activeFilterAtThisLevel && shouldBeExpanded)) {
-      setIsExpanded(true);
+      // ИСПРАВЛЕНИЕ: Оборачиваем в setTimeout, чтобы вынести из синхронного потока рендера
+      const timer = setTimeout(() => {
+        if (mounted) setIsExpanded(true);
+      }, 0);
+      
+      return () => clearTimeout(timer);
     }
+    
+    return () => { mounted = false; };
   }, [shouldBeExpanded, activeFilterAtThisLevel]);
 
   // --- ГЛАВНОЕ ИЗМЕНЕНИЕ: ВЫЧИСЛЕНИЕ УЗЛОВ НА КЛИЕНТЕ ---
