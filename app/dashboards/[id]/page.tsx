@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, use } from 'react';
+import { use } from 'react';
 import Link from 'next/link';
 import { useDashboardCalculation } from '@/lib/hooks/use-dashboard-calculation';
 import { useHierarchyTree } from '@/lib/hooks/use-hierarchy-tree';
@@ -17,6 +17,7 @@ import {
   Layers,
   Loader2
 } from 'lucide-react';
+// import { WidgetRenderer } from '@/components/dashboard/widgets/widget-render';
 
 export default function DashboardPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -191,7 +192,12 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
                       className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group"
                     >
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-slate-100 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-indigo-50/30 dark:group-hover:bg-slate-900/50 border-r border-gray-100 dark:border-slate-800 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)]">
-                        {group.groupName}
+                        <Link 
+                          href={`/groups/${group.groupId}?filters=${encodeURIComponent(JSON.stringify(currentPath))}`}
+                          className="hover:text-indigo-600 dark:hover:text-indigo-400 underline decoration-dashed underline-offset-4 decoration-slate-300"
+                        >
+                          {group.groupName}
+                        </Link>
                       </td>
                       
                       {group.virtualMetrics.map((metricVal) => (
@@ -211,6 +217,21 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
               </table>
             </div>
           </div>
+
+          
+      {/* // Секция виджетов (показываем, если они есть)
+      {dashboard.widgets.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          {dashboard.widgets.map(widget => (
+            <WidgetRenderer
+              key={widget.id} 
+              widget={widget} 
+              result={result} 
+              isComputing={isComputing} 
+            />
+          ))}
+        </div>)} */}
+
         </div>
       </div>
     </div>
