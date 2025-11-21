@@ -116,9 +116,12 @@ export interface GroupMetric {
   fieldBindings: FieldBinding[];    // Привязка полей из Excel
   metricBindings: MetricBinding[];  // Привязка других метрик
   
+
+
   // Настройки
   enabled: boolean;             // Активна ли метрика
   order: number;                // Порядок вычисления (важно для зависимостей!)
+  unit?: string;
   
   // Опционально: ключ для кеширования
   cacheKey?: string;

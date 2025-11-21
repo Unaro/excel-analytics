@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useGroupBuilder } from '@/lib/hooks/use-group-builder';
 import { useMetricTemplateStore } from '@/lib/stores/metric-template-store';
 import { 
-  Plus, ArrowRight, Save, Trash2, FunctionSquare, 
-  Calculator, Filter, Search, Type, Hash 
+  Save, Trash2, FunctionSquare, 
+  Calculator, Filter, Search, Hash 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,7 +14,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Modal } from '@/components/ui/modal';
 import { TemplateForm } from '@/components/config/template-form';
-import { SearchableSelect } from '@/components/ui/searchable-select'; // Наш новый компонент
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -26,7 +26,7 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
     name, setName, selectedMetrics, 
     addMetricToGroup, updateVariableType, updateBindingValue, removeMetric, saveGroup, 
     availableTemplates, availableColumns,
-    columnSearchQuery, setColumnSearchQuery 
+    columnSearchQuery, setColumnSearchQuery, updateMetricUnit
   } = useGroupBuilder(groupId);
 
   const templates = useMetricTemplateStore(s => s.templates);
@@ -170,6 +170,16 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
                                   )}
                                   {template.name}
                               </div>
+
+                              <div className="ml-2">
+                                <Input 
+                                  placeholder="ед. (чел.)"
+                                  value={item.unit}
+                                  onChange={(e) => updateMetricUnit(item.tempId, e.target.value)}
+                                  className="h-7 w-24 text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:bg-white dark:focus:bg-slate-950 placeholder:text-slate-400"
+                                />
+                              </div>
+
                               {template.type === 'calculated' && (
                                   <Badge variant="outline" className="font-mono text-[10px] opacity-70 ml-2">
                                     {template.formula}

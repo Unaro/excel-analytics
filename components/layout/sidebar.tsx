@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, Database, Calculator, Layers, GitMerge, 
-  FileSpreadsheet, LucideIcon, X 
+  FileSpreadsheet, LucideIcon, X, 
+  Settings
 } from 'lucide-react';
 import { useExcelDataStore } from '@/lib/stores/excel-data-store';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
@@ -35,6 +36,8 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
     { type: 'divider' },
     { type: 'link', href: '/setup', label: 'Данные и Колонки', icon: Database },
     { type: 'link', href: '/hierarchy', label: 'Иерархия', icon: GitMerge },
+    { type: 'divider' },
+    { type: 'link', href: '/settings', label: 'Настройки', icon: Settings },
   ];
 
   return (

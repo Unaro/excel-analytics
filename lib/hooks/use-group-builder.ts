@@ -7,11 +7,11 @@ import { useColumnConfigStore } from '@/lib/stores/column-config-store';
 import { FieldBinding, GroupMetric, MetricBinding } from '@/types';
 import { nanoid } from 'nanoid';
 import { extractVariables } from '@/lib/utils/formula';
-import { useShallow } from 'zustand/shallow';
 
 export interface FormMetricState {
   templateId: string;
   tempId: string;
+  unit: string; 
   originalMetricId?: string;
   requiredVariables: string[]; 
   variableTypes: Record<string, 'field' | 'metric'>;
@@ -19,19 +19,29 @@ export interface FormMetricState {
 }
 
 export function useGroupBuilder(existingGroupId?: string) {
-  const { addGroup, updateGroup } = useIndicatorGroupStore();
-  const getGroup = useIndicatorGroupStore(s => s.getGroup);
-
-  const templates = useMetricTemplateStore(useShallow(s => s.templates));
-  const columns = useColumnConfigStore(useShallow(s => s.configs));
+  const { addGroup, updateGroup, getGroup } = useIndicatorGroupStore();
+  const templates = useMetricTemplateStore((s) => s.templates);
+  const columns = useColumnConfigStore((s) => s.configs);
 
   const [name, setName] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState<FormMetricState[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
-  // НОВЫЙ СТЕЙТ: Фильтр колонок для всей группы
-  const [columnSearchQuery, setColumnSearchQuery] = useState('');
+  const [columnSearchQuery, setColumnSearchQuery] = useState(''); // Поиск колонок
 
-  // --- ЗАГРУЗКА СУЩЕСТВУЮЩЕЙ ГРУППЫ ---
+  // --- 1. ВЫЧИСЛЕНИЕ СПИСКА КОЛОНОК ---
+  const filteredColumns = columns.filter(c => {
+    const isUsed = selectedMetrics.some(m => Object.values(m.bindings).includes(c.columnName));
+    if (isUsed) return true;
+    if (!columnSearchQuery) return true;
+    const query = columnSearchQuery.toLowerCase();
+    return (
+      c.displayName.toLowerCase().includes(query) || 
+      c.columnName.toLowerCase().includes(query) ||
+      c.alias.toLowerCase().includes(query)
+    );
+  });
+
+  // --- 2. ЗАГРУЗКА ---
   useEffect(() => {
     if (existingGroupId && !isInitialized) {
       const group = getGroup(existingGroupId);
@@ -39,7 +49,6 @@ export function useGroupBuilder(existingGroupId?: string) {
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setName((prev) => (prev !== group.name ? group.name : prev));
         
-        // 1. Сначала восстанавливаем структуру, генерируя tempId
         const restoredMetrics: FormMetricState[] = group.metrics.map(m => {
           const template = templates.find(t => t.id === m.templateId);
           const requiredVars = template?.formula 
@@ -55,47 +64,37 @@ export function useGroupBuilder(existingGroupId?: string) {
           });
           
           m.metricBindings.forEach(mb => {
-             // Пока сохраняем "сырой" ID из базы
              bindings[mb.metricAlias] = mb.metricId;
              variableTypes[mb.metricAlias] = 'metric';
           });
 
           return {
             templateId: m.templateId,
-            tempId: nanoid(), // Генерируем новый tempId
-            originalMetricId: m.id, // Запоминаем старый ID
+            tempId: nanoid(),
+            originalMetricId: m.id,
+            unit: m.unit || '', 
             requiredVariables: requiredVars,
             variableTypes,
             bindings
           };
         });
 
-        // 2. ИСПРАВЛЕНИЕ БАГА: Маппинг Real ID -> Temp ID
-        // Нам нужно заменить originalMetricId в bindings на соответствующие tempId
-        
-        // Создаем карту: какой старый ID какому новому соответствует
+        // Маппинг ID (восстановление связей)
         const idMap = new Map<string, string>();
         restoredMetrics.forEach(m => {
-          if (m.originalMetricId) {
-            idMap.set(m.originalMetricId, m.tempId);
-          }
+          if (m.originalMetricId) idMap.set(m.originalMetricId, m.tempId);
         });
 
-        // Проходимся и подменяем ID в bindings
         const fixedMetrics = restoredMetrics.map(m => {
           const newBindings = { ...m.bindings };
-          
           Object.keys(newBindings).forEach(alias => {
-            // Если это привязка к метрике
             if (m.variableTypes[alias] === 'metric') {
               const oldId = newBindings[alias];
-              // Если мы нашли этот старый ID в нашей карте - меняем на tempId
               if (idMap.has(oldId)) {
                 newBindings[alias] = idMap.get(oldId)!;
               }
             }
           });
-
           return { ...m, bindings: newBindings };
         });
 
@@ -105,24 +104,6 @@ export function useGroupBuilder(existingGroupId?: string) {
       }
     }
   }, [existingGroupId, getGroup, isInitialized, templates]);
-  
-  // ВЫЧИСЛЯЕМЫЕ КОЛОНКИ: Фильтруем глобальный список
-  const filteredColumns = columns.filter(c => {
-    // Всегда показываем те, что УЖЕ выбраны в метриках (чтобы не пропали)
-    const isUsed = selectedMetrics.some(m => 
-      Object.values(m.bindings).includes(c.columnName)
-    );
-    if (isUsed) return true;
-
-    // Для остальных применяем фильтр
-    if (!columnSearchQuery) return true;
-    const query = columnSearchQuery.toLowerCase();
-    return (
-      c.displayName.toLowerCase().includes(query) || 
-      c.columnName.toLowerCase().includes(query) ||
-      c.alias.toLowerCase().includes(query)
-    );
-  });
 
   const addMetricToGroup = useCallback((templateId: string) => {
     const template = templates.find(t => t.id === templateId);
@@ -142,22 +123,42 @@ export function useGroupBuilder(existingGroupId?: string) {
       templateId,
       tempId: nanoid(),
       requiredVariables,
+      unit: '', 
       variableTypes,
       bindings: {}
     }]);
   }, [templates]);
 
+  // НОВАЯ ФУНКЦИЯ: Обновление единицы измерения
+  const updateMetricUnit = useCallback((tempId: string, unit: string) => {
+    setSelectedMetrics(prev => prev.map(m => 
+      m.tempId === tempId ? { ...m, unit } : m
+    ));
+  }, []);
+
+  // --- 3. ОБНОВЛЕНИЕ ТИПА (С АВТО-ВЫБОРОМ) ---
   const updateVariableType = useCallback((
     metricTempId: string, 
     alias: string, 
     type: 'field' | 'metric'
   ) => {
-    setSelectedMetrics(prev => prev.map(m => {
+    setSelectedMetrics(prev => prev.map((m, index) => {
       if (m.tempId !== metricTempId) return m;
+      
+      let newValue = '';
+      
+      // UX УЛУЧШЕНИЕ: Если переключили на метрику, пробуем найти первую доступную выше
+      if (type === 'metric') {
+        if (index > 0) {
+          // Берем метрику сразу над текущей (чаще всего ссылаются на нее)
+          newValue = prev[index - 1].tempId;
+        }
+      }
+
       return {
         ...m,
         variableTypes: { ...m.variableTypes, [alias]: type },
-        bindings: { ...m.bindings, [alias]: '' }
+        bindings: { ...m.bindings, [alias]: newValue } // Авто-подстановка
       };
     }));
   }, []);
@@ -180,33 +181,36 @@ export function useGroupBuilder(existingGroupId?: string) {
     setSelectedMetrics(prev => prev.filter(m => m.tempId !== tempId));
   }, []);
 
+  // --- 4. СОХРАНЕНИЕ (ИСПРАВЛЕННАЯ ЛОГИКА) ---
   const saveGroup = useCallback(() => {
     if (!name.trim()) throw new Error("Введите название группы");
 
     const allFieldMappings: FieldBinding[] = [];
-    const fieldMap = new Map<string, string>(); 
+    const uniqueColumnNames = new Set<string>(); // Сет для проверки уникальности КОЛОНОК
 
+    // Сбор глобальных маппингов полей
     selectedMetrics.forEach(m => {
       m.requiredVariables.forEach(alias => {
         if (m.variableTypes[alias] === 'field') {
           const colName = m.bindings[alias];
-          if (colName && !fieldMap.has(alias)) {
-             fieldMap.set(alias, colName);
+          
+          // ИСПРАВЛЕНИЕ: Проверяем уникальность по имени колонки Excel, а не по алиасу переменной (value)
+          if (colName && !uniqueColumnNames.has(colName)) {
+             uniqueColumnNames.add(colName);
+             // Алиас сохраняем, но он не так важен для глобального списка, главное что колонка учтена
              allFieldMappings.push({ id: nanoid(), fieldAlias: alias, columnName: colName });
           }
         }
       });
     });
 
-    // Этап 1: Промежуточный массив
-    const intermediateMetrics = selectedMetrics.map((m, index) => {
-      return {
-        tempId: m.tempId,
-        finalId: m.originalMetricId || nanoid(),
-        order: index,
-        data: m
-      };
-    });
+    // Этап 1: Промежуточные ID
+    const intermediateMetrics = selectedMetrics.map((m, index) => ({
+      tempId: m.tempId,
+      finalId: m.originalMetricId || nanoid(),
+      order: index,
+      data: m
+    }));
     
     // Этап 2: Финальная сборка
     const finalMetrics: GroupMetric[] = intermediateMetrics.map(item => {
@@ -225,9 +229,8 @@ export function useGroupBuilder(existingGroupId?: string) {
              columnName: value 
           });
         } else {
-          // Value - это tempId. Ищем finalId.
           const target = intermediateMetrics.find(x => x.tempId === value);
-          const targetById = intermediateMetrics.find(x => x.finalId === value); // На всякий случай
+          const targetById = intermediateMetrics.find(x => x.finalId === value);
           const resolvedTarget = target || targetById;
 
           if (resolvedTarget) {
@@ -245,6 +248,7 @@ export function useGroupBuilder(existingGroupId?: string) {
         templateId: m.templateId,
         order: item.order,
         enabled: true,
+        unit: m.unit, 
         fieldBindings: fBindings,
         metricBindings: mBindings
       };
@@ -252,7 +256,7 @@ export function useGroupBuilder(existingGroupId?: string) {
 
     const groupData = {
       name,
-      fieldMappings: allFieldMappings,
+      fieldMappings: allFieldMappings, // Теперь тут правильный список уникальных колонок
       metrics: finalMetrics,
       order: 0,
     };
@@ -275,8 +279,9 @@ export function useGroupBuilder(existingGroupId?: string) {
     removeMetric,
     saveGroup,
     availableTemplates: templates,
-    availableColumns: filteredColumns, // Возвращаем отфильтрованный список!
+    availableColumns: filteredColumns,
     columnSearchQuery,
-    setColumnSearchQuery,
+    updateMetricUnit,
+    setColumnSearchQuery
   };
 }

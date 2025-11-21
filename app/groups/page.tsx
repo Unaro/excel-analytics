@@ -48,9 +48,11 @@ export default function GroupsListPage() {
                   <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-xs">
                     Метрик: {group.metrics.length}
                   </span>
-                  <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-xs">
-                    Полей: {group.fieldMappings.length}
-                  </span>
+                {group.fieldMappings.length > 0 && (
+                    <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-xs text-slate-500 dark:text-slate-500 border border-transparent">
+                      Колонок Excel: {group.fieldMappings.length}
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

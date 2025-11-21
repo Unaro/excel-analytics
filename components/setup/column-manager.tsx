@@ -62,7 +62,7 @@ export function ColumnManager() {
                       />
                       <TypeButton 
                         isActive={col.classification === 'categorical'} 
-                        label="ABC Текст" 
+                        label="Категория" 
                         activeColor="bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-300 shadow-sm"
                         onClick={() => handleTypeChange(col.columnName, 'categorical')}
                       />
