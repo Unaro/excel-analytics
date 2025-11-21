@@ -10,9 +10,12 @@ export function MobileNav() {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
 
-  // Закрываем меню при смене роута (на всякий случай)
   useEffect(() => {
-    setIsOpen(false);
+    const timer = setTimeout(() => {
+      setIsOpen(false);
+    }, 0);
+    
+    return () => clearTimeout(timer);
   }, [pathname]);
 
   // Блокируем скролл body, когда меню открыто
@@ -27,7 +30,7 @@ export function MobileNav() {
 
   return (
     <>
-      {/* Мобильная Шапка (Видна только на мобильных: lg:hidden) */}
+      {/* Мобильная Шапка */}
       <header className="lg:hidden h-16 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-between px-4 sticky top-0 z-40">
         <div className="flex items-center gap-2 font-bold text-lg text-slate-900 dark:text-white">
           <div className="w-7 h-7 bg-indigo-600 rounded-md flex items-center justify-center text-white">
