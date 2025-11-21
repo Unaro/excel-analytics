@@ -76,7 +76,7 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
            
            {/* Глобальный фильтр колонок (Контекст) */}
            <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
-              <label className="text-xs font-bold uppercase tracking-wider mb-2 block flex items-center gap-2 text-slate-500 dark:text-slate-400">
+              <label className="text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2 text-slate-500 dark:text-slate-400">
                 <Filter size={12} />
                 Контекст данных (Фильтр колонок)
               </label>
@@ -95,7 +95,7 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
                 )}
               </div>
               <p className="text-[10px] text-slate-400 mt-1.5 leading-tight">
-                Введите ключевое слово (например, "школ"), чтобы отфильтровать 200+ колонок Excel. Это упростит выбор в выпадающих списках ниже.
+                Введите ключевое слово (например, &quot;школ&quot;), чтобы отфильтровать 200+ колонок Excel. Это упростит выбор в выпадающих списках ниже.
               </p>
            </div>
         </div>
