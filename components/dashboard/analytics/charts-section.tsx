@@ -151,8 +151,22 @@ export function ChartsSection({ result }: ChartsSectionProps) {
   );
 }
 
+// 1. СТРОГАЯ ТИПИЗАЦИЯ ДЛЯ ТУЛТИПА
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: Array<{
+    value: number;
+    payload: {
+      name: string;
+      formatted: string; // Мы точно знаем, что передаем это поле в data
+      // Можно добавить другие поля, если они есть
+    };
+  }>;
+  label?: string;
+}
+
 // Тултип с правильными стилями
-function CustomTooltip({ active, payload, label }: any) {
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
