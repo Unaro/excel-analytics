@@ -7,6 +7,7 @@ import { useColumnConfigStore } from '@/lib/stores/column-config-store';
 import { FieldBinding, GroupMetric, MetricBinding } from '@/types';
 import { nanoid } from 'nanoid';
 import { extractVariables } from '@/lib/utils/formula';
+import { useShallow } from 'zustand/shallow';
 
 export interface FormMetricState {
   templateId: string;
@@ -18,9 +19,11 @@ export interface FormMetricState {
 }
 
 export function useGroupBuilder(existingGroupId?: string) {
-  const { addGroup, updateGroup, getGroup } = useIndicatorGroupStore();
-  const templates = useMetricTemplateStore((s) => s.templates);
-  const columns = useColumnConfigStore((s) => s.configs);
+  const { addGroup, updateGroup } = useIndicatorGroupStore();
+  const getGroup = useIndicatorGroupStore(s => s.getGroup);
+
+  const templates = useMetricTemplateStore(useShallow(s => s.templates));
+  const columns = useColumnConfigStore(useShallow(s => s.configs));
 
   const [name, setName] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState<FormMetricState[]>([]);

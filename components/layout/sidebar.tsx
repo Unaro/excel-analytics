@@ -11,6 +11,7 @@ import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
 import { ThemeToggle } from './theme-toggle';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { memo } from 'react';
 
 type MenuItemLink = { type: 'link'; href: string; label: string; icon: LucideIcon; };
 type MenuItemDivider = { type: 'divider'; };
@@ -21,7 +22,7 @@ interface SidebarProps {
   onClose?: () => void; // Проп для закрытия на мобильных
 }
 
-export function Sidebar({ className, onClose }: SidebarProps) {
+const SidebarComponent = ({ className, onClose }: SidebarProps) => {
   const pathname = usePathname();
   const hydrated = useStoreHydration();
   const fileName = useExcelDataStore(s => s.metadata?.fileName);
@@ -119,3 +120,6 @@ export function Sidebar({ className, onClose }: SidebarProps) {
     </div>
   );
 }
+
+
+export const Sidebar = memo(SidebarComponent);

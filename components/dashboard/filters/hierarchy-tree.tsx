@@ -23,6 +23,7 @@ import {
 import { useFilterActions } from '@/lib/hooks/use-filter-actions';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useShallow } from 'zustand/shallow';
 
 interface TreeProps {
   dashboardId?: string; // Необязательный, так как в режиме Профиля его нет
@@ -32,8 +33,8 @@ interface TreeProps {
 }
 
 export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: TreeProps) {
-  // ВОССТАНОВЛЕНО: Получение уровней из стора
-  const levels = useHierarchyStore(s => s.levels);
+
+  const levels = useHierarchyStore(useShallow(s => s.levels));
   
   // Хук действий (используем заглушку ID, если мы в режиме профиля, чтобы хук не упал)
   const { resetAll } = useFilterActions(dashboardId || 'profile_mode');
@@ -65,7 +66,7 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
     }
   }, [structureKey, currentFilters, levels, handleReset]);
 
-  const sheets = useExcelDataStore(s => s.data);
+  const sheets = useExcelDataStore(useShallow(s => s.data));
   const rawData = useMemo(() => {
     if (!sheets) return [];
     return sheets.flatMap(s => s.rows);

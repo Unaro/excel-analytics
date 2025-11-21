@@ -6,6 +6,8 @@ import { useMetricTemplateStore } from '@/lib/stores/metric-template-store';
 import { useDashboardStore } from '@/lib/stores/dashboard-store';
 import { useComputedMetricsStore } from '@/lib/stores/computed-metrics-store';
 import { computeDashboardMetrics } from '@/app/actions/compute';
+import { useShallow } from 'zustand/react/shallow';
+
 
 export function useDashboardCalculation(dashboardId: string) {
   // ИСПРАВЛЕНИЕ: Берем сырые листы
@@ -17,19 +19,25 @@ export function useDashboardCalculation(dashboardId: string) {
     return sheets.flatMap(sheet => sheet.rows);
   }, [sheets]);
 
-  const allGroups = useIndicatorGroupStore(s => s.groups);
-  const templates = useMetricTemplateStore(s => s.templates);
+  const allGroups = useIndicatorGroupStore(useShallow(s => s.groups));
+  const templates = useMetricTemplateStore(useShallow(s => s.templates));
   const dashboard = useDashboardStore(s => s.getDashboard(dashboardId));
   
+
+  // Стор вычислений
   const { 
     setComputingState, 
     setDashboardResult, 
-    getDashboardResult,
+    result,
     isComputing,
     computationError 
-  } = useComputedMetricsStore();
-
-  const result = getDashboardResult(dashboardId);
+  } = useComputedMetricsStore(useShallow((s) => ({
+    setComputingState: s.setComputingState,
+    setDashboardResult: s.setDashboardResult,
+    result: s.dashboardResults.get(dashboardId),
+    isComputing: s.isComputing,
+    computationError: s.computationError
+  })));
 
   const runCalculation = useCallback(async () => {
     if (!dashboard) return;
