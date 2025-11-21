@@ -88,7 +88,7 @@ export default function GroupProfilePage({ params }: { params: Promise<{ id: str
             ) : result?.virtualMetrics.map(metric => {
                const meta = virtualMetrics.find(vm => vm.id === metric.virtualMetricId);
                return (
-                 <Card key={metric.virtualMetricId} className="p-5 flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-700 transition-all group">
+                 <Card key={metric.virtualMetricId} className="p-5 flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors duration-300 group">
                     <div className="flex justify-between items-start">
                        <span className="text-sm font-medium text-slate-500 dark:text-slate-400 h-10 line-clamp-2" title={metric.virtualMetricName}>
                          {metric.virtualMetricName}

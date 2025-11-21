@@ -241,7 +241,7 @@ function TreeNode({
           <li key={node.value}>
             <div 
               className={cn(
-                "flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none transition-all duration-200 text-sm",
+                "flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer select-none transition-colors duration-300 text-sm",
                 isSelected 
                   ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300 font-medium" 
                   : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -250,7 +250,7 @@ function TreeNode({
             >
               <div 
                 className={cn(
-                  "p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors",
+                  "p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors duration-300 ",
                   !hasChildren && "opacity-0 pointer-events-none"
                 )}
                 onClick={hasChildren ? handleToggle : undefined}

@@ -43,7 +43,7 @@ export default function DashboardsListPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {dashboards.map(dashboard => (
-            <Card key={dashboard.id} className="group hover:border-indigo-300 dark:hover:border-indigo-700 transition-all duration-300">
+            <Card key={dashboard.id} className="group hover:border-indigo-300 dark:hover:border-indigo-700">
               <div className="p-5 space-y-4">
                 <div className="flex justify-between items-start">
                   <div className="p-2.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl">

@@ -47,7 +47,7 @@ export default function SetupPage() {
         <div className="flex justify-between w-full max-w-md mx-auto">
           {/* Step 1 */}
           <div className={`flex flex-col items-center gap-2 bg-gray-50 dark:bg-slate-950 px-2 ${step === 'upload' ? 'text-indigo-600' : 'text-slate-500'}`}>
-             <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all
+             <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors duration-300
                 ${step === 'upload' ? 'border-indigo-600 bg-white dark:bg-slate-900' : hasData ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-gray-300 dark:border-slate-700 bg-gray-100 dark:bg-slate-800'}
              `}>
                {hasData && step !== 'upload' ? <Check size={20} /> : <FileSpreadsheet size={20} />}
@@ -57,7 +57,7 @@ export default function SetupPage() {
 
           {/* Step 2 */}
           <div className={`flex flex-col items-center gap-2 bg-gray-50 dark:bg-slate-950 px-2 ${step === 'columns' ? 'text-indigo-600' : 'text-slate-500'}`}>
-             <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all
+             <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors duration-300
                 ${step === 'columns' ? 'border-indigo-600 bg-white dark:bg-slate-900' : 'border-gray-300 dark:border-slate-700 bg-gray-100 dark:bg-slate-800'}
              `}>
                <TableProperties size={20} />

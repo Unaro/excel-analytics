@@ -40,7 +40,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (active && payload && payload.length > 0) {
     const data = payload[0].payload;
     return (
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-lg shadow-xl text-sm z-50 animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-lg shadow-xl text-sm z-50 animate-in fade-in zoom-in-95">
         <p className="font-bold text-slate-900 dark:text-white mb-1 max-w-[200px] truncate">{label}</p>
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-indigo-500" />
@@ -83,7 +83,7 @@ const MemoizedBarChart = memo(function BarChartComp({ data, axisColor }: { data:
           dataKey="value" 
           radius={[4, 4, 0, 0]} 
           isAnimationActive={true}
-          animationDuration={400} 
+          animationDuration={800} 
           animationEasing="ease-in-out"
         >
           {data.map((entry, index) => (
@@ -114,7 +114,7 @@ const MemoizedRadarChart = memo(function RadarChartComp({ data, axisColor, label
           fill="#8b5cf6"
           fillOpacity={0.4}
           isAnimationActive={true}
-          animationDuration={400}
+          animationDuration={800}
           animationEasing="ease-out"
         />
         <Tooltip content={<CustomTooltip />} />
@@ -174,7 +174,7 @@ export function ChartsSection({ result }: ChartsSectionProps) {
             <button
               onClick={() => setChartType('bar')}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all",
+                "flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
                 chartType === 'bar' ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm" : "text-slate-500 dark:text-slate-400"
               )}
               title="Столбчатая диаграмма"
@@ -184,7 +184,7 @@ export function ChartsSection({ result }: ChartsSectionProps) {
             <button
               onClick={() => setChartType('radar')}
               className={cn(
-                "flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-all",
+                "flex-1 flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
                 chartType === 'radar' ? "bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-300 shadow-sm" : "text-slate-500 dark:text-slate-400"
               )}
               title="Радарная диаграмма"

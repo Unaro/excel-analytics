@@ -42,7 +42,7 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
       "flex flex-col h-full bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 transition-colors duration-300",
       className
     )}>
-      {/* Логотип и кнопка закрытия (только для мобильных) */}
+      {/* Логотип и кнопка закрытия (только для мобильных) */} 
       <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center">
         <div className="flex items-center gap-3 font-bold text-xl text-gray-900 dark:text-white">
           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">

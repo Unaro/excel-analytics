@@ -53,7 +53,7 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 p-6 space-y-6 transition-colors duration-300">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 p-6 space-y-6">
       
       {/* --- ХЕДЕР --- */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-slate-800">
@@ -141,7 +141,7 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
           )}
 
           {/* Таблица */}
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden relative min-h-[300px] transition-colors">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden relative min-h-[300px]">
             
             {/* Лоадер поверх таблицы */}
             {isComputing && (
@@ -189,7 +189,7 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
                   {result?.groups.map((group) => (
                     <tr 
                       key={group.groupId} 
-                      className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors group"
+                      className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 group"
                     >
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-slate-100 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-indigo-50/30 dark:group-hover:bg-slate-900/50 border-r border-gray-100 dark:border-slate-800 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)]">
                         <Link 

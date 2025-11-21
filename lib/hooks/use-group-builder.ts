@@ -28,6 +28,8 @@ export function useGroupBuilder(existingGroupId?: string) {
   const [name, setName] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState<FormMetricState[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
+  // НОВЫЙ СТЕЙТ: Фильтр колонок для всей группы
+  const [columnSearchQuery, setColumnSearchQuery] = useState('');
 
   // --- ЗАГРУЗКА СУЩЕСТВУЮЩЕЙ ГРУППЫ ---
   useEffect(() => {
@@ -104,6 +106,24 @@ export function useGroupBuilder(existingGroupId?: string) {
     }
   }, [existingGroupId, getGroup, isInitialized, templates]);
   
+  // ВЫЧИСЛЯЕМЫЕ КОЛОНКИ: Фильтруем глобальный список
+  const filteredColumns = columns.filter(c => {
+    // Всегда показываем те, что УЖЕ выбраны в метриках (чтобы не пропали)
+    const isUsed = selectedMetrics.some(m => 
+      Object.values(m.bindings).includes(c.columnName)
+    );
+    if (isUsed) return true;
+
+    // Для остальных применяем фильтр
+    if (!columnSearchQuery) return true;
+    const query = columnSearchQuery.toLowerCase();
+    return (
+      c.displayName.toLowerCase().includes(query) || 
+      c.columnName.toLowerCase().includes(query) ||
+      c.alias.toLowerCase().includes(query)
+    );
+  });
+
   const addMetricToGroup = useCallback((templateId: string) => {
     const template = templates.find(t => t.id === templateId);
     if (!template) return;
@@ -255,6 +275,8 @@ export function useGroupBuilder(existingGroupId?: string) {
     removeMetric,
     saveGroup,
     availableTemplates: templates,
-    availableColumns: columns
+    availableColumns: filteredColumns, // Возвращаем отфильтрованный список!
+    columnSearchQuery,
+    setColumnSearchQuery,
   };
 }

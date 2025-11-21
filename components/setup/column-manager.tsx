@@ -99,7 +99,7 @@ function TypeButton({
     <button
       onClick={onClick}
       className={cn(
-        "px-3 py-1 rounded-md text-xs font-medium transition-all duration-200",
+        "px-3 py-1 rounded-md text-xs font-medium transition-all duration-300",
         isActive ? activeColor : "text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-gray-200/50 dark:hover:bg-slate-700/50"
       )}
     >
