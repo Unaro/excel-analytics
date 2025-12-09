@@ -222,7 +222,7 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
                           </div>
                           
                           {/* Индикатор, что включена покраска (маленькая точка) */}
-                          {liveMetric.colorConfig?.mode === 'positive_negative' && (
+                          {liveMetric.colorConfig?.rules && (
                             <div className="absolute bottom-2 right-6 w-1 h-1 rounded-full bg-indigo-500" />
                           )}
                       </th>)}

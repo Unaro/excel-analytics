@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom'; // <--- Важно для портала
-import { Settings, Palette } from 'lucide-react';
-import { VirtualMetric, ColorMode } from "@/types/dashboards";
+import { createPortal } from 'react-dom';
+import { Settings, Plus, Trash2, GripVertical } from 'lucide-react';
+import { VirtualMetric, FormattingRule, ConditionOperator, MetricColor } from "@/types/dashboards";
 import { useDashboardStore } from "@/lib/stores/dashboard-store";
+import { COLOR_STYLES } from "@/lib/utils/metric-colors";
 import { cn } from "@/lib/utils";
+import { nanoid } from "nanoid"; // Если nanoid не установлен, можно использовать crypto.randomUUID()
 
 interface MetricConfigPopoverProps {
   dashboardId: string;
@@ -14,154 +16,148 @@ interface MetricConfigPopoverProps {
 
 export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null); // Ссылка на кнопку
-  const [coords, setCoords] = useState({ top: 0, left: 0 }); // Координаты для попапа
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
   
   const updateMetric = useDashboardStore((s) => s.updateVirtualMetric);
+  const rules = metric.colorConfig?.rules || [];
 
-  // Текущие настройки из пропса (который должен быть свежим из стора)
-  const mode = metric.colorConfig?.mode || 'none';
-  const isInverse = metric.colorConfig?.isInverse || false;
-
-  // Вычисляем позицию при открытии
   const toggleOpen = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      // Позиционируем попап чуть ниже кнопки
       setCoords({
-        top: rect.bottom + window.scrollY - 50,
-        left: rect.left + window.scrollX - 200 // Сдвигаем влево, чтобы не вылез за экран справа
+        top: rect.bottom + window.scrollY + 5,
+        left: rect.left + window.scrollX - 250 // Чуть шире, сдвигаем левее
       });
     }
     setIsOpen(!isOpen);
   };
 
-  // Закрытие при клике вне (теперь сложнее из-за портала)
   useEffect(() => {
     if (!isOpen) return;
-
     function handleClickOutside(event: MouseEvent) {
-      // Проверяем, был ли клик НЕ по кнопке (попап мы не можем проверить через ref контейнера так просто, 
-      // но так как он в портале, эвент баблинг работает специфично, упростим задачу)
-      
       const target = event.target as HTMLElement;
-      // Если клик был внутри нашего попапа (ищем по id или классу)
-      if (target.closest('.metric-popover-content') || target.closest('.metric-settings-btn')) {
-        return;
-      }
+      if (target.closest('.metric-popover-content') || target.closest('.metric-settings-btn')) return;
       setIsOpen(false);
     }
-    
-    // Слушаем скролл, чтобы закрыть попап (так проще, чем пересчитывать позицию)
-    window.addEventListener('scroll', () => setIsOpen(false), { capture: true }); 
+    window.addEventListener('scroll', () => setIsOpen(false), { capture: true });
     document.addEventListener("mousedown", handleClickOutside);
-    
     return () => {
       window.removeEventListener('scroll', () => setIsOpen(false), { capture: true });
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isOpen]);
 
-  const handleModeChange = (newMode: ColorMode) => {
+  // --- ACTIONS ---
+
+  const addRule = () => {
+    const newRule: FormattingRule = {
+      id: nanoid(), // или crypto.randomUUID()
+      operator: '>',
+      value: 0,
+      color: 'emerald'
+    };
     updateMetric(dashboardId, metric.id, {
-      colorConfig: { mode: newMode, isInverse }
+      colorConfig: { rules: [...rules, newRule] }
     });
   };
 
-  const handleInverseChange = (newInverse: boolean) => {
+  const removeRule = (ruleId: string) => {
     updateMetric(dashboardId, metric.id, {
-      colorConfig: { mode: mode, isInverse: newInverse }
+      colorConfig: { rules: rules.filter(r => r.id !== ruleId) }
     });
   };
 
-  // Контент попапа
+  const updateRule = (ruleId: string, updates: Partial<FormattingRule>) => {
+    updateMetric(dashboardId, metric.id, {
+      colorConfig: {
+        rules: rules.map(r => r.id === ruleId ? { ...r, ...updates } : r)
+      }
+    });
+  };
+
+  // --- RENDER ---
+
   const popoverContent = (
     <div 
-      className="metric-popover-content fixed z-[9999] w-72 bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-100"
+      className="metric-popover-content fixed z-[9999] w-[340px] bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-gray-200 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-100 flex flex-col max-h-[400px]"
       style={{ top: coords.top, left: coords.left }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="p-3 border-b border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/50 rounded-t-xl">
+      <div className="p-3 border-b border-gray-100 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/50 rounded-t-xl flex justify-between items-center">
         <h4 className="font-semibold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Настройка: {metric.name}
+          Правила цвета: {metric.name}
         </h4>
+        <button onClick={addRule} className="text-indigo-600 hover:text-indigo-700 text-xs font-medium flex items-center gap-1">
+          <Plus size={14} /> Добавить
+        </button>
       </div>
       
-      <div className="p-3 space-y-4">
-        {/* 1. Включение цветов */}
-        <div>
-          <label className="text-sm font-medium text-slate-900 dark:text-white mb-2 flex items-center gap-2">
-            <Palette size={16} className="text-indigo-500" />
-            Цветовая индикация
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => handleModeChange('none')}
-              className={cn(
-                "px-3 py-2 text-xs font-medium rounded-lg border transition-all",
-                mode === 'none' 
-                  ? "bg-slate-800 text-white border-slate-800 dark:bg-white dark:text-slate-900" 
-                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300"
-              )}
-            >
-              Нет
-            </button>
-            <button
-              onClick={() => handleModeChange('positive_negative')}
-              className={cn(
-                "px-3 py-2 text-xs font-medium rounded-lg border transition-all",
-                mode === 'positive_negative'
-                  ? "bg-indigo-600 text-white border-indigo-600" 
-                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300"
-              )}
-            >
-              +/- Цвет
-            </button>
+      <div className="p-2 overflow-y-auto custom-scrollbar space-y-2 flex-1 min-h-[100px]">
+        {rules.length === 0 ? (
+          <div className="text-center py-6 text-slate-400 text-sm">
+            Нет правил раскраски.<br/>Нажмите &quot;Добавить&quot;
           </div>
-        </div>
-
-        {/* 2. Логика (Инверсия) */}
-        {mode === 'positive_negative' && (
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-1">
-            <label className="text-sm font-medium text-slate-900 dark:text-white mb-2 block">
-              Логика значений
-            </label>
-            <div className="space-y-2">
-              <button
-                onClick={() => handleInverseChange(false)}
-                className={cn(
-                  "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs border text-left transition-colors",
-                  !isInverse 
-                    ? "border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-800 ring-1 ring-emerald-500" 
-                    : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
-                )}
+        ) : (
+          rules.map((rule, index) => (
+            <div key={rule.id} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
+              
+              {/* Оператор */}
+              <select
+                value={rule.operator}
+                onChange={(e) => updateRule(rule.id, { operator: e.target.value as ConditionOperator })}
+                className="w-[50px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-xs py-1 px-1 focus:ring-1 focus:ring-indigo-500 outline-none"
               >
-                <span className="text-slate-700 dark:text-slate-300">Классическая</span>
-                <div className="flex gap-1">
-                  <span className="text-emerald-600 font-bold">+ Хорошо</span>
-                  <span className="text-rose-600 font-bold">− Плохо</span>
-                </div>
-              </button>
+                <option value=">">&gt;</option>
+                <option value=">=">&ge;</option>
+                <option value="<">&lt;</option>
+                <option value="<=">&le;</option>
+                <option value="==">=</option>
+                <option value="!=">&ne;</option>
+              </select>
 
-              <button
-                onClick={() => handleInverseChange(true)}
-                className={cn(
-                  "w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs border text-left transition-colors",
-                  isInverse 
-                    ? "border-rose-200 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800 ring-1 ring-rose-500" 
-                    : "border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
-                )}
+              {/* Значение */}
+              <input
+                type="number"
+                value={rule.value}
+                onChange={(e) => updateRule(rule.id, { value: parseFloat(e.target.value) || 0 })}
+                className="w-[70px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-xs py-1 px-2 focus:ring-1 focus:ring-indigo-500 outline-none"
+                placeholder="0"
+              />
+
+              {/* Выбор цвета */}
+              <div className="flex-1 flex gap-1 justify-end">
+                {(Object.keys(COLOR_STYLES) as MetricColor[]).map((colorKey) => (
+                  <button
+                    key={colorKey}
+                    onClick={() => updateRule(rule.id, { color: colorKey })}
+                    className={cn(
+                      "w-5 h-5 rounded-full border-2 transition-transform hover:scale-110",
+                      rule.color === colorKey 
+                         ? "border-slate-900 dark:border-white scale-110" 
+                         : "border-transparent opacity-70 hover:opacity-100"
+                    )}
+                    style={{ backgroundColor: getColorHex(colorKey) }}
+                    title={colorKey}
+                  />
+                ))}
+              </div>
+
+              {/* Удалить */}
+              <button 
+                onClick={() => removeRule(rule.id)}
+                className="text-slate-400 hover:text-red-500 transition-colors p-1"
               >
-                <span className="text-slate-700 dark:text-slate-300">Инверсия</span>
-                <div className="flex gap-1">
-                  <span className="text-rose-600 font-bold">+ Плохо</span>
-                  <span className="text-emerald-600 font-bold">− Хорошо</span>
-                </div>
+                <Trash2 size={14} />
               </button>
             </div>
-          </div>
+          ))
         )}
+      </div>
+      
+      <div className="p-2 border-t border-gray-100 dark:border-slate-800 bg-gray-50/50 dark:bg-slate-800/30 rounded-b-xl text-[10px] text-slate-400 text-center">
+        Применяется первое подходящее правило сверху вниз
       </div>
     </div>
   );
@@ -175,13 +171,23 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
           "metric-settings-btn p-1 rounded-md transition-colors opacity-0 group-hover/th:opacity-100 focus:opacity-100 relative", 
           isOpen ? "bg-indigo-100 text-indigo-600 opacity-100" : "hover:bg-slate-100 text-slate-400"
         )}
-        title="Настроить отображение"
       >
         <Settings size={14} />
       </button>
-
-      {/* Рендерим в портал (body), если открыто */}
       {isOpen && typeof document !== 'undefined' && createPortal(popoverContent, document.body)}
     </>
   );
+}
+
+// Хелпер для отрисовки кружочков выбора цвета (примерные HEX для UI)
+function getColorHex(color: MetricColor): string {
+  switch (color) {
+    case 'emerald': return '#10b981';
+    case 'rose': return '#f43f5e';
+    case 'amber': return '#f59e0b';
+    case 'blue': return '#3b82f6';
+    case 'indigo': return '#6366f1';
+    case 'slate': return '#64748b';
+    default: return '#ccc';
+  }
 }

@@ -3,17 +3,24 @@ import { HierarchyFilterValue } from './hierarchy';
 import { DisplayFormat } from './metrics';
 
 
+// Доступные цвета (ключи)
+export type MetricColor = 'emerald' | 'rose' | 'amber' | 'blue' | 'indigo' | 'slate';
+
+// Операторы сравнения
+export type ConditionOperator = '>' | '>=' | '<' | '<=' | '==' | '!=';
+
+// Правило форматирования
+export interface FormattingRule {
+  id: string;
+  operator: ConditionOperator;
+  value: number;
+  color: MetricColor;
+}
+
 export type ColorMode = 'none' | 'positive_negative' | 'custom';
 
 export interface ColorConfig {
-  mode: ColorMode;
-  // Классы Tailwind для позитивных/негативных значений
-  positiveClass?: string; // например 'text-emerald-600 bg-emerald-50'
-  negativeClass?: string; // например 'text-rose-600 bg-rose-50'
-  zeroClass?: string;     // например 'text-slate-400'
-  
-  // Флаг инверсии (например, для "Расходов": рост - это плохо)
-  isInverse?: boolean; 
+  rules: FormattingRule[]; 
 }
 
 
