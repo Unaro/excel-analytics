@@ -1,6 +1,6 @@
 'use client';
 
-import { use } from 'react';
+import { use, useState } from 'react';
 import Link from 'next/link';
 import { useDashboardCalculation } from '@/lib/hooks/use-dashboard-calculation';
 import { useHierarchyTree } from '@/lib/hooks/use-hierarchy-tree';
@@ -17,17 +17,40 @@ import {
   Layers,
   Loader2
 } from 'lucide-react';
+import { MetricCell } from '@/components/dashboard/table/metric-cell';
+import { MetricsSelector } from '@/components/dashboard/table/metrics-selector';
+import { MetricConfigPopover } from '@/components/dashboard/table/metric-config-popover';
 // import { WidgetRenderer } from '@/components/dashboard/widgets/widget-render';
 
 export default function DashboardPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const dashboardId = id;
   
+  // Стейт для скрытых колонок
+  const [hiddenMetricIds, setHiddenMetricIds] = useState<string[]>([]);
+
+  
+  // Хендлер переключения видимости
+  const toggleMetricVisibility = (id: string) => {
+    setHiddenMetricIds(prev => 
+      prev.includes(id) 
+        ? prev.filter(mId => mId !== id) // Показываем обратно
+        : [...prev, id]                  // Скрываем
+    );
+  };
+
+
+
   const hydrated = useStoreHydration();
   const dashboard = useDashboardStore(s => s.getDashboard(dashboardId));
   // Мы берем currentPath из хука иерархии для отображения крошек или просто передаем в Tree
   const { currentPath } = useHierarchyTree(dashboardId);
   const { result, isComputing, error, recalculate } = useDashboardCalculation(dashboardId);
+
+  // Вычисляем список видимых метрик (чтобы использовать в thead и tbody)
+  const visibleMetrics = result?.virtualMetrics.filter(
+    vm => !hiddenMetricIds.includes(vm.id)
+  ) || [];
 
   // Лоадер загрузки хранилища
   if (!hydrated) {
@@ -87,8 +110,17 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
             <RotateCw size={18} className={isComputing ? 'animate-spin' : ''} />
           </button>
           
+          {/* 4. ВСТАВЛЯЕМ СЕЛЕКТОР ПЕРЕД КНОПКОЙ EDIT */}
+          {result && (
+            <MetricsSelector 
+              metrics={result.virtualMetrics}
+              hiddenMetricIds={hiddenMetricIds}
+              onToggleMetric={toggleMetricVisibility}
+            />
+          )}
+
           <Link
-            href={`/dashboard/${dashboardId}/edit`}
+            href={`/dashboards/${dashboardId}/edit`}
             className="flex items-center gap-2 bg-slate-900 dark:bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-slate-800 dark:hover:bg-indigo-700 transition text-sm font-medium shadow-sm"
           >
             <Edit size={16} /> Редактировать
@@ -164,14 +196,37 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
                       </div>
                     </th>
                     
-                    {result?.virtualMetrics.map((vm) => (
-                      <th key={vm.id} scope="col" className="px-6 py-4 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[180px]">
-                          <div className="flex flex-col items-end">
-                            <span>{vm.name}</span>
-                            {vm.unit && <span className="text-[10px] text-slate-400 lowercase bg-slate-100 dark:bg-slate-800 px-1.5 rounded mt-0.5">{vm.unit}</span>}
+                    {/* 5. РЕНДЕРИМ ЗАГОЛОВКИ ТОЛЬКО ДЛЯ ВИДИМЫХ МЕТРИК */}
+                    {visibleMetrics.map((vmResult) => {
+                      // Находим актуальную версию метрики в сторе
+                      const liveMetric = dashboard?.virtualMetrics.find(m => m.id === vmResult.id) || vmResult;
+                      
+                      return (
+                      <th 
+                        key={liveMetric.id} 
+                        scope="col" 
+                        // Добавляем group/th для ховер-эффекта кнопки настроек
+                        className="px-6 py-4 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[150px] group/th relative"
+                      >
+                          <div className="flex justify-end gap-2 items-center">
+                            
+                            {/* Компонент настройки (шестеренка) */}
+                            <div className="mt-0.5">
+                              <MetricConfigPopover dashboardId={dashboardId} metric={liveMetric} />
+                            </div>
+
+                            <div className="flex flex-col items-end">
+                              <span>{liveMetric.name}</span>
+                              {liveMetric.unit && <span className="text-[10px] text-slate-400 lowercase bg-slate-100 dark:bg-slate-800 px-1.5 rounded mt-0.5">{liveMetric.unit}</span>}
+                            </div>
                           </div>
-                      </th>
-                    ))}
+                          
+                          {/* Индикатор, что включена покраска (маленькая точка) */}
+                          {liveMetric.colorConfig?.mode === 'positive_negative' && (
+                            <div className="absolute bottom-2 right-6 w-1 h-1 rounded-full bg-indigo-500" />
+                          )}
+                      </th>)}
+                    )}
                   </tr>
                 </thead>
                 <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-100 dark:divide-slate-800/50">
@@ -200,37 +255,38 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
                         </Link>
                       </td>
                       
-                      {group.virtualMetrics.map((metricVal) => (
-                        <td key={metricVal.virtualMetricId} className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                          {metricVal.value === null ? (
-                            <span className="text-slate-300 dark:text-slate-700 text-xl leading-none select-none">−</span>
-                          ) : (
-                            <span className="font-mono font-medium text-slate-700 dark:text-slate-300 tracking-tight">
-                              {metricVal.formattedValue}
-                            </span>
-                          )}
-                        </td>
-                      ))}
+                      {/* РЕНДЕРИМ ЗНАЧЕНИЯ, ФИЛЬТРУЯ ИХ */}
+                      {group.virtualMetrics
+                        .filter(val => !hiddenMetricIds.includes(val.virtualMetricId))
+                        .map((metricVal) => {
+                          // Находим конфиг, чтобы передать настройки цвета в ячейку
+                          const metricConfig = dashboard?.virtualMetrics.find(
+                              m => m.id === metricVal.virtualMetricId
+                          );
+
+                          const finalConfig = metricConfig || result.virtualMetrics.find(m => m.id === metricVal.virtualMetricId);
+
+                          if (!finalConfig) return <td key={metricVal.virtualMetricId} />;
+                          
+                          // Если конфиг не найден (странно, но бывает), просто не рендерим или рендерим фоллбек
+                          if (!metricConfig) return <td key={metricVal.virtualMetricId} />;
+                          
+                          return (
+                            <td key={metricVal.virtualMetricId} className="px-6 py-4 whitespace-nowrap text-sm text-right border-l border-transparent hover:border-slate-100 dark:hover:border-slate-800">
+                              <MetricCell 
+                                value={metricVal.value}
+                                formattedValue={metricVal.formattedValue}
+                                metric={finalConfig} // Передаем ЖИВОЙ конфиг
+                              />
+                            </td>
+                          );
+                      })}
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </div>
-
-          
-      {/* // Секция виджетов (показываем, если они есть)
-      {dashboard.widgets.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-          {dashboard.widgets.map(widget => (
-            <WidgetRenderer
-              key={widget.id} 
-              widget={widget} 
-              result={result} 
-              isComputing={isComputing} 
-            />
-          ))}
-        </div>)} */}
 
         </div>
       </div>

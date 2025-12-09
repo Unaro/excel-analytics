@@ -2,6 +2,21 @@
 import { HierarchyFilterValue } from './hierarchy';
 import { DisplayFormat } from './metrics';
 
+
+export type ColorMode = 'none' | 'positive_negative' | 'custom';
+
+export interface ColorConfig {
+  mode: ColorMode;
+  // Классы Tailwind для позитивных/негативных значений
+  positiveClass?: string; // например 'text-emerald-600 bg-emerald-50'
+  negativeClass?: string; // например 'text-rose-600 bg-rose-50'
+  zeroClass?: string;     // например 'text-slate-400'
+  
+  // Флаг инверсии (например, для "Расходов": рост - это плохо)
+  isInverse?: boolean; 
+}
+
+
 /**
  * Виртуальная метрика - общий показатель для всех групп
  * Каждая группа вычисляет его по своей формуле
@@ -14,6 +29,8 @@ export interface VirtualMetric {
   decimalPlaces: number;           // 1
   unit?: string;                   // "%"
   order: number;                   // Порядок колонки в таблице
+
+  colorConfig?: ColorConfig;        // Настройки цветового форматирования
 }
 
 /**

@@ -28,7 +28,7 @@ export function DashboardBuilder({ dashboardId }: { dashboardId?: string }) {
     try {
       const id = saveDashboard();
       toast.success('Дашборд сохранен');
-      router.push(`/dashboard/${id}`);
+      router.push(`/dashboards/${id}`);
     } catch (e) {
       toast.error('Ошибка сохранения');
     }
