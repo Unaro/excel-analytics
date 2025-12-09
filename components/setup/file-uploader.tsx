@@ -25,7 +25,7 @@ export function FileUploader({ onSuccess }: FileUploaderProps) {
         setTimeout(() => onSuccess(), 500);
       }
     }
-  }, [importFile, onSuccess]); // Добавляем зависимости
+  }, [importFile, onSuccess]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -39,7 +39,7 @@ export function FileUploader({ onSuccess }: FileUploaderProps) {
     if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.csv'))) {
       processFile(file);
     }
-  }, [processFile]); // Теперь зависим от processFile
+  }, [processFile]);
 
 
   return (

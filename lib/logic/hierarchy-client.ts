@@ -1,16 +1,11 @@
-// lib/logic/hierarchy-client.ts
 import { ExcelRow, HierarchyLevel, HierarchyFilterValue, HierarchyNode } from '@/types';
 
-// Хелпер нормализации (тот же, что мы обсуждали)
+// Хелпер для нормализации значений к строке (гарантируем string для сравнения)
 function normalizeValue(value: unknown): string {
   if (value === null || value === undefined) return '';
   return String(value).trim();
 }
 
-/**
- * Клиентская функция для построения узлов уровня.
- * Работает мгновенно без запросов к серверу.
- */
 export function getHierarchyNodesLocal(
   data: ExcelRow[],
   level: HierarchyLevel,
@@ -18,8 +13,7 @@ export function getHierarchyNodesLocal(
   hasNextLevel: boolean
 ): HierarchyNode[] {
   
-  // 1. Фильтрация (O(N))
-  // Если есть родительские фильтры, отсекаем лишнее
+  // 1. Фильтрация данных по родительским путям
   let filteredData = data;
   if (parentFilters.length > 0) {
     filteredData = data.filter(row => {
@@ -31,38 +25,49 @@ export function getHierarchyNodesLocal(
     });
   }
 
-  // 2. Группировка (O(N))
-  // Собираем уникальные значения для текущего уровня
-  const groups = new Map<string, { count: number, display: string }>();
+  // 2. Группировка
+  // Ключ Map и originalValue типизируем строго как string
+  const groups = new Map<string, { count: number; display: string; originalValue: string }>();
 
   for (const row of filteredData) {
     const rawValue = row[level.columnName];
-    // Пропускаем пустые
-    if (rawValue === null || rawValue === undefined || rawValue === '') continue;
-
-    const key = normalizeValue(rawValue); // Ключ для Map
-    const display = String(rawValue).trim(); // Оригинальное написание
-
-    if (!groups.has(key)) {
-      groups.set(key, { count: 0, display });
-    }
     
-    groups.get(key)!.count++;
+    // Приводим к строке
+    const key = normalizeValue(rawValue);
+    
+    // ГЛАВНОЕ ИЗМЕНЕНИЕ: Если значение пустое — ПРОПУСКАЕМ.
+    // Никаких "Не указано", никаких "Empty". Просто игнорируем.
+    if (key === '') continue;
+
+    const display = String(rawValue).trim();
+
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, { 
+        count: 1, 
+        display, 
+        originalValue: key // Сохраняем нормализованное значение как value
+      });
+    } else {
+      existing.count++;
+    }
   }
 
   // 3. Формирование узлов
-  const nodes: HierarchyNode[] = Array.from(groups.entries()).map(([key, info]) => ({
-    value: key,           // Нормализованное значение для фильтра
-    displayValue: info.display, // Красивое значение для UI
+  const nodes: HierarchyNode[] = Array.from(groups.values()).map((info) => ({
+    value: info.originalValue, // string
+    displayValue: info.display,
     level: level,
-    childCount: hasNextLevel ? 1 : 0, // На клиенте мы можем лениво ставить 1, или реально посчитать (чуть дольше)
+    childCount: hasNextLevel ? 1 : 0, // Можно уточнить подсчет, но 1 достаточно для отрисовки стрелки
     recordCount: info.count,
     isExpanded: false,
     isSelected: false
   }));
 
-  // 4. Сортировка
-  nodes.sort((a, b) => a.displayValue.localeCompare(b.displayValue));
+  // 4. Сортировка по алфавиту
+  nodes.sort((a, b) => 
+    a.displayValue.localeCompare(b.displayValue, undefined, { numeric: true })
+  );
 
   return nodes;
 }

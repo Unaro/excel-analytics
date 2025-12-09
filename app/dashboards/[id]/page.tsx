@@ -7,7 +7,7 @@ import { useHierarchyTree } from '@/lib/hooks/use-hierarchy-tree';
 import { ChartsSection } from '@/components/dashboard/analytics/charts-section';
 import { useDashboardStore } from '@/lib/stores/dashboard-store';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
-import { HierarchyTree } from '@/components/dashboard/filters/hierarchy-tree';
+import { HierarchyTree } from '@/components/dashboard/filters/hierarchy-tree-client';
 import { 
   ArrowLeft, 
   Edit, 
@@ -15,11 +15,13 @@ import {
   Filter, 
   X,
   Layers,
-  Loader2
+  Loader2,
+  Database
 } from 'lucide-react';
 import { MetricCell } from '@/components/dashboard/table/metric-cell';
 import { MetricsSelector } from '@/components/dashboard/table/metrics-selector';
 import { MetricConfigPopover } from '@/components/dashboard/table/metric-config-popover';
+import { useExcelDataStore } from '@/lib/stores';
 // import { WidgetRenderer } from '@/components/dashboard/widgets/widget-render';
 
 export default function DashboardPage({ params }: { params: Promise<{ id: string }> }) {
@@ -39,10 +41,9 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
     );
   };
 
-
-
   const hydrated = useStoreHydration();
   const dashboard = useDashboardStore(s => s.getDashboard(dashboardId));
+  const hasData = useExcelDataStore(s => s.hasData());
   // Мы берем currentPath из хука иерархии для отображения крошек или просто передаем в Tree
   const { currentPath } = useHierarchyTree(dashboardId);
   const { result, isComputing, error, recalculate } = useDashboardCalculation(dashboardId);
@@ -59,6 +60,51 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
         <div className="flex flex-col items-center gap-3 text-gray-500 dark:text-slate-400">
           <Loader2 className="animate-spin" size={32} />
           <span>Загрузка системы...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Блокировка 1: Дашборд не найден
+  if (!dashboard) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-950 gap-4">
+        <div className="text-xl font-semibold text-gray-900 dark:text-white">Дашборд не найден</div>
+        <Link href="/dashboards" className="text-indigo-600 hover:underline">
+          Вернуться к списку
+        </Link>
+      </div>
+    );
+  }
+
+  // Блокировка 2: НЕТ ДАТАСЕТА (Empty State)
+  if (!hasData) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-950 p-6">
+        <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-dashed border-gray-300 dark:border-slate-700 rounded-2xl p-8 text-center shadow-sm">
+          <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Database size={32} />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Данные отсутствуют</h2>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mb-6">
+            Для работы с дашбордом <strong>&quot;{dashboard.name}&quot;</strong> необходимо загрузить исходный файл (Excel/CSV).
+          </p>
+          
+          <div className="flex flex-col gap-3">
+            <Link 
+              href="/setup" 
+              className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+            >
+              <Database size={18} />
+              Загрузить датасет
+            </Link>
+            <Link 
+              href="/dashboards" 
+              className="text-sm text-gray-500 hover:text-gray-700 dark:text-slate-500 dark:hover:text-slate-300"
+            >
+              Вернуться назад
+            </Link>
+          </div>
         </div>
       </div>
     );

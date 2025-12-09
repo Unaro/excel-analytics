@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useUrlFilters } from '@/lib/hooks/use-url-filters';
 import { useGroupProfile } from '@/lib/hooks/use-group-profile';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
-import { HierarchyTree } from '@/components/dashboard/filters/hierarchy-tree';
+import { HierarchyTree } from '@/components/dashboard/filters/hierarchy-tree-client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Layers, Loader2, Calculator, Edit, BarChart3 } from 'lucide-react';
