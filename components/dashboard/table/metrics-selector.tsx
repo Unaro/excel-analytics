@@ -43,7 +43,7 @@ export function MetricsSelector({ metrics, hiddenMetricIds, onToggleMetric }: Me
       >
         <Settings2 size={16} />
         <span className="hidden sm:inline">Таблица</span>
-        <span className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 text-[10px] py-0.5 px-1.5 rounded-md ml-1 min-w-[20px] text-center">
+        <span className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 text-[10px] py-0.5 px-1.5 rounded-md ml-1 min-w-5 text-center">
           {activeCount}
         </span>
       </button>

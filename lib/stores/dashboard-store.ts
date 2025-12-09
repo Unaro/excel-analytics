@@ -9,6 +9,7 @@ import type {
   HierarchyFilterValue,
   IndicatorGroupInDashboard,
 } from '@/types';
+import { KPIWidget } from '@/types/dashboards';
 
 interface DashboardState {
   dashboards: Dashboard[];
@@ -54,6 +55,11 @@ interface DashboardState {
   getActiveDashboard: () => Dashboard | undefined;
   getAllDashboards: () => Dashboard[];
   getWidget: (dashboardId: string, widgetId: string) => DashboardWidget | undefined;
+
+  // KPI Actions
+  addKPIWidget: (dashboardId: string, widget: Omit<KPIWidget, 'id'>) => void;
+  removeKPIWidget: (dashboardId: string, widgetId: string) => void;
+  updateKPIWidget: (dashboardId: string, widgetId: string, updates: Partial<KPIWidget>) => void;
 }
 
 export const useDashboardStore = create<DashboardState>()(
@@ -519,6 +525,42 @@ export const useDashboardStore = create<DashboardState>()(
         const dashboard = get().getDashboard(dashboardId);
         if (!dashboard) return undefined;
         return dashboard.widgets.find((w) => w.id === widgetId);
+      },
+
+      addKPIWidget: (dashboardId, widget) => {
+        const id = nanoid();
+        set((state) => ({
+          dashboards: state.dashboards.map((d) =>
+            d.id === dashboardId
+              ? { ...d, kpiWidgets: [...(d.kpiWidgets || []), { ...widget, id }] } // Инициализируем массив, если его нет
+              : d
+          ),
+        }));
+      },
+
+      removeKPIWidget: (dashboardId, widgetId) => {
+        set((state) => ({
+          dashboards: state.dashboards.map((d) =>
+            d.id === dashboardId
+              ? { ...d, kpiWidgets: (d.kpiWidgets || []).filter((w) => w.id !== widgetId) }
+              : d
+          ),
+        }));
+      },
+      
+      updateKPIWidget: (dashboardId, widgetId, updates) => {
+        set((state) => ({
+          dashboards: state.dashboards.map((d) =>
+            d.id === dashboardId
+              ? {
+                  ...d,
+                  kpiWidgets: (d.kpiWidgets || []).map((w) =>
+                    w.id === widgetId ? { ...w, ...updates } : w
+                  ),
+                }
+              : d
+          ),
+        }));
       },
     }),
     {

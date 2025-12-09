@@ -22,6 +22,8 @@ import { MetricCell } from '@/components/dashboard/table/metric-cell';
 import { MetricsSelector } from '@/components/dashboard/table/metrics-selector';
 import { MetricConfigPopover } from '@/components/dashboard/table/metric-config-popover';
 import { useExcelDataStore } from '@/lib/stores';
+import { AddKPIDialog } from '@/components/dashboard/kpi/add-kpi-dialog';
+import { KPIGrid } from '@/components/dashboard/kpi/kpi-grid';
 // import { WidgetRenderer } from '@/components/dashboard/widgets/widget-render';
 
 export default function DashboardPage({ params }: { params: Promise<{ id: string }> }) {
@@ -146,6 +148,9 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
               <span>Обновлено: {new Date(result.computedAt).toLocaleTimeString()}</span>
             ) : null}
           </div>
+          
+          {/* Кнопка добавления KPI */}
+          <AddKPIDialog dashboardId={dashboardId} />
 
           <button 
             onClick={recalculate} 
@@ -198,6 +203,13 @@ export default function DashboardPage({ params }: { params: Promise<{ id: string
         {/* --- ПРАВАЯ КОЛОНКА: Данные --- */}
         <div className="lg:col-span-9 space-y-6">
           
+          <KPIGrid 
+             dashboardId={dashboardId}
+             widgets={dashboard.kpiWidgets || []} // Безопасный доступ
+             currentFilters={dashboard.hierarchyFilters} // Передаем фильтры для пересчета
+             isEditMode={true} // Можно управлять этим пропом (например, по URL /edit)
+          />
+
           {/* Блок Графиков (показываем только если есть результат) */}
           {result && (
              <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">

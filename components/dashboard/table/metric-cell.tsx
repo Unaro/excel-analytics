@@ -22,7 +22,7 @@ export function MetricCell({ value, formattedValue, metric }: MetricCellProps) {
   const rules = metric.colorConfig?.rules || [];
   
   // Array.find вернет первое правило, условие которого true
-  const activeRule = rules.find(rule => checkRule(value, rule.operator, rule.value));
+  const activeRule = rules.find(rule => checkRule(value, rule.operator, rule.value, rule.value2));
 
   if (activeRule) {
     // Если правило найдено, добавляем классы цвета

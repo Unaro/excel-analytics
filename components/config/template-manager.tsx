@@ -2,18 +2,14 @@
 
 import { useState } from 'react';
 import { useMetricTemplateStore } from '@/lib/stores/metric-template-store';
-import { useFormulaValidation } from '@/lib/hooks/use-formula-validation';
-import { AggregateFunction } from '@/types';
-import { Plus, Trash2, Calculator, FunctionSquare, Check, X } from 'lucide-react';
+import { Plus, Trash2, Calculator, FunctionSquare} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { TemplateForm } from './template-form';
 
 export function TemplateManager() {
-  const { templates, addTemplate, deleteTemplate } = useMetricTemplateStore();
+  const { templates, deleteTemplate } = useMetricTemplateStore();
   const [isCreating, setIsCreating] = useState(false);
 
   return (

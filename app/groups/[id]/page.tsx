@@ -86,7 +86,6 @@ export default function GroupProfilePage({ params }: { params: Promise<{ id: str
             {isComputing ? (
                [1,2,3].map(i => <div key={i} className="h-32 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse" />)
             ) : result?.virtualMetrics.map(metric => {
-               const meta = virtualMetrics.find(vm => vm.id === metric.virtualMetricId);
                return (
                  <Card key={metric.virtualMetricId} className="p-5 flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors duration-300 group">
                     <div className="flex justify-between items-start">

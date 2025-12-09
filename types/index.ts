@@ -53,7 +53,8 @@ export type {
   DashboardWidget, 
   Dashboard,
   IndicatorGroupInDashboard,
-  VirtualMetricBindingInDashboard
+  VirtualMetricBindingInDashboard,
+  KPIWidget
 } from './dashboards';
 
 // ============= Computed =============

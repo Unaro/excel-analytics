@@ -14,7 +14,7 @@ export function ThemeToggle() {
   }, []);
 
   if (!mounted) {
-    return <div className="w-[108px] h-[36px] bg-gray-100 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700" />;
+    return <div className="w-[108px] h-9 bg-gray-100 dark:bg-slate-800 rounded-lg border border-gray-200 dark:border-slate-700" />;
   }
 
   return (

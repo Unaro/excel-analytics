@@ -1,6 +1,5 @@
 import { MetricColor, ConditionOperator } from "@/types/dashboards";
 
-// Маппинг цветов Tailwind
 export const COLOR_STYLES: Record<MetricColor, string> = {
   emerald: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20",
   rose:    "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20",
@@ -10,15 +9,16 @@ export const COLOR_STYLES: Record<MetricColor, string> = {
   slate:   "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800",
 };
 
-// Функция проверки условия
-export function checkRule(value: number, operator: ConditionOperator, threshold: number): boolean {
+export function checkRule(value: number, operator: ConditionOperator, threshold: number, threshold2?: number): boolean {
   switch (operator) {
     case '>': return value > threshold;
     case '>=': return value >= threshold;
     case '<': return value < threshold;
     case '<=': return value <= threshold;
-    case '==': return value === threshold; // Внимание: строгое равенство для float может быть опасным, но оставим для целых
+    case '==': return value === threshold;
     case '!=': return value !== threshold;
+    case 'between': 
+      return value >= threshold && value <= (threshold2 ?? threshold);
     default: return false;
   }
 }

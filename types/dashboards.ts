@@ -3,17 +3,30 @@ import { HierarchyFilterValue } from './hierarchy';
 import { DisplayFormat } from './metrics';
 
 
+export interface KPIWidget {
+  id: string;
+  templateId: string;           // Ссылка на шаблон
+  bindings: Record<string, string>; // Привязка переменных:
+                                    // Для Aggregate Template: variable -> columnAlias
+                                    // Для Calculated Template: variable -> otherWidgetId
+  
+  // Переопределения визуализации
+  customName?: string;          // Если хотим переименовать
+  color?: 'indigo' | 'emerald' | 'rose' | 'amber' | 'blue';
+}
+
 // Доступные цвета (ключи)
 export type MetricColor = 'emerald' | 'rose' | 'amber' | 'blue' | 'indigo' | 'slate';
 
 // Операторы сравнения
-export type ConditionOperator = '>' | '>=' | '<' | '<=' | '==' | '!=';
+export type ConditionOperator = '>' | '>=' | '<' | '<=' | '==' | '!=' | 'between';;
 
 // Правило форматирования
 export interface FormattingRule {
   id: string;
   operator: ConditionOperator;
   value: number;
+  value2?: number;
   color: MetricColor;
 }
 
@@ -224,7 +237,8 @@ export interface Dashboard {
   
   // Виджеты
   widgets: DashboardWidget[];
-  
+  kpiWidgets: KPIWidget[];
+
   // Настройки
   isPublic: boolean;
   refreshInterval?: number;  // Автообновление всего дашборда
