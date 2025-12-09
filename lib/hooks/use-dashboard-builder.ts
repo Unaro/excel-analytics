@@ -106,7 +106,8 @@ export function useDashboardBuilder(existingDashboardId?: string) {
       hierarchyFilters: existingDashboard?.hierarchyFilters || [], // Сохраняем текущие фильтры если были
       indicatorGroups: dashboardGroups,
       widgets: existingDashboard?.widgets || [],
-      isPublic: false
+      isPublic: false,
+      kpiWidgets: existingDashboard?.kpiWidgets || []
     };
 
     if (existingDashboardId) {
