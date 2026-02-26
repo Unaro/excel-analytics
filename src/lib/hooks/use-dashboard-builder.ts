@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { nanoid } from 'nanoid';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
@@ -16,23 +16,27 @@ export function useDashboardBuilder(existingDashboardId?: string) {
   const { addDashboard, updateDashboard, getDashboard } = useDashboardStore();
   const allGroups = useIndicatorGroupStore(s => s.groups);
 
+  // useState вызываются в фиксированном порядке — БЕЗ вычислений до них
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [virtualMetrics, setVirtualMetrics] = useState<VirtualMetric[]>([]);
+  const [dashboardGroups, setDashboardGroups] = useState<IndicatorGroupInDashboard[]>([]);
+
   // Мемоизируем existingDashboard
   const existingDashboard = useMemo(
     () => (existingDashboardId ? getDashboard(existingDashboardId) : null),
     [existingDashboardId, getDashboard]
   );
 
-  // Инициализация — значения вычисляются до useState
-  const initialName = existingDashboard?.name || '';
-  const initialDescription = existingDashboard?.description || '';
-  const initialVirtualMetrics: VirtualMetric[] = existingDashboard?.virtualMetrics || [];
-  const initialDashboardGroups: IndicatorGroupInDashboard[] = existingDashboard?.indicatorGroups || [];
-
-  // useState вызываются в фиксированном порядке
-  const [name, setName] = useState(initialName);
-  const [description, setDescription] = useState(initialDescription);
-  const [virtualMetrics, setVirtualMetrics] = useState<VirtualMetric[]>(initialVirtualMetrics);
-  const [dashboardGroups, setDashboardGroups] = useState<IndicatorGroupInDashboard[]>(initialDashboardGroups);
+  // Загрузка данных дашборда при монтировании — ИСПРАВЛЕНО на useEffect
+  useEffect(() => {
+    if (existingDashboard) {
+      setName(existingDashboard.name || '');
+      setDescription(existingDashboard.description || '');
+      setVirtualMetrics(existingDashboard.virtualMetrics || []);
+      setDashboardGroups(existingDashboard.indicatorGroups || []);
+    }
+  }, [existingDashboard]);
 
   const addVirtualMetric = useCallback((name: string) => {
     const newMetric: VirtualMetric = {
