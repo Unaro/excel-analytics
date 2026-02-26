@@ -12,7 +12,7 @@ import { useShallow } from 'zustand/react/shallow';
 export function useDashboardCalculation(dashboardId: string) {
   // ИСПРАВЛЕНИЕ: Берем сырые листы
   const sheets = useExcelDataStore(s => s.data);
-  
+
   // Мемоизируем плоский массив
   const excelData = useMemo(() => {
     if (!sheets) return [];
@@ -21,16 +21,23 @@ export function useDashboardCalculation(dashboardId: string) {
 
   const allGroups = useIndicatorGroupStore(useShallow(s => s.groups));
   const templates = useMetricTemplateStore(useShallow(s => s.templates));
-  const dashboard = useDashboardStore(s => s.getDashboard(dashboardId));
   
+  // ✅ ИСПРАВЛЕНИЕ: Подписываемся на конкретные поля дашборда, включая фильтры
+  const { dashboard, hierarchyFilters } = useDashboardStore(useShallow(s => {
+    const d = s.getDashboard(dashboardId);
+    return {
+      dashboard: d,
+      hierarchyFilters: d?.hierarchyFilters || []
+    };
+  }));
 
   // Стор вычислений
-  const { 
-    setComputingState, 
-    setDashboardResult, 
+  const {
+    setComputingState,
+    setDashboardResult,
     result,
     isComputing,
-    computationError 
+    computationError
   } = useComputedMetricsStore(useShallow((s) => ({
     setComputingState: s.setComputingState,
     setDashboardResult: s.setDashboardResult,
@@ -44,7 +51,7 @@ export function useDashboardCalculation(dashboardId: string) {
 
     if (excelData.length === 0) {
       // Не считаем ошибкой, если данных нет, просто выходим или ставим статус
-      return; 
+      return;
     }
 
     setComputingState(true, null);
@@ -67,24 +74,25 @@ export function useDashboardCalculation(dashboardId: string) {
       setComputingState(false, err instanceof Error ? err.message : 'Unknown calculation error');
     }
   }, [
-    dashboard, 
-    excelData, 
-    allGroups, 
-    templates, 
-    dashboardId, 
-    setComputingState, 
+    dashboard,
+    excelData,
+    allGroups,
+    templates,
+    dashboardId,
+    setComputingState,
     setDashboardResult
   ]);
 
+  // ✅ ИСПРАВЛЕНИЕ: Добавляем hierarchyFilters в зависимости для отслеживания изменений
   useEffect(() => {
     if (!dashboard || excelData.length === 0) return;
-    
-    const hasChanges = 
-      !result || 
-      result.hierarchyFilters.length !== dashboard.hierarchyFilters.length ||
-      (dashboard.hierarchyFilters.length > 0 && 
-       result.hierarchyFilters[result.hierarchyFilters.length - 1].value !== 
-       dashboard.hierarchyFilters[dashboard.hierarchyFilters.length - 1].value);
+
+    const hasChanges =
+      !result ||
+      result.hierarchyFilters.length !== hierarchyFilters.length ||
+      (hierarchyFilters.length > 0 &&
+       result.hierarchyFilters[result.hierarchyFilters.length - 1].value !==
+       hierarchyFilters[hierarchyFilters.length - 1].value);
 
     if (hasChanges && !isComputing) {
       runCalculation();
@@ -92,6 +100,7 @@ export function useDashboardCalculation(dashboardId: string) {
   }, [
     dashboard,
     excelData,
+    hierarchyFilters, // ✅ Теперь отслеживаем изменения фильтров
     result,
     isComputing,
     runCalculation
