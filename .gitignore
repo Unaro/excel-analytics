@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# qwen assistant (local context files)
+QWEN.md
+CHANGES.md
+ISSUES.md
+PROJECT_ANALYSIS.md
