@@ -104,6 +104,7 @@ interface TreeNodeProps {
   allData: any[];
   activeFilters: HierarchyFilterValue[];
   customSelectHandler?: (filters: HierarchyFilterValue[]) => void;
+  selectedNodeValue?: string | number; // ✅ Для отслеживания выбранного узла на этом уровне
 }
 
 function TreeNode({
@@ -113,7 +114,8 @@ function TreeNode({
   levels,
   allData,
   activeFilters,
-  customSelectHandler
+  customSelectHandler,
+  selectedNodeValue
 }: TreeNodeProps) {
   const currentLevel = levels[levelIndex];
   const { selectNode } = useFilterActions(dashboardId || 'profile_mode');
@@ -170,8 +172,8 @@ function TreeNode({
             showChevron={showChevron}
             onSelect={() => handleSelect(node)}
           >
-            {/* Рендерим детей ТОЛЬКО если этот узел выбран */}
-            {hasNextLevel && isSelected && (
+            {/* ✅ ИСПРАВЛЕНИЕ: Рендерим детей при isExpanded, а не только при isSelected */}
+            {hasNextLevel && (
               <TreeNode
                 dashboardId={dashboardId}
                 levelIndex={levelIndex + 1}
@@ -186,6 +188,7 @@ function TreeNode({
                 allData={allData}
                 activeFilters={activeFilters}
                 customSelectHandler={customSelectHandler}
+                selectedNodeValue={isSelected ? node.value : undefined}
               />
             )}
           </NodeItem>
@@ -206,19 +209,28 @@ interface NodeItemProps {
 }
 
 function NodeItem({ node, isSelected, showChevron, onSelect, children }: NodeItemProps) {
-  // Локальное состояние для сворачивания/разворачивания выбранного узла
-  const [isExpanded, setIsExpanded] = useState(isSelected);
+  // ✅ ИСПРАВЛЕНИЕ: Локальное состояние для сворачивания/разворачивания
+  // Раскрыто если узел выбран ИЛИ если пользователь явно раскрыл его
+  const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
+  
+  // Узел раскрыт если: (1) выбран ИЛИ (2) пользователь явно раскрыл
+  const isExpanded = isSelected || isManuallyExpanded;
 
-  // Синхронизация при изменении выбора
+  // Сбрасываем manual expand когда узел больше не выбран
   const [prevIsSelected, setPrevIsSelected] = useState(isSelected);
   if (isSelected !== prevIsSelected) {
     setPrevIsSelected(isSelected);
-    setIsExpanded(isSelected); // Авто-раскрытие при выборе
+    if (!isSelected) {
+      setIsManuallyExpanded(false); // Сброс при выборе другого узла
+    }
   }
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsExpanded(!isExpanded);
+    // Переключаем только если не выбран (если выбран - уже раскрыт)
+    if (!isSelected) {
+      setIsManuallyExpanded(!isManuallyExpanded);
+    }
   };
 
   return (
@@ -238,6 +250,13 @@ function NodeItem({ node, isSelected, showChevron, onSelect, children }: NodeIte
             !showChevron && "opacity-0 pointer-events-none"
           )}
           onClick={showChevron ? handleToggle : undefined}
+          role={showChevron ? "button" : undefined}
+          tabIndex={showChevron ? 0 : -1}
+          onKeyDown={(e) => {
+            if (showChevron && (e.key === 'Enter' || e.key === ' ')) {
+              handleToggle(e as any);
+            }
+          }}
         >
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </div>
@@ -267,7 +286,7 @@ function NodeItem({ node, isSelected, showChevron, onSelect, children }: NodeIte
         {isSelected && <Check size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
       </div>
 
-      {/* Рендерим детей */}
+      {/* ✅ ИСПРАВЛЕНИЕ: Рендерим детей если узел раскрыт */}
       {showChevron && isExpanded && children && (
         <div className="pl-4 ml-2.5 border-l border-slate-100 dark:border-slate-800 my-1">
           {children}
