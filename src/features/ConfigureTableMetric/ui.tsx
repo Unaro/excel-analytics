@@ -66,16 +66,25 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
 
   useEffect(() => {
     if (!isOpen) return;
+    
     function handleClickOutside(event: MouseEvent) {
       const target = event.target as HTMLElement;
       if (target.closest('.metric-popover-content') || target.closest('.metric-settings-btn')) return;
       setIsOpen(false);
     }
-    // Закрываем при скролле, чтобы попап не улетал от кнопки
-    window.addEventListener('scroll', () => setIsOpen(false), { capture: true });
+    
+    // Закрываем при скролле страницы, но НЕ при скролле внутри попапа
+    function handleScroll(event: Event) {
+      const target = event.target as HTMLElement;
+      // Если скролл происходит внутри попапа — не закрываем
+      if (target.closest('.metric-popover-content')) return;
+      setIsOpen(false);
+    }
+    
+    window.addEventListener('scroll', handleScroll, { capture: true });
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
-      window.removeEventListener('scroll', () => setIsOpen(false), { capture: true });
+      window.removeEventListener('scroll', handleScroll, { capture: true });
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [isOpen]);
