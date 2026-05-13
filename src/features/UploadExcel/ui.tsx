@@ -13,7 +13,7 @@ interface FileUploaderProps {
 }
 
 export function FileUploader({ onSuccess }: FileUploaderProps) {
-  const { importFile, isUploading, progress, error } = useFileImport();
+  const { importFile, isUploading } = useFileImport();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -74,13 +74,6 @@ export function FileUploader({ onSuccess }: FileUploaderProps) {
             <div className="w-full max-w-xs space-y-3">
               <div className="flex justify-between text-xs font-medium text-slate-500 dark:text-slate-400">
                 <span>Обработка файла...</span>
-                <span>{progress}%</span>
-              </div>
-              <div className="h-1.5 w-full bg-gray-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-indigo-600 transition-all duration-500 ease-out"
-                  style={{ width: `${progress}%` }}
-                />
               </div>
             </div>
           </div>
@@ -106,13 +99,6 @@ export function FileUploader({ onSuccess }: FileUploaderProps) {
           </div>
         )}
       </div>
-
-      {error && (
-        <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-3 text-red-700 dark:text-red-300 animate-in slide-in-from-top-2">
-          <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
-          <div className="text-sm font-medium">{error}</div>
-        </div>
-      )}
     </div>
   );
 }

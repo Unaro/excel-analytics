@@ -21,7 +21,7 @@ import {
 import { MetricCell } from '@/entities/metric/ui/metric-cell';
 import { MetricsSelector } from '@/features/ConfigureTableMetric/metrics-selector';
 import { MetricConfigPopover } from '@/features/ConfigureTableMetric';
-import { useExcelDataStore } from '@/entities/excelData';
+import { useDatasetStore } from '@/entities/dataset';
 import { AddKPIDialog } from '@/features/AddKpiWidget';
 import { KPIGrid } from '@/widgets/KpiGrid';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
@@ -42,7 +42,9 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
 
   const hydrated = useStoreHydration();
   const dashboard = useDashboardStore(s => s.getDashboard(dashboardId));
-  const hasData = useExcelDataStore(s => s.hasData());
+  const hasData = useDatasetStore(s => !!s.data && s.data.length > 0);
+  const isSyncing = useDatasetStore(s => s.isSyncing);
+  const sourceType = useDatasetStore(s => s.sourceType);
   const { currentPath } = useHierarchyTree(dashboardId);
   const { result, isComputing, error, recalculate } = useDashboardCalculation(dashboardId);
 
@@ -122,6 +124,18 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
               <span>Обновлено: {new Date(result.computedAt).toLocaleTimeString()}</span>
             ) : null}
           </div>
+
+          {/* ИНДИКАТОР СИНХРОНИЗАЦИИ ИСТОЧНИКА */}
+          {isSyncing && (
+            <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 animate-pulse text-xs">
+              <Loader2 size={12} className="animate-spin" /> Синхронизация...
+            </span>
+          )}
+          {sourceType && !isSyncing && (
+            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+              {sourceType === 'file' ? '📄 Excel' : '🐘 PostgreSQL'}
+            </span>
+          )}
 
           <AddKPIDialog dashboardId={dashboardId} />
 

@@ -1,59 +1,35 @@
-// lib/hooks/use-dashboard-calculation.ts
-import { useCallback, useEffect, useMemo } from 'react';
-import { useExcelDataStore } from '@/entities/excelData';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useDatasetStore } from '@/entities/dataset';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useComputedMetricsStore } from '@/entities/metric';
 import { computeDashboardMetrics } from '@/app/actions/compute';
 import { useShallow } from 'zustand/react/shallow';
-import { dequal } from 'dequal'
 
 export function useDashboardCalculation(dashboardId: string) {
-  const sheets = useExcelDataStore(s => s.data);
-
-  // Мемоизируем плоский массив
-  const excelData = useMemo(() => {
-    if (!sheets) return [];
-    return sheets.flatMap(sheet => sheet.rows);
-  }, [sheets]);
-
+  const excelData = useDatasetStore(s => s.getAllData());
+  
   const allGroups = useIndicatorGroupStore(useShallow(s => s.groups));
   const templates = useMetricTemplateStore(useShallow(s => s.templates));
-  
-  // Подписываемся на конкретные поля дашборда, включая фильтры
+
   const { dashboard, hierarchyFilters } = useDashboardStore(useShallow(s => {
     const d = s.getDashboard(dashboardId);
-    return {
-      dashboard: d,
-      hierarchyFilters: d?.hierarchyFilters || []
-    };
+    return { dashboard: d, hierarchyFilters: d?.hierarchyFilters || [] };
   }));
 
-  // Стор вычислений
-  const {
-    setComputingState,
-    setDashboardResult,
-    result,
-    isComputing,
-    computationError
-  } = useComputedMetricsStore(useShallow((s) => ({
-    setComputingState: s.setComputingState,
-    setDashboardResult: s.setDashboardResult,
-    result: s.dashboardResults.get(dashboardId),
-    isComputing: s.isComputing,
-    computationError: s.computationError
-  })));
+  const { setComputingState, setDashboardResult, result, isComputing, computationError } = 
+    useComputedMetricsStore(useShallow((s) => ({
+      setComputingState: s.setComputingState,
+      setDashboardResult: s.setDashboardResult,
+      result: s.dashboardResults.get(dashboardId),
+      isComputing: s.isComputing,
+      computationError: s.computationError
+    })));
 
   const runCalculation = useCallback(async () => {
-    if (!dashboard) return;
-
-    if (excelData.length === 0) {
-      return;
-    }
-
+    if (!dashboard || excelData.length === 0) return;
     setComputingState(true, null);
-
     try {
       const computationResult = await computeDashboardMetrics({
         dashboardId,
@@ -64,53 +40,30 @@ export function useDashboardCalculation(dashboardId: string) {
         virtualMetrics: dashboard.virtualMetrics,
         filters: dashboard.hierarchyFilters,
       });
-
       setDashboardResult(dashboardId, computationResult);
       setComputingState(false, null);
     } catch (err) {
       console.error("Calculation error:", err);
       setComputingState(false, err instanceof Error ? err.message : 'Unknown calculation error');
     }
-  }, [
-    dashboard,
-    excelData,
-    allGroups,
-    templates,
-    dashboardId,
-    setComputingState,
-    setDashboardResult
-  ]);
+  }, [dashboard, excelData, allGroups, templates, dashboardId, setComputingState, setDashboardResult]);
 
-  // Создаем хэш для зависимостей
-  const filtersHash = useMemo(
-    () => JSON.stringify(hierarchyFilters.map(f => `${f.levelId}:${f.value}`)),
-    [hierarchyFilters]
-  );
+  const lastFiltersRef = useRef(hierarchyFilters);
+  const lastDataLengthRef = useRef(excelData.length);
 
-
-  // Добавляем hierarchyFilters в зависимости для отслеживания изменений
   useEffect(() => {
-    if (!dashboard || excelData.length === 0) return;
+    if (!dashboard || excelData.length === 0 || isComputing) return;
 
-    const hasChanges = !result || !dequal(result.hierarchyFilters, hierarchyFilters);
+    // Сравниваем фильтры и объём данных с последним запуском
+    const filtersChanged = JSON.stringify(lastFiltersRef.current) !== JSON.stringify(hierarchyFilters);
+    const dataChanged = lastDataLengthRef.current !== excelData.length;
 
-    if (hasChanges && !isComputing) {
+    if (filtersChanged || dataChanged || !result) {
+      lastFiltersRef.current = hierarchyFilters;
+      lastDataLengthRef.current = excelData.length;
       runCalculation();
     }
-  }, [
-    dashboard,
-    excelData,
-    filtersHash,
-    hierarchyFilters,
-    result,
-    isComputing,
-    runCalculation
-  ]);
+  }, [dashboard, excelData.length, hierarchyFilters, result, isComputing, runCalculation]);
 
-  return {
-    result,
-    isComputing,
-    error: computationError,
-    recalculate: runCalculation
-  };
+  return { result, isComputing, error: computationError, recalculate: runCalculation };
 }

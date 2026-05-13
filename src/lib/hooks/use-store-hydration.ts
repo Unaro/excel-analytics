@@ -1,7 +1,6 @@
 'use client';
-
 import { useState, useEffect } from 'react';
-import { useExcelDataStore } from '@/entities/excelData';
+import { useDatasetStore } from '@/entities/dataset';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useHierarchyStore } from '@/entities/hierarchy';
 import { useMetricTemplateStore } from '@/entities/metric';
@@ -10,38 +9,26 @@ import { useColumnConfigStore } from '@/entities/excelData';
 
 export function useStoreHydration() {
   const [hydrated, setHydrated] = useState(false);
-
   useEffect(() => {
     let cancelled = false;
-
     const hydrate = async () => {
       try {
         await Promise.all([
-          useExcelDataStore.persist.rehydrate(),
+          useDatasetStore.persist.rehydrate(),
           useDashboardStore.persist.rehydrate(),
           useHierarchyStore.persist.rehydrate(),
           useMetricTemplateStore.persist.rehydrate(),
           useIndicatorGroupStore.persist.rehydrate(),
           useColumnConfigStore.persist.rehydrate(),
         ]);
-        
-        if (!cancelled) {
-          setHydrated(true);
-        }
+        if (!cancelled) setHydrated(true);
       } catch (error) {
         console.error('Hydration failed:', error);
-        if (!cancelled) {
-          setHydrated(true);
-        }
+        if (!cancelled) setHydrated(true);
       }
     };
-
     hydrate();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
-
   return hydrated;
 }

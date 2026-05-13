@@ -1,7 +1,7 @@
 'use client';
 
 import { useColumnConfigStore } from '@/entities/excelData';
-import { useExcelDataStore } from '@/entities/excelData';
+import { useExcelDataStore } from '@/entities/dataset';
 import { ColumnClassification } from '@/types';
 import { cn } from '@/shared/lib/utils';
 

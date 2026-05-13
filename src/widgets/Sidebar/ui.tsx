@@ -8,7 +8,7 @@ import {
   Settings,
   Trash2 // Иконка удаления
 } from 'lucide-react';
-import { useExcelDataStore } from '@/entities/excelData';
+import { useExcelDataStore } from '@/entities/dataset';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
 import { ThemeToggle } from '@/features/ThemeToggle';
 import { cn } from '@/shared/lib/utils';
@@ -30,7 +30,7 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
   const hydrated = useStoreHydration();
   
   // Достаем fileName и экшен удаления
-  const fileName = useExcelDataStore(s => s.metadata?.fileName);
+  const fileName = useExcelDataStore(s => s.metadata?.sourceName);
   const clearDataset = useExcelDataStore(s => s.clearData);
 
   const menuItems: MenuItem[] = [

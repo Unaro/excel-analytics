@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { FileUploader } from '@/features/UploadExcel';
 import { ColumnManager } from '@/features/ManageColumns';
-import { useExcelDataStore } from '@/entities/excelData';
+import { syncFromPostgres, useDatasetStore } from '@/entities/dataset';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
 import { Trash2, Check, FileSpreadsheet, TableProperties } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
@@ -13,8 +13,8 @@ import { LoadingScreen } from '@/shared/ui/loading-screen';
 
 export default function SetupPage() {
   const hydrated = useStoreHydration();
-  const hasData = useExcelDataStore(s => s.hasData());
-  const clearData = useExcelDataStore(s => s.clearData);
+  const hasData = useDatasetStore(s => !!s.data && s.data.length > 0);
+  const clearData = useDatasetStore(s => s.clearData);
 
   const [step, setStep] = useState<'upload' | 'columns'>(hasData ? 'columns' : 'upload');
 

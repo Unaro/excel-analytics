@@ -1,35 +1,34 @@
+export type DatasetSourceType = 'file' | 'postgres' | null;
+
 /**
- * Универсальная строка датасета (поддерживает Excel, PostgreSQL, CSV и др.)
+ * Универсальная строка датасета
+ * Совместима с Excel, PostgreSQL, CSV, API
  */
 export interface DatasetRow {
   [columnName: string]: string | number | boolean | null;
-}
-
-/** @deprecated Используйте DatasetRow. Оставлен для обратной совместимости. */
-export type ExcelRow = DatasetRow;
-
-/**
- * Данные одного листа/таблицы
- */
-export interface SheetData {
-  sheetName: string;
-  headers: string[];
-  rows: DatasetRow[];
 }
 
 /**
  * Метаданные загруженного датасета
  */
 export interface DatasetMetadata {
-  fileName: string;
+  sourceName: string; // Имя файла или schema.table
   uploadedAt: number;
-  sheetNames: string[];
+  sheetOrTableNames: string[];
   totalRows: number;
   totalColumns: number;
+  sourceType: DatasetSourceType;
 }
 
-/** @deprecated Используйте DatasetMetadata. Оставлен для обратной совместимости. */
-export type ExcelMetadata = DatasetMetadata;
+/**
+ * Конфигурация PostgreSQL-подключения (хранится в сторе)
+ */
+export interface PgSyncConfig {
+  schema: string;
+  table: string;
+  lastSyncAt: number;
+  connectionId?: string; // Для будущей серверной авторизации
+}
 
 /**
  * Статистика по колонке (для авто-классификации и UI)

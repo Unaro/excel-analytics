@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { getHierarchyNodesLocal } from '@/lib/logic/hierarchy-client';
 import { useHierarchyStore } from '@/entities/hierarchy';
-import { useExcelDataStore } from '@/entities/excelData';
+import { useExcelDataStore } from '@/entities/dataset';
 import { HierarchyLevel, HierarchyFilterValue, HierarchyNode } from '@/types';
 import { useFilterActions } from '@/lib/hooks/use-filter-actions';
 import { Button } from '@/shared/ui/button';
@@ -34,8 +34,8 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
 
   useEffect(() => {
     if (currentFilters.length > 0 && levels.length > 0) {
-      const isConfigValid = currentFilters.every((filter, idx) =>
-        idx < levels.length && filter.levelId === levels[idx].id
+      const isConfigValid = currentFilters.every(filter =>
+        levels.some(l => l.id === filter.levelId)
       );
       if (!isConfigValid) {
         handleReset();
@@ -43,11 +43,7 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
     }
   }, [currentFilters, levels, handleReset]);
 
-  const sheets = useExcelDataStore(useShallow(s => s.data));
-  const rawData = useMemo(() => {
-    if (!sheets) return [];
-    return sheets.flatMap(s => s.rows);
-  }, [sheets]);
+  const rawData = useExcelDataStore(s => s.getAllData());
 
   if (levels.length === 0) {
     return (

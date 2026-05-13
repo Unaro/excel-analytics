@@ -2,7 +2,8 @@
 import { useMemo } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useHierarchyStore } from '@/entities/hierarchy';
-import { useExcelDataStore } from '@/entities/excelData';
+import { useExcelDataStore } from '@/entities/dataset';
+import type { DatasetRow } from '@/entities/dataset';
 import { getHierarchyNodesLocal } from '../logic/hierarchy-client';
 
 /**
@@ -12,8 +13,7 @@ import { getHierarchyNodesLocal } from '../logic/hierarchy-client';
 export function useHierarchyTree(dashboardId: string) {
   const dashboard = useDashboardStore((s) => s.getDashboard(dashboardId));
   const levels = useHierarchyStore((s) => s.levels);
-  const sheets = useExcelDataStore(s => s.data);
-  const excelData = useMemo(() => sheets ? sheets.flatMap(s => s.rows) : [], [sheets]);
+  const excelData = useExcelDataStore(s => s.getAllData());
 
   const currentPath = dashboard?.hierarchyFilters || [];
   const nextLevel = levels[currentPath.length] || null;

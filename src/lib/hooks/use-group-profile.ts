@@ -1,7 +1,6 @@
 'use client';
-
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useExcelDataStore } from '@/entities/excelData';
+import { useDatasetStore } from '@/entities/dataset'; // ✅ Новый импорт
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { computeDashboardMetrics } from '@/app/actions/compute';
@@ -14,20 +13,17 @@ import {
 import { toast } from 'sonner';
 
 export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]) {
-  const sheets = useExcelDataStore(s => s.data);
-  const excelData = useMemo(() => sheets ? sheets.flatMap(s => s.rows) : [], [sheets]);
-
+  // ✅ Плоский массив данных без flatMap и кастов
+  const excelData = useDatasetStore(s => s.getAllData());
+  
   const group = useIndicatorGroupStore(s => s.getGroup(groupId));
   const templates = useMetricTemplateStore(s => s.templates);
-
   const [result, setResult] = useState<GroupComputationResult | null>(null);
   const [isComputing, setIsComputing] = useState(false);
 
-  // Генерируем конфигурацию "на лету"
+  // Генерируем конфигурацию "на лету" (без изменений)
   const { virtualMetrics, dashboardConfig } = useMemo(() => {
     if (!group) return { virtualMetrics: [], dashboardConfig: [] };
-
-    // 1. Создаем виртуальную метрику для КАЖДОЙ метрики группы
     const vMetrics: VirtualMetric[] = group.metrics.map(m => {
       const tpl = templates.find(t => t.id === m.templateId);
       return {
@@ -39,27 +35,20 @@ export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]
         unit: tpl?.suffix || tpl?.prefix,
       };
     });
-
-    // 2. Создаем конфиг группы
     const groupConfig: IndicatorGroupInDashboard = {
       groupId: group.id,
       enabled: true,
       order: 0,
       virtualMetricBindings: group.metrics.map(m => ({
-        virtualMetricId: `vm-${m.id}`, // Связываем 1 к 1
+        virtualMetricId: `vm-${m.id}`,
         metricId: m.id
       }))
     };
-
-    return {
-      virtualMetrics: vMetrics,
-      dashboardConfig: [groupConfig]
-    };
+    return { virtualMetrics: vMetrics, dashboardConfig: [groupConfig] };
   }, [group, templates]);
 
   const runCalculation = useCallback(async () => {
     if (!group || excelData.length === 0) return;
-
     setIsComputing(true);
     try {
       const res = await computeDashboardMetrics({
@@ -71,27 +60,16 @@ export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]
         virtualMetrics: virtualMetrics,
         filters: filters
       });
-
       setResult(res.groups[0] || null);
     } catch (error) {
       console.error('Group profile calculation error:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Ошибка вычисления показателей'
-      );
+      toast.error(error instanceof Error ? error.message : 'Ошибка вычисления показателей');
     } finally {
       setIsComputing(false);
     }
   }, [excelData, group, dashboardConfig, templates, virtualMetrics, filters]);
 
-  // Авто-запуск при смене фильтров
-  useEffect(() => {
-    runCalculation();
-  }, [runCalculation]);
+  useEffect(() => { runCalculation(); }, [runCalculation]);
 
-  return {
-    group,
-    result,
-    isComputing,
-    virtualMetrics
-  };
+  return { group, result, isComputing, virtualMetrics };
 }
