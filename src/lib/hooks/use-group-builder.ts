@@ -26,18 +26,18 @@ export function useGroupBuilder(existingGroupId?: string) {
   const [name, setName] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState<FormMetricState[]>([]);
   const [isInitialized, setIsInitialized] = useState(false);
-  const [columnSearchQuery, setColumnSearchQuery] = useState(''); // Поиск колонок
+  const [columnSearchQuery, setColumnSearchQuery] = useState('');
 
   // --- 1. ВЫЧИСЛЕНИЕ СПИСКА КОЛОНОК ---
   const filteredColumns = columns.filter(c => {
     const isUsed = selectedMetrics.some(m => Object.values(m.bindings).includes(c.columnName));
     if (isUsed) return true;
     if (!columnSearchQuery) return true;
-    const query = columnSearchQuery.toLowerCase();
+    const query = columnSearchQuery;
     return (
-      c.displayName.toLowerCase().includes(query) || 
-      c.columnName.toLowerCase().includes(query) ||
-      c.alias.toLowerCase().includes(query)
+      c.displayName.includes(query) || 
+      c.columnName.includes(query) ||
+      c.alias.includes(query)
     );
   });
 
@@ -146,10 +146,8 @@ export function useGroupBuilder(existingGroupId?: string) {
       
       let newValue = '';
       
-      // UX УЛУЧШЕНИЕ: Если переключили на метрику, пробуем найти первую доступную выше
       if (type === 'metric') {
         if (index > 0) {
-          // Берем метрику сразу над текущей (чаще всего ссылаются на нее)
           newValue = prev[index - 1].tempId;
         }
       }
@@ -157,7 +155,7 @@ export function useGroupBuilder(existingGroupId?: string) {
       return {
         ...m,
         variableTypes: { ...m.variableTypes, [alias]: type },
-        bindings: { ...m.bindings, [alias]: newValue } // Авто-подстановка
+        bindings: { ...m.bindings, [alias]: newValue }
       };
     }));
   }, []);
@@ -180,12 +178,12 @@ export function useGroupBuilder(existingGroupId?: string) {
     setSelectedMetrics(prev => prev.filter(m => m.tempId !== tempId));
   }, []);
 
-  // --- 4. СОХРАНЕНИЕ (ИСПРАВЛЕННАЯ ЛОГИКА) ---
+  // --- 4. СОХРАНЕНИЕ ---
   const saveGroup = useCallback(() => {
     if (!name.trim()) throw new Error("Введите название группы");
 
     const allFieldMappings: FieldBinding[] = [];
-    const uniqueColumnNames = new Set<string>(); // Сет для проверки уникальности КОЛОНОК
+    const uniqueColumnNames = new Set<string>();
 
     // Сбор глобальных маппингов полей
     selectedMetrics.forEach(m => {
@@ -193,10 +191,8 @@ export function useGroupBuilder(existingGroupId?: string) {
         if (m.variableTypes[alias] === 'field') {
           const colName = m.bindings[alias];
           
-          // ИСПРАВЛЕНИЕ: Проверяем уникальность по имени колонки Excel, а не по алиасу переменной (value)
           if (colName && !uniqueColumnNames.has(colName)) {
              uniqueColumnNames.add(colName);
-             // Алиас сохраняем, но он не так важен для глобального списка, главное что колонка учтена
              allFieldMappings.push({ id: nanoid(), fieldAlias: alias, columnName: colName });
           }
         }
@@ -255,7 +251,7 @@ export function useGroupBuilder(existingGroupId?: string) {
 
     const groupData = {
       name,
-      fieldMappings: allFieldMappings, // Теперь тут правильный список уникальных колонок
+      fieldMappings: allFieldMappings,
       metrics: finalMetrics,
       order: 0,
     };

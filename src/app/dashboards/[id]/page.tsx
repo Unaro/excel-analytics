@@ -242,7 +242,7 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
                             </div>
                           </div>
 
-                          {liveMetric.colorConfig?.rules && (
+                          {liveMetric.colorConfig?.rules && liveMetric.colorConfig?.rules.length && (
                             <div className="absolute bottom-2 right-6 w-1 h-1 rounded-full bg-indigo-500" />
                           )}
                       </th>)}

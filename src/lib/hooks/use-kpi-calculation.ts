@@ -6,6 +6,7 @@ import { useExcelDataStore } from '@/entities/excelData';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { HierarchyFilterValue, KPIWidget, MetricTemplate } from '@/types';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { safeEvaluate, validateFormula } from '../logic/safe-math';
 
 // Хелпер нормализации
 function normalizeValue(value: unknown): string {
@@ -92,30 +93,18 @@ export function useKPICalculation(
       
       // --- ТИП B: ВЫЧИСЛЯЕМОЕ (Считаем через MathJS) ---
       else if (template.type === 'calculated' && template.formula) {
-        const scope: Record<string, number> = {};
-
-        // 1. Разрешаем зависимости
-        // Проходимся по всем привязкам (bindings), которые есть у виджета
-        // bindings: { "variableName": "targetWidgetId" }
+        const scope: Record<string, number | null> = {};
         for (const [varName, targetWidgetId] of Object.entries(widget.bindings)) {
-           // Рекурсивно считаем значение зависимого виджета
-           const dependencyValue = calculateWidget(targetWidgetId, [...stack, widgetId]);
-           scope[varName] = dependencyValue;
+          scope[varName] = calculateWidget(targetWidgetId, [...stack, widgetId]);
         }
 
-        // 2. Вычисляем формулу через MathJS
         try {
-          const mathResult = evaluate(template.formula, scope);
-          
-          // Проверка на Infinity или NaN (деление на ноль)
-          if (!isFinite(mathResult) || isNaN(mathResult)) {
-            resultValue = 0; // Или можно выбрасывать ошибку, зависит от бизнес-логики
-          } else {
-            resultValue = Number(mathResult);
-          }
+          validateFormula(template.formula);
+          const mathResult = safeEvaluate(template.formula, scope);
+          resultValue = mathResult ?? 0;
         } catch (e) {
-          console.error(`MathJS Error in widget ${widget.customName}:`, e);
-          throw new Error('Ошибка формулы');
+          console.error(`SafeMath Error in widget ${widget.customName}:`, e);
+          throw new Error('Ошибка формулы или недопустимая операция');
         }
       }
 
@@ -143,7 +132,6 @@ export function useKPICalculation(
       try {
         calculateWidget(w.id);
       } catch (e) {
-        // Fallback при ошибке
         const template = templates.find(t => t.id === w.templateId);
         resultsMap.set(w.id, {
           widget: w,

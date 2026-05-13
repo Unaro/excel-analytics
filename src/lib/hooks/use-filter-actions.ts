@@ -22,8 +22,6 @@ export function useFilterActions(dashboardId: string) {
       displayValue: node.displayValue
     };
 
-    // Это действие автоматически удалит все фильтры глубже текущего уровня
-    // и установит новое значение для текущего
     addHierarchyFilter(dashboardId, filterValue);
   }, [dashboardId, addHierarchyFilter]);
 

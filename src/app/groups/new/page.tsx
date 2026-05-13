@@ -36,7 +36,6 @@ export default function NewGroupPage() {
 
         {/* Контейнер формы */}
         <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-gray-200 dark:border-slate-800 p-6 transition-colors">
-           {/* groupId не передаем, так как создаем новую */}
            <GroupBuilder />
         </div>
       </div>

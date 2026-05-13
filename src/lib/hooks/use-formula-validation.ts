@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { parse, MathNode } from 'mathjs';
 import { useColumnConfigStore } from '@/entities/excelData';
+import { extractVariables, validateFormula } from '../logic/safe-math';
 
 // Расширяем базовый тип для TypeScript
 interface MathSymbolNode extends MathNode {
@@ -10,12 +11,10 @@ interface MathSymbolNode extends MathNode {
 }
 
 export function useFormulaValidation() {
-  // ИСПРАВЛЕНИЕ:
-  // 1. Берем сырой массив конфигов (ссылка на него стабильна)
+  // 1. Берем сырой массив конфигов
   const configs = useColumnConfigStore((s) => s.configs);
 
   // 2. Фильтруем нужные колонки через useMemo
-  // Пересчет произойдет только если реально изменится список колонок
   const numericColumns = useMemo(() => {
     return configs.filter(c => c.classification === 'numeric');
   }, [configs]);
@@ -38,39 +37,16 @@ export function useFormulaValidation() {
 
   const validate = useCallback((formula: string) => {
     if (!formula.trim()) {
-      setIsValid(false);
-      setError('Формула не может быть пустой');
-      setDependencies([]);
+      setIsValid(false); setError('Формула не может быть пустой'); setDependencies([]);
       return;
     }
-
     try {
-      const node = parse(formula);
-      const foundDeps = new Set<string>();
-      
-      node.traverse(function (node: MathNode) {
-        if (node.type === 'SymbolNode') {
-           const symbolNode = node as unknown as MathSymbolNode;
-           
-           if (typeof symbolNode.name === 'string') {
-             const builtIns = [
-               'sqrt', 'pow', 'max', 'min', 'abs', 'round', 
-               'floor', 'ceil', 'log', 'exp', 'sin', 'cos', 'tan'
-             ];
-             
-             if (!builtIns.includes(symbolNode.name)) {
-               foundDeps.add(symbolNode.name);
-             }
-           }
-        }
-      });
-      
-      setDependencies(Array.from(foundDeps));
-      setIsValid(true);
-      setError(null);
+      validateFormula(formula);
+      setDependencies(extractVariables(formula));
+      setIsValid(true); setError(null);
     } catch (err) {
       setIsValid(false);
-      setError(err instanceof Error ? err.message : 'Ошибка синтаксиса формулы');
+      setError(err instanceof Error ? err.message : 'Ошибка синтаксиса');
       setDependencies([]);
     }
   }, []);

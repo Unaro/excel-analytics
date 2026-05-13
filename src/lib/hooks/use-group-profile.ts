@@ -31,7 +31,7 @@ export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]
     const vMetrics: VirtualMetric[] = group.metrics.map(m => {
       const tpl = templates.find(t => t.id === m.templateId);
       return {
-        id: `vm-${m.id}`, // Временный ID
+        id: `vm-${m.id}`,
         name: tpl?.name || 'Metric',
         displayFormat: tpl?.displayFormat || 'number',
         decimalPlaces: tpl?.decimalPlaces || 2,
@@ -62,7 +62,6 @@ export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]
 
     setIsComputing(true);
     try {
-      // Используем тот же Server Action, что и для дашбордов!
       const res = await computeDashboardMetrics({
         dashboardId: 'temp-profile',
         data: excelData,
@@ -76,7 +75,6 @@ export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]
       setResult(res.groups[0] || null);
     } catch (error) {
       console.error('Group profile calculation error:', error);
-      // ✅ Показываем ошибку пользователю через toast
       toast.error(
         error instanceof Error ? error.message : 'Ошибка вычисления показателей'
       );
@@ -94,6 +92,6 @@ export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]
     group,
     result,
     isComputing,
-    virtualMetrics // Чтобы знать названия метрик для отображения
+    virtualMetrics
   };
 }

@@ -7,10 +7,9 @@ import { useDashboardStore } from '@/entities/dashboard';
 import { useComputedMetricsStore } from '@/entities/metric';
 import { computeDashboardMetrics } from '@/app/actions/compute';
 import { useShallow } from 'zustand/react/shallow';
-
+import { dequal } from 'dequal'
 
 export function useDashboardCalculation(dashboardId: string) {
-  // ИСПРАВЛЕНИЕ: Берем сырые листы
   const sheets = useExcelDataStore(s => s.data);
 
   // Мемоизируем плоский массив
@@ -22,7 +21,7 @@ export function useDashboardCalculation(dashboardId: string) {
   const allGroups = useIndicatorGroupStore(useShallow(s => s.groups));
   const templates = useMetricTemplateStore(useShallow(s => s.templates));
   
-  // ✅ ИСПРАВЛЕНИЕ: Подписываемся на конкретные поля дашборда, включая фильтры
+  // Подписываемся на конкретные поля дашборда, включая фильтры
   const { dashboard, hierarchyFilters } = useDashboardStore(useShallow(s => {
     const d = s.getDashboard(dashboardId);
     return {
@@ -50,7 +49,6 @@ export function useDashboardCalculation(dashboardId: string) {
     if (!dashboard) return;
 
     if (excelData.length === 0) {
-      // Не считаем ошибкой, если данных нет, просто выходим или ставим статус
       return;
     }
 
@@ -83,16 +81,18 @@ export function useDashboardCalculation(dashboardId: string) {
     setDashboardResult
   ]);
 
-  // ✅ ИСПРАВЛЕНИЕ: Добавляем hierarchyFilters в зависимости для отслеживания изменений
+  // Создаем хэш для зависимостей
+  const filtersHash = useMemo(
+    () => JSON.stringify(hierarchyFilters.map(f => `${f.levelId}:${f.value}`)),
+    [hierarchyFilters]
+  );
+
+
+  // Добавляем hierarchyFilters в зависимости для отслеживания изменений
   useEffect(() => {
     if (!dashboard || excelData.length === 0) return;
 
-    const hasChanges =
-      !result ||
-      result.hierarchyFilters.length !== hierarchyFilters.length ||
-      (hierarchyFilters.length > 0 &&
-       result.hierarchyFilters[result.hierarchyFilters.length - 1].value !==
-       hierarchyFilters[hierarchyFilters.length - 1].value);
+    const hasChanges = !result || !dequal(result.hierarchyFilters, hierarchyFilters);
 
     if (hasChanges && !isComputing) {
       runCalculation();
@@ -100,7 +100,8 @@ export function useDashboardCalculation(dashboardId: string) {
   }, [
     dashboard,
     excelData,
-    hierarchyFilters, // ✅ Теперь отслеживаем изменения фильтров
+    filtersHash,
+    hierarchyFilters,
     result,
     isComputing,
     runCalculation

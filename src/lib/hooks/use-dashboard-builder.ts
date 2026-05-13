@@ -28,7 +28,7 @@ export function useDashboardBuilder(existingDashboardId?: string) {
     [existingDashboardId, getDashboard]
   );
 
-  // Загрузка данных дашборда при монтировании — ИСПРАВЛЕНО на useEffect
+  // Загрузка данных дашборда при монтировании
   useEffect(() => {
     if (existingDashboard) {
       setName(existingDashboard.name || '');

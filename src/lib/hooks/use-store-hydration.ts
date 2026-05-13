@@ -16,7 +16,6 @@ export function useStoreHydration() {
 
     const hydrate = async () => {
       try {
-        // ✅ Гидратируем ВСЕ сторы с persist параллельно
         await Promise.all([
           useExcelDataStore.persist.rehydrate(),
           useDashboardStore.persist.rehydrate(),
@@ -31,7 +30,6 @@ export function useStoreHydration() {
         }
       } catch (error) {
         console.error('Hydration failed:', error);
-        // Даже при ошибке продолжаем — покажем пустое состояние
         if (!cancelled) {
           setHydrated(true);
         }

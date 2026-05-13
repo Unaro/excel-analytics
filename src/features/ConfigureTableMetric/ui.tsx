@@ -66,23 +66,24 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
 
   useEffect(() => {
     if (!isOpen) return;
-    
+
     function handleClickOutside(event: MouseEvent) {
-      const target = event.target as HTMLElement;
+      const target = event.target;
+      if (!(target instanceof Element)) return; // ✅ Безопасная проверка
       if (target.closest('.metric-popover-content') || target.closest('.metric-settings-btn')) return;
       setIsOpen(false);
     }
-    
-    // Закрываем при скролле страницы, но НЕ при скролле внутри попапа
+
     function handleScroll(event: Event) {
-      const target = event.target as HTMLElement;
-      // Если скролл происходит внутри попапа — не закрываем
+      const target = event.target;
+      if (!(target instanceof Element)) return; // ✅ Безопасная проверка
       if (target.closest('.metric-popover-content')) return;
       setIsOpen(false);
     }
-    
+
     window.addEventListener('scroll', handleScroll, { capture: true });
     document.addEventListener("mousedown", handleClickOutside);
+    
     return () => {
       window.removeEventListener('scroll', handleScroll, { capture: true });
       document.removeEventListener("mousedown", handleClickOutside);

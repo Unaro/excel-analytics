@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   ChevronRight, ChevronDown, Folder, FolderOpen, Check, Filter, X
 } from 'lucide-react';
@@ -22,9 +22,8 @@ interface TreeProps {
 export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: TreeProps) {
   const levels = useHierarchyStore(useShallow(s => s.levels));
   const { resetAll } = useFilterActions(dashboardId || 'profile_mode');
-
   const structureKey = useMemo(() => levels.map(l => l.id).join('-'), [levels]);
-
+  
   const handleReset = useCallback(() => {
     if (onFilterChange) {
       onFilterChange([]);
@@ -33,15 +32,16 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
     }
   }, [onFilterChange, resetAll]);
 
-  // Self-Healing: Сброс если конфиг иерархии изменился
-  if (currentFilters.length > 0 && levels.length > 0) {
-    const isConfigValid = currentFilters.every(filter =>
-      levels.some(l => l.id === filter.levelId)
-    );
-    if (!isConfigValid) {
-      handleReset();
+  useEffect(() => {
+    if (currentFilters.length > 0 && levels.length > 0) {
+      const isConfigValid = currentFilters.every((filter, idx) =>
+        idx < levels.length && filter.levelId === levels[idx].id
+      );
+      if (!isConfigValid) {
+        handleReset();
+      }
     }
-  }
+  }, [currentFilters, levels, handleReset]);
 
   const sheets = useExcelDataStore(useShallow(s => s.data));
   const rawData = useMemo(() => {
@@ -121,7 +121,7 @@ function TreeNode({
   const { selectNode } = useFilterActions(dashboardId || 'profile_mode');
 
   // Активный фильтр на текущем уровне
-  const activeFilterAtThisLevel = activeFilters[levelIndex];
+  const activeFilterAtThisLevel = activeFilters.find(f => f.levelId === currentLevel.id);
   const activeValueString = activeFilterAtThisLevel ? String(activeFilterAtThisLevel.value) : null;
 
   const hasNextLevel = levelIndex + 1 < levels.length;
@@ -209,27 +209,19 @@ interface NodeItemProps {
 }
 
 function NodeItem({ node, isSelected, showChevron, onSelect, children }: NodeItemProps) {
-  // ✅ ИСПРАВЛЕНИЕ: Локальное состояние для сворачивания/разворачивания
-  // Раскрыто если узел выбран ИЛИ если пользователь явно раскрыл его
   const [isManuallyExpanded, setIsManuallyExpanded] = useState(false);
-  
-  // Узел раскрыт если: (1) выбран ИЛИ (2) пользователь явно раскрыл
   const isExpanded = isSelected || isManuallyExpanded;
 
-  // Сбрасываем manual expand когда узел больше не выбран
-  const [prevIsSelected, setPrevIsSelected] = useState(isSelected);
-  if (isSelected !== prevIsSelected) {
-    setPrevIsSelected(isSelected);
+  useEffect(() => {
     if (!isSelected) {
-      setIsManuallyExpanded(false); // Сброс при выборе другого узла
+      setIsManuallyExpanded(false);
     }
-  }
+  }, [isSelected]);
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Переключаем только если не выбран (если выбран - уже раскрыт)
     if (!isSelected) {
-      setIsManuallyExpanded(!isManuallyExpanded);
+      setIsManuallyExpanded(prev => !prev);
     }
   };
 

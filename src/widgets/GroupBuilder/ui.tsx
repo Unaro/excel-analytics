@@ -82,7 +82,7 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
                 <Input 
                   value={columnSearchQuery} 
                   onChange={e => setColumnSearchQuery(e.target.value)} 
-                  placeholder="Например: дошкол" 
+                  placeholder="Например: ДОО" 
                   className="pl-9 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
                 />
                 {columnSearchQuery && (

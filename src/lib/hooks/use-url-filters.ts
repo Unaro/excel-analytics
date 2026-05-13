@@ -9,10 +9,9 @@ export function useUrlFilters() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // ✅ Читаем только строку, а не весь объект searchParams
   const filtersString = searchParams.get('filters');
   
-  // ✅ Мемоизируем по строке, а не по объекту
+  // Мемоизируем по строке
   const filters = useMemo<HierarchyFilterValue[]>(() => {
     if (!filtersString) return [];
     try {
