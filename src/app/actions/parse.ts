@@ -1,128 +1,117 @@
 'use server';
-
 import * as XLSX from 'xlsx';
 import type { SheetData, ExcelMetadata, ExcelRow, ColumnStatistics } from '@/types';
 
 /**
- * Парсинг Excel файла на сервере
- * Используется в hooks/use-file-import.ts
+ * Безопасное преобразование значения ячейки
+ * - Пустые строки/null → null
+ * - Числовые строки (с запятой или точкой) → number
+ * - Остальное → trimmed string
+ */
+function parseCellValue(raw: unknown): string | number | boolean | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw === 'number' || typeof raw === 'boolean') return raw;
+  
+  const str = String(raw).trim();
+  if (str === '') return null;
+
+  // Попытка парсинга числа (поддержка ru-locale запятой)
+  const normalized = str.replace(',', '.');
+  if (/^-?\d+(\.\d+)?$/.test(normalized)) {
+    const num = Number(normalized);
+    if (!isNaN(num) && isFinite(num)) return num;
+  }
+
+  return str;
+}
+
+/**
+ * SERVER ACTION: Парсинг Excel файла
  */
 export async function parseExcelFile(
   fileBuffer: ArrayBuffer,
   fileName: string
 ): Promise<{ data: SheetData[]; metadata: ExcelMetadata }> {
   try {
-    const workbook = XLSX.read(fileBuffer, { type: 'array' });
+    const workbook = XLSX.read(fileBuffer, { type: 'array', cellDates: true });
     
     const data: SheetData[] = workbook.SheetNames.map((sheetName) => {
       const worksheet = workbook.Sheets[sheetName];
+      const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null, raw: false }) as unknown[][];
       
-      // Получаем сырые данные (массив массивов)
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-        header: 1,
-        defval: null,
-        raw: false, // Конвертировать даты и прочее в строки для безопасности, парсим ниже
-      }) as unknown[][];
-      
-      if (jsonData.length === 0) {
-        return { sheetName, headers: [], rows: [] };
-      }
-      
-      // Первая строка - заголовки
-      const headers = (jsonData[0] as string[]).map(h => String(h).trim());
-      
-      // Остальные строки - данные
-      const rows: ExcelRow[] = jsonData.slice(1).map((row: unknown[]) => {
-        const rowObj: ExcelRow = {};
+      if (rawRows.length === 0) return { sheetName, headers: [], rows: [] };
+
+      const headers = (rawRows[0] as unknown[])
+        .map((h) => String(h ?? '').trim())
+        .filter((h) => h !== '');
+
+      const rows: ExcelRow[] = rawRows.slice(1).map((row) => {
+        const obj: ExcelRow = {};
         headers.forEach((header, idx) => {
-          const value = row[idx];
-          
-          // Очистка и базовая нормализация
-          if (value === undefined || value === '' || value === null) {
-            rowObj[header] = null;
-          } else if (typeof value === 'string') {
-            // Пытаемся преобразовать числовые строки (например "123" или "123.45")
-            // Заменяем запятую на точку для корректного парсинга (ru-locale)
-            const normalized = value.replace(',', '.').trim();
-            if (!isNaN(Number(normalized)) && normalized !== '') {
-              rowObj[header] = Number(normalized);
-            } else {
-              rowObj[header] = value.trim();
-            }
-          } else {
-            rowObj[header] = null;
-          }
+          obj[header] = parseCellValue(row[idx]);
         });
-        return rowObj;
+        return obj;
       });
-      
+
       return { sheetName, headers, rows };
     });
-    
+
     const metadata: ExcelMetadata = {
       fileName,
       uploadedAt: Date.now(),
       sheetNames: workbook.SheetNames,
-      totalRows: data.reduce((sum, sheet) => sum + sheet.rows.length, 0),
+      totalRows: data.reduce((sum, s) => sum + s.rows.length, 0),
       totalColumns: data[0]?.headers.length ?? 0,
     };
-    
+
     return { data, metadata };
   } catch (error) {
-    console.error('Error parsing Excel file:', error);
+    console.error('[parse] Excel parsing failed:', error);
     throw new Error('Failed to parse Excel file: ' + (error instanceof Error ? error.message : 'Unknown error'));
   }
 }
 
 /**
- * Получить статистику по колонке (для авто-определения типов)
+ * Сбор статистики по колонке (для авто-классификации типов)
  */
 export async function getColumnStatistics(
   data: ExcelRow[],
   columnName: string
 ): Promise<ColumnStatistics | null> {
-  const values = data.map(row => row[columnName]).filter(v => v != null);
-  
-  if (values.length === 0) {
-    return null;
-  }
-  
-  const numericValues = values.filter(v => typeof v === 'number') as number[];
-  const textValues = values.filter(v => typeof v === 'string');
-  const booleanValues = values.filter(v => typeof v === 'boolean');
-  
-  const uniqueValues = new Set(values);
-  
-  const statistics: ColumnStatistics = {
+  const values = data.map((r) => r[columnName]).filter((v) => v != null && v !== '');
+  if (values.length === 0) return null;
+
+  const nums = values.filter((v) => typeof v === 'number') as number[];
+  const strs = values.filter((v) => typeof v === 'string');
+  const bools = values.filter((v) => typeof v === 'boolean');
+  const unique = new Set(values);
+
+  const stats: ColumnStatistics = {
     columnName,
     totalValues: values.length,
     nullCount: data.length - values.length,
-    uniqueCount: uniqueValues.size,
-    numericCount: numericValues.length,
-    textCount: textValues.length,
-    booleanCount: booleanValues.length,
-    dateCount: 0, 
-    sampleValues: Array.from(uniqueValues).slice(0, 10),
+    uniqueCount: unique.size,
+    numericCount: nums.length,
+    textCount: strs.length,
+    booleanCount: bools.length,
+    dateCount: 0, // Даты пока не парсятся отдельно, можно расширить
+    sampleValues: Array.from(unique).slice(0, 10),
     min: undefined,
     max: undefined,
     avg: undefined,
     sum: undefined,
     median: undefined,
   };
-  
-  if (numericValues.length > 0) {
-    statistics.min = Math.min(...numericValues);
-    statistics.max = Math.max(...numericValues);
-    statistics.sum = numericValues.reduce((a, b) => a + b, 0);
-    statistics.avg = statistics.sum / numericValues.length;
-    
-    // Медиана
-    const sorted = [...numericValues].sort((a, b) => a - b);
+
+  if (nums.length > 0) {
+    stats.min = Math.min(...nums);
+    stats.max = Math.max(...nums);
+    stats.sum = nums.reduce((a, b) => a + b, 0);
+    stats.avg = stats.sum / nums.length;
+    const sorted = [...nums].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    statistics.median = sorted.length % 2 === 0
-      ? (sorted[mid - 1] + sorted[mid]) / 2
-      : sorted[mid];
+    stats.median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
   }
-  
-  return statistics;
+
+  return stats;
 }
