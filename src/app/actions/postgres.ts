@@ -1,7 +1,7 @@
 'use server';
 import { z } from 'zod';
 import { createPgClient, normalizePgRow, type PgConnectionConfig } from '@/lib/logic/postgres-client';
-import type { ExcelRow } from '@/types';
+import type { DatasetRow } from '@/types';
 
 const PgConfigSchema = z.object({
   host: z.string().min(1, 'Хост обязателен'),
@@ -92,7 +92,7 @@ export async function fetchPgTableData(
   schema: string,
   table: string,
   limit: number = MAX_PREVIEW_LIMIT
-): Promise<{ success: boolean; rows: ExcelRow[]; columns: string[]; totalFetched: number; error?: string }> {
+): Promise<{ success: boolean; rows: DatasetRow[]; columns: string[]; totalFetched: number; error?: string }> {
   try {
     const config = validateConfig(rawConfig);
     const safeLimit = Math.min(Math.max(1, limit), MAX_SYNC_LIMIT);

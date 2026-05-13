@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { getHierarchyNodesLocal } from '@/lib/logic/hierarchy-client';
 import { useHierarchyStore } from '@/entities/hierarchy';
-import { useExcelDataStore } from '@/entities/dataset';
+import { useDatasetStore } from '@/entities/dataset';
 import { HierarchyLevel, HierarchyFilterValue, HierarchyNode } from '@/types';
 import { useFilterActions } from '@/lib/hooks/use-filter-actions';
 import { Button } from '@/shared/ui/button';
@@ -20,9 +20,12 @@ interface TreeProps {
 }
 
 export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: TreeProps) {
-  const levels = useHierarchyStore(useShallow(s => s.levels));
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  const levels = useHierarchyStore(useShallow(s => 
+    activeDatasetId ? s.getLevels(activeDatasetId) : []
+  ));
   const { resetAll } = useFilterActions(dashboardId || 'profile_mode');
-  const structureKey = useMemo(() => levels.map(l => l.id).join('-'), [levels]);
+  const structureKey = useMemo(() => levels.map((l: HierarchyLevel) => l.id).join('-'), [levels]);
   
   const handleReset = useCallback(() => {
     if (onFilterChange) {
@@ -43,7 +46,7 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
     }
   }, [currentFilters, levels, handleReset]);
 
-  const rawData = useExcelDataStore(s => s.getAllData());
+  const rawData = useDatasetStore(s => s.getAllData());
 
   if (levels.length === 0) {
     return (

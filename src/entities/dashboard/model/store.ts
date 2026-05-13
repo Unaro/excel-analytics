@@ -6,17 +6,17 @@ import type {
   Dashboard,
   DashboardWidget,
   VirtualMetric,
-  IndicatorGroupInDashboard,
 } from './types';
 import type { HierarchyFilterValue } from '@/entities/hierarchy/model/types';
 import { KPIWidget } from './types';
+import { IndicatorGroupInDashboard } from '@/lib/logic/validators';
 
 interface DashboardState {
   dashboards: Dashboard[];
   activeDashboardId: string | null;
   
   // Действия с дашбордами
-  addDashboard: (dashboard: Omit<Dashboard, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  addDashboard: (dashboard: Omit<Dashboard, 'id' | 'createdAt' | 'updatedAt'>, datasetId: string) => string;
   updateDashboard: (id: string, updates: Partial<Omit<Dashboard, 'id' | 'createdAt'>>) => void;
   deleteDashboard: (id: string) => void;
   duplicateDashboard: (id: string) => string | null;
@@ -69,22 +69,21 @@ export const useDashboardStore = create<DashboardState>()(
       activeDashboardId: null,
       
       // --- Дашборды ---
-      addDashboard: (dashboard) => {
+      addDashboard: (dashboard, datasetId) => {
         const id = nanoid();
         const now = Date.now();
-        
         set((state) => ({
           dashboards: [
             ...state.dashboards,
             {
               ...dashboard,
+              datasetId,
               id,
               createdAt: now,
               updatedAt: now,
             },
           ],
         }));
-        
         return id;
       },
       
@@ -108,21 +107,18 @@ export const useDashboardStore = create<DashboardState>()(
       duplicateDashboard: (id) => {
         const dashboard = get().getDashboard(id);
         if (!dashboard) return null;
-        
         const newId = nanoid();
         const now = Date.now();
-        
-        // Генерируем новые ID для виджетов
         const newWidgets = dashboard.widgets.map((widget) => ({
           ...widget,
           id: nanoid(),
         }));
-        
         set((state) => ({
           dashboards: [
             ...state.dashboards,
             {
               ...dashboard,
+              datasetId: dashboard.datasetId,
               id: newId,
               name: `${dashboard.name} (копия)`,
               widgets: newWidgets,
@@ -131,7 +127,6 @@ export const useDashboardStore = create<DashboardState>()(
             },
           ],
         }));
-        
         return newId;
       },
       

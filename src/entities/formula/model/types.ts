@@ -1,4 +1,4 @@
-import { ColumnDataType } from '@/entities/excelData';
+import { type ColumnDataType } from '@/types';
 import { MetricDependency } from '@/entities/metric';
 import { ValidationError } from './validation-types';
 

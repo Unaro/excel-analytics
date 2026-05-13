@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
-import type {
+import {
   IndicatorGroup,
   FieldBinding,
   GroupMetric,
@@ -12,7 +12,7 @@ interface IndicatorGroupState {
   groups: IndicatorGroup[];
   
   // --- Основные действия с группами ---
-  addGroup: (group: Omit<IndicatorGroup, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  addGroup: (group: Omit<IndicatorGroup, 'id' | 'createdAt' | 'updatedAt'>, datasetId: string) => string;
   updateGroup: (id: string, updates: Partial<Omit<IndicatorGroup, 'id' | 'createdAt'>>) => void;
   deleteGroup: (id: string) => void;
   duplicateGroup: (id: string) => string | null;
@@ -40,23 +40,21 @@ export const useIndicatorGroupStore = create<IndicatorGroupState>()(
       
       // --- Группы ---
       
-      addGroup: (group) => {
+      addGroup: (group, datasetId) => {
         const id = nanoid();
         const now = Date.now();
-        
         set((state) => ({
           groups: [
             ...state.groups,
             {
               ...group,
+              datasetId,
               id,
               createdAt: now,
               updatedAt: now,
-              // virtualMetricBindings здесь больше нет!
             },
           ],
         }));
-        
         return id;
       },
       
@@ -79,35 +77,29 @@ export const useIndicatorGroupStore = create<IndicatorGroupState>()(
       duplicateGroup: (id) => {
         const group = get().getGroup(id);
         if (!group) return null;
-        
         const newId = nanoid();
         const now = Date.now();
-        
-        // Генерируем новые ID для всех вложенных сущностей, чтобы это была полная независимая копия
         const newMetrics = group.metrics.map((metric) => ({
           ...metric,
           id: nanoid(),
-          // Обновляем ID привязок полей и метрик внутри метрики
           fieldBindings: metric.fieldBindings.map((fb) => ({ ...fb, id: nanoid() })),
           metricBindings: metric.metricBindings.map((mb) => ({ ...mb, id: nanoid() })),
         }));
-        
         set((state) => ({
           groups: [
             ...state.groups,
             {
               ...group,
+              datasetId: group.datasetId,
               id: newId,
               name: `${group.name} (копия)`,
               fieldMappings: group.fieldMappings.map((fm) => ({ ...fm, id: nanoid() })),
               metrics: newMetrics,
-              // virtualMetricBindings копировать не нужно, их больше нет в определении
               createdAt: now,
               updatedAt: now,
             },
           ],
         }));
-        
         return newId;
       },
       
@@ -239,7 +231,7 @@ export const useIndicatorGroupStore = create<IndicatorGroupState>()(
     }),
     {
       name: 'indicator-group-storage',
-      version: 2, // Увеличили версию, так как схема данных изменилась (убрали virtualMetricBindings)
+      version: 2,
     }
   )
 );

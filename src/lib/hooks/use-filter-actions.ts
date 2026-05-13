@@ -4,6 +4,7 @@
 import { useCallback } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
 import { HierarchyNode, HierarchyFilterValue } from '@/types';
+import { useDatasetStore } from '@/entities/dataset';
 
 export function useFilterActions(dashboardId: string) {
   const { 
@@ -11,9 +12,10 @@ export function useFilterActions(dashboardId: string) {
     removeHierarchyFilter, 
     clearHierarchyFilters 
   } = useDashboardStore();
-
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   // Выбор узла в дереве
   const selectNode = useCallback((node: HierarchyNode) => {
+    if (!activeDatasetId) return;
     const filterValue: HierarchyFilterValue = {
       levelId: node.level.id,
       levelIndex: node.level.order,
@@ -23,7 +25,7 @@ export function useFilterActions(dashboardId: string) {
     };
 
     addHierarchyFilter(dashboardId, filterValue);
-  }, [dashboardId, addHierarchyFilter]);
+  }, [dashboardId, activeDatasetId, addHierarchyFilter]);
 
   // Сброс до определенного уровня (хлебные крошки)
   const resetToLevel = useCallback((levelId: string) => {

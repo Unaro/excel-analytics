@@ -4,17 +4,19 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
-import { Plus, LayoutDashboard, ArrowRight, Trash2, Settings } from 'lucide-react';
+import { Plus, LayoutDashboard, ArrowRight, Trash2, Settings, Database } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
+import { useDatasetStore } from '@/entities/dataset';
 
 export default function DashboardsListPage() {
   const hydrated = useStoreHydration();
   const dashboards = useDashboardStore(s => s.dashboards);
   const deleteDashboard = useDashboardStore(s => s.deleteDashboard);
+  const datasets = useDatasetStore(s => s.datasets);
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -90,6 +92,15 @@ export default function DashboardsListPage() {
                        {dashboard.indicatorGroups.length} групп
                      </div>
                   </div>
+
+                  {dashboard.datasetId && (
+                    <div className="flex items-center gap-2 text-xs text-slate-400 mt-2">
+                      <Database size={12} />
+                      <span className="truncate">
+                        {datasets[dashboard.datasetId]?.name || 'Удаленный датасет'}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 flex justify-between items-center rounded-b-xl">

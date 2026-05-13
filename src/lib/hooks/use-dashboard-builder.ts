@@ -7,15 +7,17 @@ import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import {
   Dashboard,
   VirtualMetric,
-  IndicatorGroupInDashboard,
   VirtualMetricBindingInDashboard
 } from '@/types';
+import { IndicatorGroupInDashboard } from '../logic/validators';
+import { useDatasetStore } from '@/entities/dataset';
 
 export function useDashboardBuilder(existingDashboardId?: string) {
   // Сначала ВСЕ хуки — никаких условий до useState
   const { addDashboard, updateDashboard, getDashboard } = useDashboardStore();
   const allGroups = useIndicatorGroupStore(s => s.groups);
-
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  
   // useState вызываются в фиксированном порядке — БЕЗ вычислений до них
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -90,9 +92,15 @@ export function useDashboardBuilder(existingDashboardId?: string) {
 
   const saveDashboard = useCallback(() => {
     if (!name.trim()) throw new Error('Введите название дашборда');
+
+    // Берем активный датасет. Если редактируем старый — сохраняем его родной datasetId
+    const targetDatasetId = activeDatasetId || existingDashboard?.datasetId;
+    if (!targetDatasetId) throw new Error("Не выбран датасет");
+
     const dashboardData: Omit<Dashboard, 'id' | 'createdAt' | 'updatedAt'> = {
       name,
       description,
+      datasetId: targetDatasetId,
       virtualMetrics,
       hierarchyFilters: existingDashboard?.hierarchyFilters || [],
       indicatorGroups: dashboardGroups,
@@ -100,13 +108,14 @@ export function useDashboardBuilder(existingDashboardId?: string) {
       isPublic: false,
       kpiWidgets: existingDashboard?.kpiWidgets || []
     };
+
     if (existingDashboardId) {
       updateDashboard(existingDashboardId, dashboardData);
       return existingDashboardId;
     }
-    return addDashboard(dashboardData);
-  }, [name, description, virtualMetrics, dashboardGroups, existingDashboardId, existingDashboard, addDashboard, updateDashboard]);
-
+    // Передаем datasetId вторым аргументом (согласно обновленной сигнатуре стора)
+    return addDashboard(dashboardData, targetDatasetId);
+  }, [name, description, virtualMetrics, dashboardGroups, existingDashboardId, existingDashboard, addDashboard, updateDashboard, activeDatasetId]);
   return {
     name, setName,
     description, setDescription,

@@ -8,12 +8,13 @@ import {
   Settings,
   Trash2 // Иконка удаления
 } from 'lucide-react';
-import { useExcelDataStore } from '@/entities/dataset';
+import { useDatasetStore } from '@/entities/dataset';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
 import { ThemeToggle } from '@/features/ThemeToggle';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import { toast } from 'sonner'; // Для уведомлений
+import { DatasetSwitcher } from '@/entities/DatasetSwitcher';
 
 type MenuItemLink = { type: 'link'; href: string; label: string; icon: LucideIcon; };
 type MenuItemDivider = { type: 'divider'; };
@@ -30,8 +31,8 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
   const hydrated = useStoreHydration();
   
   // Достаем fileName и экшен удаления
-  const fileName = useExcelDataStore(s => s.metadata?.sourceName);
-  const clearDataset = useExcelDataStore(s => s.clearData);
+  const fileName = useDatasetStore(s => s.activeDatasetId ? s.datasets[s.activeDatasetId]?.metadata?.sourceName : undefined);
+  const clearDataset = useDatasetStore(s => s.clearAll);
 
   const menuItems: MenuItem[] = [
     { type: 'link', href: '/dashboards', label: 'Дашборды', icon: LayoutDashboard },
@@ -82,40 +83,8 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
       </div>
 
       {/* Статус файла (Hot Swap Zone) */}
-      <div className="px-4 py-4 bg-gray-50/50 dark:bg-slate-800/50 border-b border-gray-100 dark:border-slate-800 backdrop-blur-sm">
-        <div className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-2">
-          Активный dataset
-        </div>
-        {hydrated && fileName ? (
-          <div className="group relative flex items-center justify-between gap-2 text-sm bg-emerald-50 dark:bg-emerald-950/30 p-2 rounded-lg border border-emerald-100 dark:border-emerald-900/50 transition-colors">
-            
-            {/* Имя файла */}
-            <div className="flex items-center gap-2 truncate overflow-hidden">
-              <FileSpreadsheet size={16} className="shrink-0 text-emerald-700 dark:text-emerald-400 opacity-70" />
-              <span className="truncate font-medium text-emerald-900 dark:text-emerald-300" title={fileName}>
-                {fileName}
-              </span>
-            </div>
-
-            {/* Кнопка Хот-Свапа */}
-            <button 
-              onClick={handleRemoveDataset}
-              className="p-1.5 rounded-md hover:bg-white dark:hover:bg-emerald-900 text-emerald-600/70 hover:text-red-500 dark:text-emerald-400 dark:hover:text-red-400 transition-all shadow-sm opacity-100 lg:opacity-0 group-hover:opacity-100"
-              title="Заменить файл (Hot Swap)"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ) : (
-          <Link 
-            href="/setup" 
-            onClick={onClose}
-            className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 p-2 rounded-lg border border-dashed border-indigo-200 dark:border-indigo-800 transition-colors"
-          >
-            <Database size={16} />
-            <span className="font-medium">Загрузить файл</span>
-          </Link>
-        )}
+      <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/30">
+        <DatasetSwitcher />
       </div>
 
       {/* Меню */}

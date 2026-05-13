@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useHierarchyStore } from '@/entities/hierarchy';
-import { useColumnConfigStore } from '@/entities/excelData';
+import { useColumnConfigStore } from '@/entities/columnConfig';
 import { Plus, Trash2, GripVertical } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
@@ -27,6 +27,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { HierarchyLevel } from '@/types';
+import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
+import { useShallow } from 'zustand/react/shallow';
 
 // Компонент сортируемого элемента
 function SortableLevelItem({ level, index, onDelete }: { level: HierarchyLevel, index: number, onDelete: (id: string) => void }) {
@@ -82,11 +84,56 @@ function SortableLevelItem({ level, index, onDelete }: { level: HierarchyLevel, 
 }
 
 export function HierarchyBuilder() {
-  const { levels, addLevel, deleteLevel, reorderLevels } = useHierarchyStore();
-  const configs = useColumnConfigStore((s) => s.configs);
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  
 
-  const categoricalColumns = useMemo(() => configs.filter(c => c.classification === 'categorical'), [configs]);
-  const availableColumns = useMemo(() => categoricalColumns.filter(col => !levels.some(l => l.columnName === col.columnName)), [categoricalColumns, levels]);
+  const { 
+    addLevel: addLevelRaw, 
+    deleteLevel: deleteLevelRaw, 
+    reorderLevels: reorderLevelsRaw 
+  } = useHierarchyStore();
+  
+  const levels = useHierarchyStore(useShallow(s => 
+    activeDatasetId ? (s.levelsByDataset?.[activeDatasetId] || []) : []
+  ));
+  
+  const configs = useColumnConfigStore(useShallow(s => 
+    activeDatasetId ? (s.configsByDataset?.[activeDatasetId] || []) : []
+  ));
+
+  if (!activeDatasetId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800">
+        <p className="text-sm font-medium">Выберите датасет для настройки иерархии</p>
+      </div>
+    );
+  }
+
+  const addLevel = (level: Omit<HierarchyLevel, 'id' | 'order'>) => {
+    addLevelRaw(activeDatasetId, level);
+  };
+  
+  
+  const deleteLevel = (id: string) => {
+    deleteLevelRaw(activeDatasetId, id);
+  };
+  
+  const reorderLevels = (newLevels: HierarchyLevel[]) => {
+    reorderLevelsRaw(activeDatasetId, newLevels);
+  };
+
+  const categoricalColumns = useMemo(() => 
+    configs.filter((c: ColumnConfig) => c.classification === 'categorical'), 
+    [configs]
+  );
+
+  const availableColumns = useMemo(() => 
+    categoricalColumns.filter((col: ColumnConfig) => 
+      !levels.some((l: HierarchyLevel) => l.columnName === col.columnName)
+    ), 
+    [categoricalColumns, levels]
+  );
+
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -108,6 +155,7 @@ export function HierarchyBuilder() {
   };
 
   const handleAddLevel = (columnName: string) => {
+    if (!activeDatasetId) return;
     const col = categoricalColumns.find(c => c.columnName === columnName);
     if (col) addLevel({ columnName: col.columnName, displayName: col.displayName });
   };

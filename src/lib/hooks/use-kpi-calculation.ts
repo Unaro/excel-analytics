@@ -1,6 +1,6 @@
 'use client';
 import { useMemo } from 'react';
-import { evaluate } from 'mathjs';
+import { safeEvaluate } from '@/lib/logic/safe-math';
 import { useDatasetStore } from '@/entities/dataset';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { HierarchyFilterValue, KPIWidget, MetricTemplate } from '@/types';
@@ -78,13 +78,8 @@ export function useKPICalculation(
         for (const [varName, targetWidgetId] of Object.entries(widget.bindings)) {
           scope[varName] = calculateWidget(targetWidgetId, [...stack, widgetId]);
         }
-        try {
-          const mathResult = evaluate(template.formula, scope);
-          resultValue = isFinite(mathResult) && !isNaN(mathResult) ? Number(mathResult) : 0;
-        } catch (e) {
-          console.error(`MathJS Error in widget ${widget.customName}:`, e);
-          throw new Error('Ошибка формулы');
-        }
+        // Безопасное вычисление через общую утилиту (гарантирует результат как на сервере)
+        resultValue = safeEvaluate(template.formula, scope) ?? 0;
       }
 
       calculatedValues.set(widgetId, resultValue);

@@ -6,8 +6,9 @@ import { Button } from '@/shared/ui/button';
 import { Plus, ArrowRight } from 'lucide-react';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useMetricTemplateStore } from '@/entities/metric';
-import { useColumnConfigStore } from '@/entities/excelData';
+import { useColumnConfigStore } from '@/entities/columnConfig';
 import { SearchableSelect } from '@/shared/ui/searchable-select';
+import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
 
 interface AddKPIDialogProps {
   dashboardId: string;
@@ -24,7 +25,8 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
   const templates = useMetricTemplateStore(s => s.templates);
   const addWidget = useDashboardStore(s => s.addKPIWidget);
   const kpiWidgets = useDashboardStore(s => s.getDashboard(dashboardId)?.kpiWidgets || []);
-  const columnConfigs = useColumnConfigStore(s => s.configs);
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  const columnConfigs = useColumnConfigStore(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []);
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
 
@@ -152,7 +154,7 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
                       <SearchableSelect 
                          value={bindings[variable] || ''}
                          onChange={(val) => setBindings(prev => ({ ...prev, [variable]: val }))}
-                         options={columnConfigs.map(c => ({
+                         options={columnConfigs.map((c: ColumnConfig) => ({
                            value: c.columnName,
                            label: c.displayName,
                            subLabel: c.alias

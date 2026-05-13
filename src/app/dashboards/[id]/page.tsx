@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, use, useState } from 'react';
+import { Suspense, use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useDashboardCalculation } from '@/lib/hooks/use-dashboard-calculation';
 import { useHierarchyTree } from '@/lib/hooks/use-hierarchy-tree';
@@ -42,9 +42,27 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
 
   const hydrated = useStoreHydration();
   const dashboard = useDashboardStore(s => s.getDashboard(dashboardId));
-  const hasData = useDatasetStore(s => !!s.data && s.data.length > 0);
+  
+  const switchDataset = useDatasetStore(s => s.switchDataset);
+
+  useEffect(() => {
+    if (dashboard?.datasetId) {
+      switchDataset(dashboard.datasetId);
+    }
+  }, [dashboard?.datasetId, switchDataset]);
+
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  const clearHierarchyFilters = useDashboardStore(s => s.clearHierarchyFilters);
+
+  useEffect(() => {
+    if (dashboardId) {
+      clearHierarchyFilters(dashboardId);
+    }
+  }, [activeDatasetId, dashboardId, clearHierarchyFilters]);
+  
+  const hasData = useDatasetStore(s => !!s.activeDatasetId && !!s.datasets[s.activeDatasetId]?.rows?.length);
   const isSyncing = useDatasetStore(s => s.isSyncing);
-  const sourceType = useDatasetStore(s => s.sourceType);
+  const sourceType = useDatasetStore(s => s.activeDatasetId ? s.datasets[s.activeDatasetId]?.sourceType : null);
   const { currentPath } = useHierarchyTree(dashboardId);
   const { result, isComputing, error, recalculate } = useDashboardCalculation(dashboardId);
 

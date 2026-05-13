@@ -40,113 +40,24 @@ export type MetricSourceType =
  */
 export interface MetricDependency {
   type: MetricSourceType;
-  alias: string;              // Имя в формуле (например, "revenue")
+  alias: string;
   
   description?: string;
 }
 
-/**
- * Шаблон метрики (переиспользуемое определение)
- */
-export interface MetricTemplate {
-  id: string;
-  name: string;
-  description?: string;
-  
-  // Тип и вычисление
-  type: MetricType;
-  aggregateFunction?: AggregateFunction;  // Только для aggregate
-  aggregateField?: string;                // Поле для агрегации
-  formula?: string;                       // Только для calculated
-  
-  // Зависимости (извлекаются из формулы)
-  dependencies: MetricDependency[];
-  
-  // Отображение
-  displayFormat: DisplayFormat;
-  decimalPlaces: number;
-  prefix?: string;  // Префикс (например, "$")
-  suffix?: string;  // Суффикс (например, "₽")
-  
-  // Метаданные
-  createdAt: number;
-  updatedAt: number;
-}
 
-/**
- * Привязка поля в контексте группы
- * Связывает алиас из формулы с реальной колонкой
- */
-export interface FieldBinding {
-  id: string;
-  fieldAlias: string;   // Алиас, используемый в формуле (например, "revenue")
-  columnName: string;   // Реальное название колонки в Excel
-  description?: string;
-}
+import type {
+  MetricTemplate,
+  GroupMetric,
+  FieldBinding,
+  MetricBinding,
+  IndicatorGroup
+} from '@/lib/logic/validators';
 
-/**
- * Привязка метрики (для calculated метрик, зависящих от других)
- */
-export interface MetricBinding {
-  id: string;
-  metricAlias: string;  // Алиас в формуле (например, "total_revenue")
-  metricId: string;     // ID метрики из этой же группы
-  description?: string;
-}
-
-/**
- * Экземпляр метрики в группе показателей
- */
-export interface GroupMetric {
-  id: string;
-  templateId: string;           // Ссылка на MetricTemplate
-  
-  // Переопределения (опционально)
-  customName?: string;          // Переопределить название
-  customDisplayFormat?: DisplayFormat;  // Переопределить формат
-  customDecimalPlaces?: number; // Переопределить количество знаков
-  
-  // Привязки зависимостей
-  fieldBindings: FieldBinding[];    // Привязка полей из Excel
-  metricBindings: MetricBinding[];  // Привязка других метрик
-  
-
-
-  // Настройки
-  enabled: boolean;             // Активна ли метрика
-  order: number;                // Порядок вычисления (важно для зависимостей!)
-  unit?: string;
-  
-  // Опционально: ключ для кеширования
-  cacheKey?: string;
-}
-
-/**
- * Группа показателей (набор связанных метрик)
- */
-export interface IndicatorGroup {
-  id: string;
-  name: string;
-  description?: string;
-  
-  // Привязки полей для всей группы
-  fieldMappings: FieldBinding[];
-  
-  // Метрики в группе (порядок важен для вычислений!)
-  metrics: GroupMetric[];
-  
-  // Граф зависимостей (для валидации циклов)
-  dependencyGraph?: {
-    nodes: string[];  // ID метрик
-    edges: { from: string; to: string }[];  // from зависит от to
-  };
-  
-  // UI настройки
-  color?: string;
-  icon?: string;
-  order: number;
-  
-  // Метаданные
-  createdAt: number;
-  updatedAt: number;
-}
+export type {
+  MetricTemplate,
+  GroupMetric,
+  FieldBinding,
+  MetricBinding,
+  IndicatorGroup
+};

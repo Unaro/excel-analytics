@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
-import type { MetricTemplate } from '@/types';
+import { MetricTemplate } from '@/lib/logic/validators';
 
 interface MetricTemplateState {
   templates: MetricTemplate[];

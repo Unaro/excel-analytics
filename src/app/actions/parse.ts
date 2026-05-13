@@ -1,6 +1,6 @@
 'use server';
 import * as XLSX from 'xlsx';
-import type { SheetData, ExcelMetadata, ExcelRow, ColumnStatistics } from '@/types';
+import type { SheetData, DatasetMetadata, DatasetRow, ColumnStatistics } from '@/types';
 
 /**
  * Безопасное преобразование значения ячейки
@@ -31,7 +31,7 @@ function parseCellValue(raw: unknown): string | number | boolean | null {
 export async function parseExcelFile(
   fileBuffer: ArrayBuffer,
   fileName: string
-): Promise<{ data: SheetData[]; metadata: ExcelMetadata }> {
+): Promise<{ data: SheetData[]; metadata: DatasetMetadata }> {
   try {
     const workbook = XLSX.read(fileBuffer, { type: 'array', cellDates: true });
     
@@ -45,8 +45,8 @@ export async function parseExcelFile(
         .map((h) => String(h ?? '').trim())
         .filter((h) => h !== '');
 
-      const rows: ExcelRow[] = rawRows.slice(1).map((row) => {
-        const obj: ExcelRow = {};
+      const rows: DatasetRow[] = rawRows.slice(1).map((row) => {
+        const obj: DatasetRow = {};
         headers.forEach((header, idx) => {
           obj[header] = parseCellValue(row[idx]);
         });
@@ -56,12 +56,13 @@ export async function parseExcelFile(
       return { sheetName, headers, rows };
     });
 
-    const metadata: ExcelMetadata = {
-      fileName,
+    const metadata: DatasetMetadata = {
+      sourceName: fileName,
       uploadedAt: Date.now(),
-      sheetNames: workbook.SheetNames,
+      sheetOrTableNames: workbook.SheetNames,
       totalRows: data.reduce((sum, s) => sum + s.rows.length, 0),
       totalColumns: data[0]?.headers.length ?? 0,
+      sourceType: 'file'
     };
 
     return { data, metadata };
@@ -75,7 +76,7 @@ export async function parseExcelFile(
  * Сбор статистики по колонке (для авто-классификации типов)
  */
 export async function getColumnStatistics(
-  data: ExcelRow[],
+  data: DatasetRow[],
   columnName: string
 ): Promise<ColumnStatistics | null> {
   const values = data.map((r) => r[columnName]).filter((v) => v != null && v !== '');

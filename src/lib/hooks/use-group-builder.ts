@@ -3,10 +3,13 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useMetricTemplateStore } from '@/entities/metric';
-import { useColumnConfigStore } from '@/entities/excelData';
+import { useColumnConfigStore } from '@/entities/columnConfig';
 import { FieldBinding, GroupMetric, MetricBinding } from '@/types';
 import { nanoid } from 'nanoid';
 import { extractVariables } from '@/shared/lib/utils/formula';
+import { useDatasetStore } from '@/entities/dataset';
+import type { ColumnConfig } from '@/types';
+
 
 export interface FormMetricState {
   templateId: string;
@@ -21,7 +24,8 @@ export interface FormMetricState {
 export function useGroupBuilder(existingGroupId?: string) {
   const { addGroup, updateGroup, getGroup } = useIndicatorGroupStore();
   const templates = useMetricTemplateStore((s) => s.templates);
-  const columns = useColumnConfigStore((s) => s.configs);
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  const columns = useColumnConfigStore(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []);
 
   const [name, setName] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState<FormMetricState[]>([]);
@@ -260,7 +264,8 @@ export function useGroupBuilder(existingGroupId?: string) {
       updateGroup(existingGroupId, groupData);
       return existingGroupId;
     } else {
-      return addGroup(groupData);
+      if (!activeDatasetId) throw new Error("Не выбран датасет");
+      return addGroup(groupData, activeDatasetId);
     }
 
   }, [name, selectedMetrics, addGroup, updateGroup, existingGroupId]);

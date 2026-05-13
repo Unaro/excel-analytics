@@ -1,19 +1,22 @@
 'use client';
 
-import { useColumnConfigStore } from '@/entities/excelData';
-import { useExcelDataStore } from '@/entities/dataset';
+import { useColumnConfigStore } from '@/entities/columnConfig';
+import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
 import { ColumnClassification } from '@/types';
 import { cn } from '@/shared/lib/utils';
 
 export function ColumnManager() {
-  const configs = useColumnConfigStore((s) => s.configs);
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  const configs = useColumnConfigStore(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []);
   const updateColumn = useColumnConfigStore((s) => s.updateColumn);
-  const hasData = useExcelDataStore((s) => s.hasData());
+  const hasData = useDatasetStore((s) => s.hasData());
 
   if (!hasData || configs.length === 0) return null;
 
   const handleTypeChange = (columnName: string, type: ColumnClassification) => {
-    updateColumn(columnName, { classification: type });
+    if (activeDatasetId) {
+      updateColumn(activeDatasetId, columnName, { classification: type });
+    }
   };
 
   return (
@@ -42,7 +45,7 @@ export function ColumnManager() {
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-100 dark:divide-slate-800/50">
-              {configs.map((col) => (
+              {configs.map((col: ColumnConfig) => (
                 <tr key={col.columnName} className="hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
                   <td className="px-6 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">
                     {col.displayName}

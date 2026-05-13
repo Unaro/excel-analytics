@@ -1,14 +1,13 @@
 'use client';
+import { nanoid } from 'nanoid';
 import { parseExcelFile } from '@/app/actions/parse';
 import { fetchPgTableData, getPgSchema } from '@/app/actions/postgres';
 import { useDatasetStore } from './store';
-import { useColumnConfigStore } from '@/entities/excelData';
+import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useDashboardStore } from '@/entities/dashboard';
 import type { ColumnConfig, ColumnClassification, DatasetRow } from '@/types';
 import type { PgConnectionConfig } from '@/lib/logic/postgres-client';
 import { transliterate } from '@/shared/lib/utils/translit';
-
-// --- Утилиты классификации ---
 
 function classifyBySample(values: unknown[]): ColumnClassification {
   const valid = values.filter(v => v != null && v !== '');
@@ -25,123 +24,100 @@ function mapPgType(type: string): ColumnClassification {
   return 'categorical';
 }
 
-// --- Синхронизация ---
-
 export async function syncFromFile(file: File) {
-  const { setSyncing, setData } = useDatasetStore.getState();
-  const { setConfigs } = useColumnConfigStore.getState();
+  const { setSyncing, addDataset, setDatasetRows, switchDataset } = useDatasetStore.getState();
+  const setConfigs = useColumnConfigStore.getState();
   
   setSyncing(true);
+  const datasetId = `file-${nanoid()}`;
+  
   try {
     const buffer = await file.arrayBuffer();
     const { data: sheets } = await parseExcelFile(buffer, file.name);
-    
-    if (sheets.length === 0 || sheets[0].rows.length === 0) {
-      throw new Error('Файл пуст или не содержит данных');
-    }
+    if (sheets.length === 0 || sheets[0].rows.length === 0) throw new Error('Файл пуст');
 
-    // ✅ Явное приведение к DatasetRow[] решает проблему вывода типов
     const flatRows: DatasetRow[] = sheets.flatMap(s => s.rows) as DatasetRow[];
     const headers = sheets[0].headers;
 
-    // Авто-классификация колонок
     const configs: ColumnConfig[] = headers.map((col, idx) => {
-      // ✅ Безопасный доступ через Record<string, unknown> убирает ошибку индексации
       const sample = flatRows.slice(0, 100).map(r => (r as Record<string, unknown>)[col]);
-      const classification = classifyBySample(sample);
       return {
-        columnName: col,
-        displayName: col,
-        alias: transliterate(col) || `col_${idx}`,
-        classification,
-        description: `Авто-определено из файла ${file.name}`
+        columnName: col, displayName: col, alias: transliterate(col) || `col_${idx}`,
+        classification: classifyBySample(sample), description: `Из файла ${file.name}`
       };
     });
 
-    setConfigs(configs);
-    setData(flatRows, {
-      sourceName: file.name,
-      uploadedAt: Date.now(),
-      sheetOrTableNames: sheets.map(s => s.sheetName),
-      totalRows: flatRows.length,
-      totalColumns: headers.length,
-      sourceType: 'file'
+    setConfigs.setDatasetConfigs(datasetId, configs);
+    addDataset(datasetId, {
+      name: file.name, sourceType: 'file',
+      metadata: {
+        sourceName: file.name, uploadedAt: Date.now(),
+        sheetOrTableNames: sheets.map(s => s.sheetName),
+        totalRows: flatRows.length, totalColumns: headers.length, sourceType: 'file'
+      }
     });
-    return { success: true };
+    setDatasetRows(datasetId, flatRows);
+    switchDataset(datasetId);
+    return { success: true, datasetId };
   } catch (error) {
     console.error('[DatasetSync] File sync failed:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Ошибка загрузки файла' };
+    return { success: false, error: error instanceof Error ? error.message : 'Ошибка загрузки' };
   } finally {
     setSyncing(false);
   }
 }
-export async function syncFromPostgres(
-  config: PgConnectionConfig,
-  schema: string,
-  table: string
-) {
-  const { setSyncing, setData } = useDatasetStore.getState();
-  const { setConfigs } = useColumnConfigStore.getState();
+
+export async function syncFromPostgres(config: PgConnectionConfig, schema: string, table: string) {
+  const { setSyncing, addDataset, setDatasetRows, switchDataset } = useDatasetStore.getState();
+  const setConfigs = useColumnConfigStore.getState();
   
   setSyncing(true);
+  const datasetId = `pg-${nanoid()}`;
+  
   try {
-    // 1. Читаем схему для типов
     const schemaRes = await getPgSchema(config);
-    if (!schemaRes.success || !schemaRes.tables) {
-        throw new Error(schemaRes.error || 'Ошибка чтения схемы БД');
-    }
+    if (!schemaRes.success || !schemaRes.tables) throw new Error(schemaRes.error || 'Ошибка схемы');
     
     const tableMeta = schemaRes.tables.find(t => t.schema === schema && t.table === table);
-    if (!tableMeta) throw new Error('Таблица не найдена в схеме');
+    if (!tableMeta) throw new Error('Таблица не найдена');
 
-        // 2. Загружаем данные
     const dataRes = await fetchPgTableData(config, schema, table, 50000);
     if (!dataRes.success) throw new Error(dataRes.error);
 
     const pgRows: DatasetRow[] = dataRes.rows as DatasetRow[];
-
-    // 3. Классификация на основе PG-типов
     const configs: ColumnConfig[] = tableMeta.columns.map((col, idx) => ({
-      columnName: col.name,
-      displayName: col.name,
-      alias: transliterate(col.name) || `col_${idx}`,
-      classification: mapPgType(col.type),
-      description: `PG тип: ${col.type}`
+      columnName: col.name, displayName: col.name, alias: transliterate(col.name) || `col_${idx}`,
+      classification: mapPgType(col.type), description: `PG тип: ${col.type}`
     }));
 
-    setConfigs(configs);
-    setData(pgRows, {
-      sourceName: `${schema}.${table}`,
-      uploadedAt: Date.now(),
-      sheetOrTableNames: [`${schema}.${table}`],
-      totalRows: pgRows.length,
-      totalColumns: dataRes.columns.length,
-      sourceType: 'postgres'
-    }, { schema, table, lastSyncAt: Date.now() });
-
-    return { success: true };
+    setConfigs.setDatasetConfigs(datasetId, configs);
+    addDataset(datasetId, {
+      name: `${schema}.${table}`, sourceType: 'postgres',
+      metadata: {
+        sourceName: `${schema}.${table}`, uploadedAt: Date.now(),
+        sheetOrTableNames: [`${schema}.${table}`],
+        totalRows: pgRows.length, totalColumns: dataRes.columns.length, sourceType: 'postgres'
+      },
+      pgConfig: { schema, table, lastSyncAt: Date.now() }
+    });
+    setDatasetRows(datasetId, pgRows);
+    switchDataset(datasetId);
+    return { success: true, datasetId };
   } catch (error) {
     console.error('[DatasetSync] PG sync failed:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Ошибка подключения к БД' };
+    return { success: false, error: error instanceof Error ? error.message : 'Ошибка подключения' };
   } finally {
     setSyncing(false);
   }
 }
 
-/**
- * Безопасный сброс фильтров при смене источника данных
- * Вызывается автоматически при изменении структуры колонок
- */
 export function reconcileDashboardFilters(dashboardId: string) {
   const headers = useDatasetStore.getState().getHeaders();
   const dashboard = useDashboardStore.getState().getDashboard(dashboardId);
   if (!dashboard || headers.length === 0) return;
-
-  const validColumns = new Set(headers);
-  const invalidFilters = dashboard.hierarchyFilters.filter(f => !validColumns.has(f.columnName));
-
-  if (invalidFilters.length > 0) {
+  const valid = new Set(headers);
+  const invalid = dashboard.hierarchyFilters.filter(f => !valid.has(f.columnName));
+  if (invalid.length > 0) {
     useDashboardStore.getState().clearHierarchyFilters(dashboardId);
-    console.log('[DatasetSync] Filters cleared due to source change');
   }
 }

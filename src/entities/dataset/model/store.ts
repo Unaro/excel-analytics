@@ -2,9 +2,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { get, set, del } from 'idb-keyval';
-import type { DatasetRow, DatasetMetadata, DatasetSourceType, PgSyncConfig, ColumnStatistics } from './types';
+import type { DatasetRow, ColumnStatistics, DatasetEntry } from './types';
 
-const DEBUG = true;
+const DEBUG = process.env.NODE_ENV === 'development';
 const EMPTY_ROWS: DatasetRow[] = [];
 const EMPTY_HEADERS: string[] = [];
 
@@ -15,18 +15,21 @@ const indexedDBStorage: StateStorage = {
 };
 
 interface DatasetState {
-  sourceType: DatasetSourceType;
-  data: DatasetRow[] | null;
-  metadata: DatasetMetadata | null;
-  pgConfig: PgSyncConfig | null;
+  datasets: Record<string, DatasetEntry>;
+  activeDatasetId: string | null;
   isSyncing: boolean;
 
-  // Actions
-  setData: (data: DatasetRow[], metadata: DatasetMetadata, pgConfig?: PgSyncConfig) => void;
+  // Multi-dataset actions
+  addDataset: (id: string, entry: Omit<DatasetEntry, 'id' | 'rows' | 'lastAccessedAt'>) => void;
+  setDatasetRows: (id: string, rows: DatasetRow[]) => void;
+  switchDataset: (id: string) => void;
+  unloadDataset: (id: string) => void;
+  removeDataset: (id: string) => void;
   setSyncing: (isSyncing: boolean) => void;
-  clearData: () => void;
+  clearAll: () => void;
 
-  // Getters
+  // Getters (active-aware + backward compatibility)
+  getActiveDataset: () => DatasetEntry | null;
   getAllData: () => DatasetRow[];
   getHeaders: () => string[];
   hasData: () => boolean;
@@ -36,80 +39,97 @@ interface DatasetState {
 export const useDatasetStore = create<DatasetState>()(
   persist(
     (set, get) => ({
-      sourceType: null,
-      data: null,
-      metadata: null,
-      pgConfig: null,
+      datasets: {},
+      activeDatasetId: null,
       isSyncing: false,
 
-      setData: (data, metadata, pgConfig) => 
-        set({ data, metadata, sourceType: metadata.sourceType, pgConfig: pgConfig ?? null, isSyncing: false }),
-      
-      setSyncing: (isSyncing) => set({ isSyncing }),
-      
-      clearData: () => 
-        set({ data: null, metadata: null, sourceType: null, pgConfig: null, isSyncing: false }),
+      addDataset: (id, entry) => set((state) => ({
+        datasets: { 
+            ...state.datasets, 
+            [id]: { ...entry, id, rows: null, lastAccessedAt: Date.now() } 
+        },
+        activeDatasetId: state.activeDatasetId ?? id,
+      })),
 
-      getAllData: () => get().data ?? EMPTY_ROWS,
+      setDatasetRows: (id, rows) => set((state) => {
+        if (!state.datasets[id]) return state;
+        return {
+          datasets: { ...state.datasets, [id]: { ...state.datasets[id], rows, lastAccessedAt: Date.now() } }
+        };
+      }),
+
+      switchDataset: (id) => set((state) => {
+        if (!state.datasets[id]) return state;
+        return {
+          activeDatasetId: id,
+          datasets: { ...state.datasets, [id]: { ...state.datasets[id], lastAccessedAt: Date.now() } }
+        };
+      }),
+
+      unloadDataset: (id) => set((state) => {
+        if (!state.datasets[id]) return state;
+        return { datasets: { ...state.datasets, [id]: { ...state.datasets[id], rows: null } } };
+      }),
+
+      removeDataset: (id) => set((state) => {
+        const next = { ...state.datasets };
+        delete next[id];
+        return {
+          datasets: next,
+          activeDatasetId: state.activeDatasetId === id ? null : state.activeDatasetId,
+        };
+      }),
+
+      setSyncing: (isSyncing) => set({ isSyncing }),
+      clearAll: () => set({ datasets: {}, activeDatasetId: null, isSyncing: false }),
+
+      getActiveDataset: () => {
+        const { activeDatasetId, datasets } = get();
+        return activeDatasetId ? datasets[activeDatasetId] ?? null : null;
+      },
+
+      getAllData: () => get().getActiveDataset()?.rows ?? EMPTY_ROWS,
       
       getHeaders: () => {
-        const data = get().data;
-        if (!data || data.length === 0) return EMPTY_HEADERS;
-        return Object.keys(data[0]);
-        },
-
-      hasData: () => {
-        const data = get().data;
-        return !!data && data.length > 0;
+        const rows = get().getAllData();
+        return rows.length === 0 ? EMPTY_HEADERS : Object.keys(rows[0]);
       },
+
+      hasData: () => get().getAllData().length > 0,
 
       getColumnStatistics: (columnName) => {
         const allData = get().getAllData();
         if (allData.length === 0) return null;
-
         const values = allData.map(row => row[columnName]).filter(v => v != null);
         const nums = values.filter(v => typeof v === 'number') as number[];
         const unique = new Set(values);
-
         const stats: ColumnStatistics = {
-          columnName,
-          totalValues: values.length,
-          nullCount: allData.length - values.length,
-          uniqueCount: unique.size,
-          numericCount: nums.length,
-          textCount: values.length - nums.length,
-          booleanCount: values.filter(v => typeof v === 'boolean').length,
-          dateCount: 0,
+          columnName, totalValues: values.length, nullCount: allData.length - values.length,
+          uniqueCount: unique.size, numericCount: nums.length, textCount: values.length - nums.length,
+          booleanCount: values.filter(v => typeof v === 'boolean').length, dateCount: 0,
           sampleValues: Array.from(unique).slice(0, 5),
         };
-
         if (nums.length > 0) {
-          stats.min = Math.min(...nums);
-          stats.max = Math.max(...nums);
-          stats.sum = nums.reduce((a, b) => a + b, 0);
-          stats.avg = stats.sum / nums.length;
+          stats.min = Math.min(...nums); stats.max = Math.max(...nums);
+          stats.sum = nums.reduce((a, b) => a + b, 0); stats.avg = stats.sum / nums.length;
           const sorted = [...nums].sort((a, b) => a - b);
           const mid = Math.floor(sorted.length / 2);
           stats.median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
         }
-
         return stats;
       },
     }),
     {
-    name: 'dataset-storage',
-    storage: createJSONStorage(() => indexedDBStorage),
-    skipHydration: true,
-    partialize: (state) => ({
-        sourceType: state.sourceType,
-        metadata: state.metadata,
-        pgConfig: state.pgConfig,
-        data: state.data, // ← Ключевое исправление
-        isSyncing: false, // Сбрасываем флаг, чтобы при F5 не показывался вечный спиннер
-    }),
+      name: 'dataset-storage',
+      storage: createJSONStorage(() => indexedDBStorage),
+      skipHydration: true,
+      partialize: (state) => {
+        const persisted: Record<string, any> = {};
+        for (const [id, entry] of Object.entries(state.datasets)) {
+            persisted[id] = entry; 
+        }
+        return { datasets: persisted, activeDatasetId: state.activeDatasetId, isSyncing: false };
+      },
     }
   )
 );
-
-// Обратная совместимость: все текущие импорты продолжат работать
-export const useExcelDataStore = useDatasetStore;

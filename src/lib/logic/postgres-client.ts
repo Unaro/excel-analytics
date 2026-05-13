@@ -1,5 +1,5 @@
 import postgres from 'postgres';
-import type { ExcelRow } from '@/types';
+import type { DatasetRow } from '@/types';
 
 export interface PgConnectionConfig {
   host: string;
@@ -14,8 +14,8 @@ export interface PgConnectionConfig {
  * Нормализация строки из PostgreSQL в формат ExcelRow
  * Гарантирует совместимость с текущим вычислительным ядром
  */
-export function normalizePgRow(row: Record<string, unknown>): ExcelRow {
-  const normalized: ExcelRow = {};
+export function normalizePgRow(row: Record<string, unknown>): DatasetRow {
+  const normalized: DatasetRow = {};
   for (const [key, value] of Object.entries(row)) {
     if (value === null || value === undefined) {
       normalized[key] = null;

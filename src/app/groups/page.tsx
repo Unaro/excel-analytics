@@ -4,18 +4,20 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
-import { Plus, Layers, Edit, Trash2 } from 'lucide-react';
+import { Plus, Layers, Edit, Trash2, Database } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { toast } from 'sonner';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
+import { useDatasetStore } from '@/entities/dataset';
 
 export default function GroupsListPage() {
   const hydrated = useStoreHydration();
   const groups = useIndicatorGroupStore(s => s.groups);
   const deleteGroup = useIndicatorGroupStore(s => s.deleteGroup);
-
+  const datasets = useDatasetStore(s => s.datasets);
+  
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   if (!hydrated) {
@@ -62,6 +64,11 @@ export default function GroupsListPage() {
                       </span>
                     )}
                   </div>
+                    {group.datasetId && (
+                      <span className="inline-flex items-center gap-1 mt-1 text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-fit">
+                        <Database size={10} /> {datasets[group.datasetId]?.name || 'Нет привязки'}
+                      </span>
+                    )}
                 </div>
               </div>
 

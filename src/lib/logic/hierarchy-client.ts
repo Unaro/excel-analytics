@@ -1,4 +1,4 @@
-import { ExcelRow, HierarchyLevel, HierarchyFilterValue, HierarchyNode } from '@/types';
+import { DatasetRow, HierarchyLevel, HierarchyFilterValue, HierarchyNode } from '@/types';
 
 // Хелпер для нормализации значений к строке (гарантируем string для сравнения)
 function normalizeValue(value: unknown): string {
@@ -7,7 +7,7 @@ function normalizeValue(value: unknown): string {
 }
 
 export function getHierarchyNodesLocal(
-  data: ExcelRow[],
+  data: DatasetRow[],
   level: HierarchyLevel,
   parentFilters: HierarchyFilterValue[] = [],
   hasNextLevel: boolean

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useColumnConfigStore } from '@/entities/excelData';
+import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useHierarchyStore } from '@/entities/hierarchy';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
@@ -18,8 +18,8 @@ export function useConfigPersistence() {
       const config = {
         version: 2, // Версия схемы данных
         timestamp: Date.now(),
-        columnConfigs: useColumnConfigStore.getState().configs,
-        hierarchyLevels: useHierarchyStore.getState().levels,
+        columnConfigs: useColumnConfigStore.getState().configsByDataset,
+        hierarchyLevelsByDataset: useHierarchyStore.getState().levelsByDataset,
         hierarchyConfig: useHierarchyStore.getState().config,
         metricTemplates: useMetricTemplateStore.getState().templates,
         indicatorGroups: useIndicatorGroupStore.getState().groups,
@@ -54,8 +54,8 @@ export function useConfigPersistence() {
       }
       if (!confirm('Это действие перезапишет текущие настройки. Продолжить?')) return;
 
-      useColumnConfigStore.getState().setConfigs(config.columnConfigs || []);
-      useHierarchyStore.getState().setLevels(config.hierarchyLevels || []);
+      useColumnConfigStore.setState({ configsByDataset: config.columnConfigs || {} });
+      useHierarchyStore.setState({ levelsByDataset: config.hierarchyLevelsByDataset || {} });
       if (config.hierarchyConfig) useHierarchyStore.getState().updateConfig(config.hierarchyConfig);
       
       useMetricTemplateStore.setState({ templates: config.metricTemplates });

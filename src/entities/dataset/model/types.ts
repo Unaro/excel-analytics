@@ -2,7 +2,6 @@ export type DatasetSourceType = 'file' | 'postgres' | null;
 
 /**
  * Универсальная строка датасета
- * Совместима с Excel, PostgreSQL, CSV, API
  */
 export interface DatasetRow {
   [columnName: string]: string | number | boolean | null;
@@ -12,7 +11,7 @@ export interface DatasetRow {
  * Метаданные загруженного датасета
  */
 export interface DatasetMetadata {
-  sourceName: string; // Имя файла или schema.table
+  sourceName: string;
   uploadedAt: number;
   sheetOrTableNames: string[];
   totalRows: number;
@@ -21,17 +20,30 @@ export interface DatasetMetadata {
 }
 
 /**
- * Конфигурация PostgreSQL-подключения (хранится в сторе)
+ * Конфигурация PostgreSQL-подключения
  */
 export interface PgSyncConfig {
   schema: string;
   table: string;
   lastSyncAt: number;
-  connectionId?: string; // Для будущей серверной авторизации
+  connectionId?: string;
 }
 
 /**
- * Статистика по колонке (для авто-классификации и UI)
+ * 🆕 Запись одного датасета в мульти-хранилище
+ */
+export interface DatasetEntry {
+  id: string;
+  name: string;
+  sourceType: DatasetSourceType;
+  metadata: DatasetMetadata;
+  pgConfig?: PgSyncConfig | null;
+  rows: DatasetRow[] | null;
+  lastAccessedAt: number;
+}
+
+/**
+ * Статистика по колонке
  */
 export interface ColumnStatistics {
   columnName: string;
@@ -48,4 +60,35 @@ export interface ColumnStatistics {
   avg?: number;
   sum?: number;
   median?: number;
+}
+
+/**
+ * Тип данных колонки (авто-определяемый системой)
+ */
+export type ColumnDataType = 
+  | 'numeric'      // Числовые данные (можно суммировать, агрегировать)
+  | 'categorical'  // Категориальные данные (для группировки, фильтрации)
+  | 'text'         // Текстовые данные (описания, комментарии)
+  | 'date'         // Даты
+  | 'boolean'      // Логические значения
+  | 'mixed';       // Смешанный тип
+
+/**
+ * Пользовательская классификация колонки
+ */
+export type ColumnClassification = 
+  | 'numeric'      // Использовать для вычислений
+  | 'categorical'  // Использовать для группировки
+  | 'ignore'      // Игнорировать колонку
+  | 'date';      // Использовать как дату
+
+/**
+ * Конфигурация одной колонки (устанавливается пользователем)
+ */
+export interface ColumnConfig {
+  columnName: string;                    // Оригинальное название из Excel
+  classification: ColumnClassification;  // Как использовать колонку
+  alias: string;                         // Алиас для использования в формулах
+  displayName: string;                   // Название для отображения в UI
+  description?: string;                  // Описание колонки
 }

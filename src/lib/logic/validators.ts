@@ -82,6 +82,7 @@ export const MetricTemplateSchema = z.object({
 
 export const IndicatorGroupSchema = z.object({
   id: z.string().min(1),
+  datasetId: z.string().optional(),
   name: z.string().min(1).max(100),
   description: z.string().optional(),
   fieldMappings: z.array(FieldBindingSchema),
@@ -100,15 +101,23 @@ export const IndicatorGroupSchema = z.object({
   updatedAt: z.number(),
 });
 
+// 1. Выносим привязку в отдельную схему
+export const VirtualMetricBindingInDashboardSchema = z.object({
+  virtualMetricId: z.string().min(1),
+  metricId: z.string().min(1),
+});
+
+// 2. Используем её внутри конфигурации группы
 export const IndicatorGroupInDashboardSchema = z.object({
   groupId: z.string().min(1),
   enabled: z.boolean(),
   order: z.number().int(),
-  virtualMetricBindings: z.array(z.object({
-    virtualMetricId: z.string().min(1),
-    metricId: z.string().min(1),
-  })).optional(),
+  virtualMetricBindings: z.array(VirtualMetricBindingInDashboardSchema).optional(),
 });
+
+// 3. Экспортируем типы
+export type VirtualMetricBindingInDashboard = z.infer<typeof VirtualMetricBindingInDashboardSchema>;
+export type IndicatorGroupInDashboard = z.infer<typeof IndicatorGroupInDashboardSchema>;
 
 // Схема для параметров вычисления
 export const ComputeParamsSchema = z.object({
@@ -139,6 +148,8 @@ export type ExcelRow = z.infer<typeof ExcelRowSchema>;
 export type HierarchyFilterValue = z.infer<typeof HierarchyFilterValueSchema>;
 export type VirtualMetric = z.infer<typeof VirtualMetricSchema>;
 export type IndicatorGroup = z.infer<typeof IndicatorGroupSchema>;
-export type IndicatorGroupInDashboard = z.infer<typeof IndicatorGroupInDashboardSchema>;
 export type MetricTemplate = z.infer<typeof MetricTemplateSchema>;
 export type GroupMetric = z.infer<typeof GroupMetricSchema>;
+
+export type FieldBinding = z.infer<typeof FieldBindingSchema>;
+export type MetricBinding = z.infer<typeof MetricBindingSchema>;

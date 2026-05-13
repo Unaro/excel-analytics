@@ -2,8 +2,10 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { parse, MathNode } from 'mathjs';
-import { useColumnConfigStore } from '@/entities/excelData';
+import { useColumnConfigStore } from '@/entities/columnConfig';
 import { extractVariables, validateFormula } from '../logic/safe-math';
+import { useDatasetStore } from '@/entities/dataset';
+import type { ColumnConfig } from '@/types';
 
 // Расширяем базовый тип для TypeScript
 interface MathSymbolNode extends MathNode {
@@ -12,12 +14,12 @@ interface MathSymbolNode extends MathNode {
 
 export function useFormulaValidation() {
   // 1. Берем сырой массив конфигов
-  const configs = useColumnConfigStore((s) => s.configs);
-
-  // 2. Фильтруем нужные колонки через useMemo
+  
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  const configs = useColumnConfigStore(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []);
   const numericColumns = useMemo(() => {
-    return configs.filter(c => c.classification === 'numeric');
-  }, [configs]);
+    return configs.filter((c: ColumnConfig) => c.classification === 'numeric');
+  }, [configs, activeDatasetId]);
 
   const [isValid, setIsValid] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +28,7 @@ export function useFormulaValidation() {
   // Список всех доступных переменных для подсказок в UI
   const availableVariables = useMemo(() => {
     const vars = [
-      ...numericColumns.map(c => ({ 
+      ...numericColumns.map((c: ColumnConfig) => ({
         name: c.alias, 
         type: 'field', 
         display: c.displayName 

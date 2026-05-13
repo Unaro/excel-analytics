@@ -1,6 +1,7 @@
 // types/dashboards.ts
 import { HierarchyFilterValue } from '@/entities/hierarchy/model/types';
 import { DisplayFormat } from '@/entities/metric/model/types';
+import { IndicatorGroupInDashboard } from '@/lib/logic/validators';
 
 
 export interface KPIWidget {
@@ -187,30 +188,13 @@ export interface DashboardWidget {
   refreshInterval?: number;  // Автообновление в секундах
 }
 
-/**
- * Привязка виртуальной метрики внутри конфигурации дашборда
- */
-export interface VirtualMetricBindingInDashboard {
-  virtualMetricId: string; // ID колонки (например, "Обеспеченность")
-  metricId: string;        // ID конкретной метрики группы
-}
-
-/**
- * Конфигурация группы показателей на конкретном дашборде
- */
-export interface IndicatorGroupInDashboard {
-  groupId: string;
-  enabled: boolean;
-  order: number;
-  // Связь виртуальных колонок с реальными метриками хранится здесь
-  virtualMetricBindings: VirtualMetricBindingInDashboard[];
-}
 
 /**
  * Дашборд
  */
 export interface Dashboard {
   id: string;
+  datasetId: string;
   name: string;
   description?: string;
   
