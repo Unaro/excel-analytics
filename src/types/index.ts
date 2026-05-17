@@ -66,3 +66,5 @@ export type {
   FormulaOperator, FormulaToken, ParsedFormula, AvailableField,
   AvailableMetric, FormulaSuggestion, FormulaBuilderState
 } from '@/entities/formula/model/types';
+
+export type { DatasetConfigExport } from '@/entities/exportPackage/types'

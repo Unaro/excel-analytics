@@ -1,20 +1,36 @@
 'use client';
-
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useConfigPersistence } from '@/lib/hooks/use-config-persistence';
+import { useDatasetStore } from '@/entities/dataset';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
-import { Download, Upload, AlertTriangle, Loader2 } from 'lucide-react';
-import { useRef } from 'react';
-import { clear as clearIdb } from 'idb-keyval';
+import { Download, Upload, Database, AlertCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { clear as clearIdb } from 'idb-keyval';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 
 export default function SettingsPage() {
-  const { exportConfig, importConfig } = useConfigPersistence();
+  const { exportDatasetConfig, importToDataset } = useConfigPersistence();
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  const activeDataset = useDatasetStore(s => activeDatasetId ? s.datasets[activeDatasetId] : null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [isResetting, setIsResetting] = useState(false);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+
+  if (!activeDatasetId) {
+    return (
+      <div className="p-8 max-w-4xl mx-auto space-y-8">
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Настройки</h1>
+        <Card className="p-8 text-center border-amber-200 bg-amber-50/50 dark:bg-amber-900/10 dark:border-amber-800">
+          <AlertCircle className="mx-auto h-10 w-10 text-amber-500 mb-3" />
+          <p className="text-slate-600 dark:text-slate-300">
+            Для управления конфигами выберите или загрузите датасет в разделе <strong>Данные</strong>.
+          </p>
+        </Card>
+      </div>
+    );
+  }
 
   const handleFullReset = async () => {
     setIsResetting(true);
@@ -41,46 +57,63 @@ export default function SettingsPage() {
   };
 
   return (
-    <>
-      <div className="p-8 max-w-4xl mx-auto space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Настройки</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-2">Управление конфигурацией приложения</p>
-        </div>
+    <div className="p-8 max-w-4xl mx-auto space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Настройки</h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-2">Управление конфигурацией приложения</p>
+      </div>
 
-        <div className="grid gap-6">
-
-          {/* Секция Бэкапа */}
-          <Card className="p-6 border-l-4 border-l-indigo-500">
-            <h3 className="text-lg font-semibold mb-2 text-slate-900 dark:text-white">Резервное копирование</h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
-              Вы можете сохранить все настройки (дашборды, группы, формулы, иерархию) в JSON файл.
-              Данные самого Excel файла <strong>не сохраняются</strong> — их нужно будет загрузить отдельно.
-            </p>
-
-            <div className="flex gap-4">
-              <Button onClick={exportConfig} variant="outline">
-                <Download size={16} className="mr-2" /> Экспорт настроек
-              </Button>
-
-              <Button onClick={() => fileInputRef.current?.click()} variant="outline">
-                <Upload size={16} className="mr-2" /> Импорт настроек
-              </Button>
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept=".json"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    importConfig(file);
-                    e.target.value = '';
-                  }
-                }}
-              />
+      <div className="grid gap-6">
+        {/* СЕКЦИЯ АКТИВНОГО ДАТАСЕТА */}
+        <Card className="p-6 border-l-4 border-l-emerald-500">
+          <div className="flex items-start gap-4">
+            <div className="p-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 rounded-lg">
+              <Database size={20} />
             </div>
-          </Card>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                Конфиг: {activeDataset?.name}
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
+                Экспорт или импорт настроек <strong>только для этого датасета</strong>. 
+                Дашборды, группы и иерархия будут привязаны к текущему источнику данных.
+              </p>
+              
+              <div className="flex gap-4">
+                <Button onClick={() => exportDatasetConfig(activeDatasetId)} variant="outline">
+                  <Download size={16} className="mr-2" /> Экспорт конфига
+                </Button>
+                <Button onClick={() => fileInputRef.current?.click()} variant="default" className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <Upload size={16} className="mr-2" /> Импорт в текущий
+                </Button>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept=".json"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file && activeDatasetId) {
+                      importToDataset(file, activeDatasetId);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* Место для будущего функционала (Шаг 2: Управдение сиротскими датасетами) */}
+        <Card className="p-6 border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/20">
+          <div className="flex items-center gap-3 opacity-50">
+            <Database size={18} className="text-slate-400" />
+            <div>
+              <h3 className="font-medium text-slate-700 dark:text-slate-300">Привязка удалённых источников</h3>
+              <p className="text-xs text-slate-400">Функционал будет доступен в следующем обновлении</p>
+            </div>
+          </div>
+        </Card>
 
           {/* Секция Опасной зоны */}
           <Card className="p-6 border-l-4 border-l-red-500 bg-red-50/30 dark:bg-red-900/10 border-t-0 border-r-0 border-b-0">
@@ -110,9 +143,9 @@ export default function SettingsPage() {
               </div>
             </div>
           </Card>
-
-        </div>
+        
       </div>
+
 
       <ConfirmDialog
         open={isResetDialogOpen}
@@ -123,6 +156,6 @@ export default function SettingsPage() {
         isLoading={isResetting}
         onConfirm={handleFullReset}
       />
-    </>
+    </div>
   );
 }

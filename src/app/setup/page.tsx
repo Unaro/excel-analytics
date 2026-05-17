@@ -14,23 +14,25 @@ import { Badge } from '@/shared/ui/badge';
 import { toast } from 'sonner';
 import { 
   Trash2, Plus, Database, FileSpreadsheet, ArrowLeft, 
-  Check, TableProperties, ChevronRight, Loader2 
+  Check, TableProperties, ChevronRight, Loader2, 
+  Upload
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import type { PgConnectionConfig } from '@/lib/logic/postgres-client';
+import {useConfigPersistence} from '@/lib/hooks/use-config-persistence';
 
 export default function SetupPage() {
-  const initializedRef = useRef<boolean>(false);
 
   const hydrated = useStoreHydration();
   const router = useRouter();
-  
+
   const datasets = useDatasetStore(s => s.datasets);
   const activeId = useDatasetStore(s => s.activeDatasetId);
   const isSyncing = useDatasetStore(s => s.isSyncing);
   const switchDataset = useDatasetStore(s => s.switchDataset);
   const removeDataset = useDatasetStore(s => s.removeDataset);
-  
+  const { importToDataset } = useConfigPersistence();
+
   const activeDataset = useMemo(() => 
     activeId ? datasets[activeId] : null, 
     [activeId, datasets]
@@ -84,7 +86,7 @@ export default function SetupPage() {
   if (!hydrated) return <LoadingScreen message="Загрузка страницы настройки..." />;
 
   const handleFileSuccess = () => {
-    toast.success('Файл успешно загружен');
+    // toast.success('Файл успешно загружен');
     setStep('columns');
   };
 
@@ -174,6 +176,28 @@ export default function SetupPage() {
                   <div className="flex items-center gap-2">
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); handleDeleteDataset(ds.id); }}>
                       <Trash2 size={14} />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-8 w-8 text-indigo-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
+                      title="Импортировать настройки в этот датасет"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = '.json';
+                        input.onchange = (ev: Event) => {
+                          const file = (ev.target as HTMLInputElement).files?.[0];
+                          if (file) {
+                            importToDataset(file, ds.id);
+                          }
+                          input.remove();
+                        };
+                        input.click();
+                      }}
+                    >
+                      <Upload size={14} />
                     </Button>
                     <ChevronRight size={16} className="text-slate-400" />
                   </div>

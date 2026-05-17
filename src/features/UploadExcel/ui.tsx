@@ -20,7 +20,7 @@ export function FileUploader({ onSuccess }: FileUploaderProps) {
   const processFile = useCallback(async (file: File) => {
     const success = await importFile(file);
     if (success) {
-      toast.success('Файл успешно загружен');
+      // toast.success('Файл успешно загружен');
       if (onSuccess) {
         setTimeout(() => onSuccess(), 500);
       }

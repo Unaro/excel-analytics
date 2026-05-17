@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { syncFromFile } from '@/entities/dataset';
+import { toast } from '@/shared/ui/toast';
 
 export interface UseFileImportReturn {
   importFile: (file: File) => Promise<boolean>;
@@ -19,30 +20,37 @@ export function useFileImport(): UseFileImportReturn {
   const uploadInProgressRef = useRef<boolean>(false);
 
   const handleFileUpload = useCallback(async (file: File): Promise<boolean> => {
-    if (isUploading || uploadInProgressRef.current) {
-      console.warn('[useFileImport] Upload already in progress, ignoring');
+    if (isUploading) {
+      toast.warning('Загрузка уже выполняется', { id: 'upload-progress' });
       return false;
     }
     
-    uploadInProgressRef.current = true;
-    setIsUploading(true);
-    setUploadError(null);
-    setUploadProgress(10);
+    const toastId = 'file-import-' + Date.now();
+    toast.loading('Обработка файла...', toastId);
     
     try {
-      setUploadProgress(40);
       const res = await syncFromFile(file);
-      setUploadProgress(100);
-      return res.success;
+      
+      if (res.success) {
+        toast.success(`Датасет "${file.name}" загружен`, { 
+          id: toastId,
+          duration: 4000 
+        });
+        return true;
+      } else {
+        toast.error(`Ошибка: ${res.error}`, { 
+          id: toastId,
+          duration: 6000,
+          action: { label: 'Повторить', onClick: () => handleFileUpload(file) }
+        });
+        return false;
+      }
     } catch (err) {
-      console.error('Import failed:', err);
-      setUploadError(err instanceof Error ? err.message : 'Ошибка загрузки');
+      toast.error('Непредвиденная ошибка при загрузке', { 
+        id: toastId,
+        duration: 6000 
+      });
       return false;
-    } finally {
-      setIsUploading(false);
-      setTimeout(() => { 
-        uploadInProgressRef.current = false; 
-      }, 100);
     }
   }, [isUploading]);
 
