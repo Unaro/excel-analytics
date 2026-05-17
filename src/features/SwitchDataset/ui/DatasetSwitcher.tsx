@@ -67,20 +67,28 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
 
   const handleRemove = (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isDisabled) {
-      return;
-    }
     const confirmed = window.confirm(
-      `Удалить датасет "${name}"?\n\n⚠️ Это удалит только данные. 
-      Настройки дашбордов, метрики и группы сохранятся.`
+        `Удалить датасет "${name}"?
+    ⚠️ Это удалит только данные.
+    Настройки дашбордов, метрики и группы сохранятся.`
     );
     if (confirmed) {
       removeDataset(id);
       toast.info(`Датасет "${name}" удален`);
-      if (id === activeId && datasetList.length > 0) {
-        const firstId = Object.keys(datasets)[0];
-        if (firstId) switchDataset(firstId);
+      
+      if (id === activeId) {
+        const remainingIds = Object.keys(datasets).filter(k => k !== id);
+        
+        if (remainingIds.length > 0) {
+          switchDataset(remainingIds[0]);
+        } else {
+          if (pathname?.startsWith('/setup')) {
+            sessionStorage.setItem('setup-step', 'upload');
+          }
+          router.push('/setup');
+        }
       }
+      
       if (open) setOpen(false);
     }
   };

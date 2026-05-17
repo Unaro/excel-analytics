@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDatasetStore } from '@/entities/dataset';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
@@ -24,33 +24,62 @@ export default function SetupPage() {
 
   const hydrated = useStoreHydration();
   const router = useRouter();
-
-
+  
   const datasets = useDatasetStore(s => s.datasets);
   const activeId = useDatasetStore(s => s.activeDatasetId);
   const isSyncing = useDatasetStore(s => s.isSyncing);
   const switchDataset = useDatasetStore(s => s.switchDataset);
   const removeDataset = useDatasetStore(s => s.removeDataset);
-
-  const activeDataset = activeId ? datasets[activeId] : null;
+  
+  const activeDataset = useMemo(() => 
+    activeId ? datasets[activeId] : null, 
+    [activeId, datasets]
+  );
   const hasActiveData = !!activeDataset?.rows && activeDataset.rows.length > 0;
-
-
+  
   const [step, setStep] = useState<'manager' | 'upload' | 'columns'>('manager');
   const [sourceType, setSourceType] = useState<'file' | 'postgres'>('file');
   const [pgConfig, setPgConfig] = useState<PgConnectionConfig | null>(null);
   const [pgStep, setPgStep] = useState<'connection' | 'browser'>('connection');
 
+
   useEffect(() => {
-    if (hydrated && !initializedRef.current) {
+    if (hydrated) {
+      if (activeId && !datasets[activeId]) {
+        setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
+        return;
+      }
+      
       if (activeId && hasActiveData) {
         setStep('columns');
       } else {
         setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
       }
-      initializedRef.current = true;
     }
   }, [hydrated, activeId, hasActiveData, datasets]);
+
+  const handleDeleteDataset = useCallback((id: string) => {
+    if (confirm('Удалить этот датасет? Настройки дашбордов сохранятся.')) {
+      removeDataset(id);
+      toast.info('Датасет удален');
+      
+      if (id === activeId) {
+        const remainingIds = Object.keys(datasets).filter(k => k !== id);
+        if (remainingIds.length > 0) {
+          switchDataset(remainingIds[0]);
+          setStep('columns');
+        } else {
+          setStep('upload');
+        }
+      }
+    }
+  }, [activeId, datasets, removeDataset, switchDataset]);
+
+  useEffect(() => {
+    if (hydrated && activeId && !datasets[activeId]) {
+      setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
+    }
+  }, [hydrated, activeId, datasets]);
 
   if (!hydrated) return <LoadingScreen message="Загрузка страницы настройки..." />;
 
@@ -67,14 +96,6 @@ export default function SetupPage() {
   const handlePgSyncComplete = () => {
     toast.success('Данные из PostgreSQL синхронизированы');
     setStep('columns');
-  };
-
-  const handleDeleteDataset = (id: string) => {
-    if (confirm('Удалить этот датасет? Настройки дашбордов сохранятся.')) {
-      removeDataset(id);
-      toast.info('Датасет удален');
-      if (Object.keys(datasets).length <= 1) setStep('upload');
-    }
   };
 
   return (
