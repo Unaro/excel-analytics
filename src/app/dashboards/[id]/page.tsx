@@ -130,7 +130,7 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
           )}
           {sourceType && !isSyncing && (
             <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-              {sourceType === 'file' ? '📄 Excel' : '🐘 PostgreSQL'}
+              {sourceType === 'file' ? 'Excel' : 'PostgreSQL'}
             </span>
           )}
           <AddKPIDialog dashboardId={dashboardId} />
@@ -152,8 +152,9 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
           <Link
             href={`/dashboards/${dashboardId}/edit`}
             className="flex items-center gap-2 bg-slate-900 dark:bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-slate-800 dark:hover:bg-indigo-700 transition text-sm font-medium shadow-sm"
+            title='Редактировать'
           >
-            <Edit size={16} /> Редактировать
+            <Edit size={16} />
           </Link>
         </div>
       </div>

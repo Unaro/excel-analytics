@@ -26,7 +26,7 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
     name, setName, selectedMetrics,
     addMetricToGroup, updateVariableType, updateBindingValue, removeMetric, saveGroup,
     availableTemplates, availableColumns,
-    columnSearchQuery, setColumnSearchQuery, updateMetricUnit
+    columnSearchQuery, setColumnSearchQuery, updateMetricUnit, updateMetricCustomName
   } = useGroupBuilder(groupId);
 
   const templates = useMetricTemplateStore(s => s.templates);
@@ -153,44 +153,49 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
 
                   return (
                       <div key={item.tempId} className="bg-white dark:bg-slate-950 rounded-xl p-5 border border-slate-200 dark:border-slate-800 relative group hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors shadow-sm">
-                          
-                          {/* Заголовок карточки */}
-                          <div className="flex items-center gap-3 mb-5 border-b border-slate-100 dark:border-slate-800 pb-3">
-                              <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-mono font-bold text-slate-500">
-                                  {index + 1}
-                              </div>
-                              <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white text-lg">
-                                  {template.type === 'aggregate' ? (
-                                    <FunctionSquare size={18} className="text-blue-500"/>
-                                  ) : (
-                                    <Calculator size={18} className="text-purple-500"/>
-                                  )}
-                                  {template.name}
-                              </div>
-
-                              <div className="ml-2">
-                                <Input 
-                                  placeholder="ед. (чел.)"
-                                  value={item.unit}
-                                  onChange={(e) => updateMetricUnit(item.tempId, e.target.value)}
-                                  className="h-7 w-24 text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:bg-white dark:focus:bg-slate-950 placeholder:text-slate-400"
-                                />
-                              </div>
-
-                              {template.type === 'calculated' && (
-                                  <Badge variant="outline" className="font-mono text-[10px] opacity-70 ml-2">
-                                    {template.formula}
-                                  </Badge>
-                              )}
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                className="ml-auto h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20" 
-                                onClick={() => removeMetric(item.tempId)}
-                              >
-                                  <Trash2 size={16} />
-                              </Button>
-                          </div>
+                      {/* Заголовок карточки */}
+                      <div className="flex items-center gap-3 mb-4 border-b border-slate-100 dark:border-slate-800 pb-3">
+                        <div className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-xs font-mono font-bold text-slate-500">
+                          {index + 1}
+                        </div>
+                        <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white text-lg">
+                          {template.type === 'aggregate' ? (
+                            <FunctionSquare size={18} className="text-blue-500"/>
+                          ) : (
+                            <Calculator size={18} className="text-purple-500"/>
+                          )}
+                          {/* Поле для кастомного названия */}
+                          <input
+                            type="text"
+                            value={item.customName || ''}
+                            onChange={(e) => updateMetricCustomName(item.tempId, e.target.value)}
+                            placeholder={template.name}
+                            className="bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 focus:outline-none px-1 -mx-1 transition-colors max-w-[200px] text-inherit placeholder:text-slate-400 dark:placeholder:text-slate-600"
+                            title="Переименуйте метрику для этой группы (опционально)"
+                          />
+                        </div>
+                        <div className="ml-1">
+                          <Input
+                            placeholder="ед. (чел.)"
+                            value={item.unit}
+                            onChange={(e) => updateMetricUnit(item.tempId, e.target.value)}
+                            className="h-7 w-24 text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:bg-white dark:focus:bg-slate-950 placeholder:text-slate-400"
+                          />
+                        </div>
+                        {template.type === 'calculated' && (
+                          <Badge variant="outline" className="font-mono text-[10px] opacity-70 ml-2">
+                            {template.formula}
+                          </Badge>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="ml-auto h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          onClick={() => removeMetric(item.tempId)}
+                        >
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
 
                           {/* Привязки переменных */}
                           <div className="space-y-4 pl-0 sm:pl-9">
@@ -259,7 +264,7 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
                                                   {selectedMetrics.slice(0, index).map(prev => {
                                                       const t = templates.find(x => x.id === prev.templateId);
                                                       return <SelectOption key={prev.tempId} value={prev.tempId}>
-                                                        {t?.name}
+                                                        {selectedMetrics.find(x => x.tempId === prev.tempId)?.customName || t?.name}
                                                       </SelectOption>;
                                                   })}
                                               </Select>

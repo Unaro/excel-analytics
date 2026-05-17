@@ -68,8 +68,9 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if(!v) reset(); }}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800">
-          <Plus size={16} /> Добавить KPI
+        <Button title='Добавить KPI' variant="outline" size="sm" className="gap-2 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <Plus size={16} />
+          <span className="hidden sm:inline">Добавить KPI</span>
         </Button>
       </DialogTrigger>
       

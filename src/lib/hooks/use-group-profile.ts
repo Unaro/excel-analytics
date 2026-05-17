@@ -13,7 +13,6 @@ import {
 import { toast } from 'sonner';
 
 export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]) {
-  // ✅ Плоский массив данных без flatMap и кастов
   const excelData = useDatasetStore(s => s.getAllData());
   
   const group = useIndicatorGroupStore(s => s.getGroup(groupId));
@@ -21,14 +20,13 @@ export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]
   const [result, setResult] = useState<GroupComputationResult | null>(null);
   const [isComputing, setIsComputing] = useState(false);
 
-  // Генерируем конфигурацию "на лету" (без изменений)
   const { virtualMetrics, dashboardConfig } = useMemo(() => {
     if (!group) return { virtualMetrics: [], dashboardConfig: [] };
     const vMetrics: VirtualMetric[] = group.metrics.map(m => {
       const tpl = templates.find(t => t.id === m.templateId);
       return {
         id: `vm-${m.id}`,
-        name: tpl?.name || 'Metric',
+        name: `${m.customName}(${tpl?.name})` || m.customName || tpl?.name || 'Metric',
         displayFormat: tpl?.displayFormat || 'number',
         decimalPlaces: tpl?.decimalPlaces || 2,
         order: m.order ?? 0,

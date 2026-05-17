@@ -190,7 +190,7 @@ function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, o
               <SelectOption value="">—</SelectOption>
               {fullGroup.metrics.map((metric) => {
                 const tpl = templates.find(t => t.id === metric.templateId);
-                return <SelectOption key={metric.id} value={metric.id}>{tpl?.name || 'Metric'}</SelectOption>;
+                return <SelectOption key={metric.id} value={metric.id}>{`${metric?.customName}(${tpl?.name})` || tpl?.name || 'Metric'}</SelectOption>;
               })}
             </Select>
           </td>
