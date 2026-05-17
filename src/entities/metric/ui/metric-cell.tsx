@@ -25,10 +25,8 @@ export function MetricCell({ value, formattedValue, metric }: MetricCellProps) {
   const activeRule = rules.find(rule => checkRule(value, rule.operator, rule.value, rule.value2));
 
   if (activeRule) {
-    // Если правило найдено, добавляем классы цвета
     className = cn(className, COLOR_STYLES[activeRule.color]);
   } else {
-    // Если правил нет или ни одно не сработало — фон прозрачный
     className = cn(className, "bg-transparent");
   }
 

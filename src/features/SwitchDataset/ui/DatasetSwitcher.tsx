@@ -1,12 +1,13 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useDatasetStore } from '@/entities/dataset';
 import { Button } from '@/shared/ui/button';
 import { 
   Database, Trash2, ChevronDown, Check, FileSpreadsheet, 
   Loader2, AlertCircle, Plus, 
-  RefreshCw
+  RefreshCw,
+  LucideDatabase
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { toast } from 'sonner';
@@ -20,15 +21,26 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
   const [open, setOpen] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null); 
 
+  const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
   
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const datasets = useDatasetStore(s => s.datasets);
   const activeId = useDatasetStore(s => s.activeDatasetId);
   const switchDataset = useDatasetStore(s => s.switchDataset);
   const removeDataset = useDatasetStore(s => s.removeDataset);
   const isSyncing = useDatasetStore(s => s.isSyncing);
-  const setPgStatus = useDatasetStore(s => s.setPgStatus);
 
   const activeDataset = activeId ? datasets[activeId] : null;
   const datasetList = Object.values(datasets);
@@ -66,7 +78,6 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
       removeDataset(id);
       toast.info(`Датасет "${name}" удален`);
       if (id === activeId && datasetList.length > 0) {
-        // Авто-переключение на первый доступный
         const firstId = Object.keys(datasets)[0];
         if (firstId) switchDataset(firstId);
       }
@@ -85,7 +96,6 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
     try {
       const res = await refreshPgDataset(id);
       if (res?.success) {
-        // Принудительно перечитываем данные в дашборде без полной перезагрузки страницы
         if (['/dashboards', '/hierarchy', '/groups'].some(p => pathname?.startsWith(p))) {
           router.refresh();
         }
@@ -98,7 +108,7 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
   };
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full" ref={containerRef}>
       {/* Кнопка-триггер */}
       <Button
         variant="outline"
@@ -124,6 +134,9 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
               </div>
             </div>
           )}
+           {activeDataset?.sourceType === 'file' && (
+            <FileSpreadsheet size={16} className={cn("shrink-0 transition-colors", "text-indigo-600 dark:text-indigo-400")} /> 
+           )}
           <div className="text-left min-w-0 flex-1">
             {isSyncing ? (
               <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
@@ -136,7 +149,6 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
                   {activeDataset.name}
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                  {activeDataset.sourceType === 'file' ? '📄' : '🐘'}
                   <span className="truncate">
                     {activeDataset.rows?.length ?? 0} строк
                   </span>

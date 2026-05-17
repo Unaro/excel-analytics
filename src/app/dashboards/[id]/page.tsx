@@ -37,7 +37,6 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const switchDataset = useDatasetStore(s => s.switchDataset);
 
-
   useEffect(() => {
     if (!hydrated) return;
     if (!dashboard?.datasetId) return;
@@ -226,7 +225,7 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
                               {liveMetric.unit && <span className="text-[10px] text-slate-400 lowercase bg-slate-100 dark:bg-slate-800 px-1.5 rounded mt-0.5">{liveMetric.unit}</span>}
                             </div>
                           </div>
-                          {liveMetric.colorConfig?.rules && liveMetric.colorConfig?.rules.length && (
+                          {liveMetric.colorConfig?.rules && liveMetric.colorConfig?.rules.length > 0 && (
                             <div className="absolute bottom-2 right-6 w-1 h-1 rounded-full bg-indigo-500" />
                           )}
                         </th>
