@@ -86,13 +86,10 @@ function SortableLevelItem({ level, index, onDelete }: { level: HierarchyLevel, 
 export function HierarchyBuilder() {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   
+  const addLevelRaw = useHierarchyStore(s => s.addLevel);
+  const deleteLevelRaw = useHierarchyStore(s => s.deleteLevel);
+  const reorderLevelsRaw = useHierarchyStore(s => s.reorderLevels);
 
-  const { 
-    addLevel: addLevelRaw, 
-    deleteLevel: deleteLevelRaw, 
-    reorderLevels: reorderLevelsRaw 
-  } = useHierarchyStore();
-  
   const levels = useHierarchyStore(useShallow(s => 
     activeDatasetId ? (s.levelsByDataset?.[activeDatasetId] || []) : []
   ));

@@ -29,7 +29,9 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
   const hydrated = useStoreHydration();
 
 
-  const dashboard = useDashboardStore(useShallow(s => s.getDashboard(dashboardId)));
+  const dashboard = useDashboardStore(
+      useShallow(s => s.dashboards.find(d => d.id === dashboardId))
+  );
   const dashboardDatasetId = useDashboardStore(s => s.getDashboard(dashboardId)?.datasetId);
   
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);

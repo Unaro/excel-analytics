@@ -4,11 +4,11 @@ import { useColumnConfigStore } from '@/entities/columnConfig';
 import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
 import { ColumnClassification } from '@/types';
 import { cn } from '@/shared/lib/utils';
+import { useShallow } from 'zustand/react/shallow';
 
 export function ColumnManager() {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
-  const configs = useColumnConfigStore(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []);
-  const updateColumn = useColumnConfigStore((s) => s.updateColumn);
+  const configs = useColumnConfigStore(useShallow(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []));  const updateColumn = useColumnConfigStore((s) => s.updateColumn);
   const hasData = useDatasetStore((s) => s.hasData());
 
   if (!hasData || configs.length === 0) return null;

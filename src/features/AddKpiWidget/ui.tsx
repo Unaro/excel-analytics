@@ -9,6 +9,7 @@ import { useMetricTemplateStore } from '@/entities/metric';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { SearchableSelect } from '@/shared/ui/searchable-select';
 import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
+import { useShallow } from 'zustand/react/shallow';
 
 interface AddKPIDialogProps {
   dashboardId: string;
@@ -24,7 +25,7 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
 
   const templates = useMetricTemplateStore(s => s.templates);
   const addWidget = useDashboardStore(s => s.addKPIWidget);
-  const kpiWidgets = useDashboardStore(s => s.getDashboard(dashboardId)?.kpiWidgets || []);
+  const kpiWidgets = useDashboardStore(useShallow(s => s.getDashboard(dashboardId)?.kpiWidgets || []));
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const columnConfigs = useColumnConfigStore(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []);
 
