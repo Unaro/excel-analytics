@@ -35,7 +35,7 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
   const handleSave = () => {
     try {
       saveGroup();
-      toast.success(groupId ? 'Группа обновлена' : 'Группа создана');
+      toast.success(groupId ? `Группа ${name} обновлена` : 'Группа создана');
       router.push('/groups');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Ошибка');

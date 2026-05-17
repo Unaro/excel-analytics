@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useDatasetStore } from '@/entities/dataset';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
@@ -20,10 +20,12 @@ import { cn } from '@/shared/lib/utils';
 import type { PgConnectionConfig } from '@/lib/logic/postgres-client';
 
 export default function SetupPage() {
+  const initializedRef = useRef<boolean>(false);
+
   const hydrated = useStoreHydration();
   const router = useRouter();
 
-  // ✅ Читаем новое мульти-датасет состояние
+
   const datasets = useDatasetStore(s => s.datasets);
   const activeId = useDatasetStore(s => s.activeDatasetId);
   const isSyncing = useDatasetStore(s => s.isSyncing);
@@ -33,20 +35,20 @@ export default function SetupPage() {
   const activeDataset = activeId ? datasets[activeId] : null;
   const hasActiveData = !!activeDataset?.rows && activeDataset.rows.length > 0;
 
-  // Шаги: manager (список) → upload (загрузка нового) → columns (настройка)
+
   const [step, setStep] = useState<'manager' | 'upload' | 'columns'>('manager');
   const [sourceType, setSourceType] = useState<'file' | 'postgres'>('file');
   const [pgConfig, setPgConfig] = useState<PgConnectionConfig | null>(null);
   const [pgStep, setPgStep] = useState<'connection' | 'browser'>('connection');
 
-  // 🐛 FIX F5 BUG: Инициализируем шаг ТОЛЬКО после завершения гидрации
   useEffect(() => {
-    if (hydrated) {
+    if (hydrated && !initializedRef.current) {
       if (activeId && hasActiveData) {
         setStep('columns');
       } else {
         setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
       }
+      initializedRef.current = true;
     }
   }, [hydrated, activeId, hasActiveData, datasets]);
 
@@ -113,7 +115,7 @@ export default function SetupPage() {
       </div>
 
       <Card className="p-8 min-h-[400px]">
-        {/* 🟢 ШАГ 1: МЕНЕДЖЕР ДАТАСЕТОВ */}
+        {/* МЕНЕДЖЕР ДАТАСЕТОВ */}
         {step === 'manager' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex justify-between items-center">
@@ -160,7 +162,7 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* 🟢 ШАГ 1: ЗАГРУЗКА НОВОГО ИСТОЧНИКА */}
+        {/* ЗАГРУЗКА НОВОГО ИСТОЧНИКА */}
         {step === 'upload' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex justify-center">
@@ -186,7 +188,7 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* 🟢 ШАГ 2: НАСТРОЙКА КОЛОНОК */}
+        {/* НАСТРОЙКА КОЛОНОК */}
         {step === 'columns' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {isSyncing ? (

@@ -1,13 +1,15 @@
 'use client';
 import { nanoid } from 'nanoid';
 import { parseExcelFile } from '@/app/actions/parse';
-import { fetchPgTableData, getPgSchema } from '@/app/actions/postgres';
+import { fetchPgTableData, getPgSchema, testPgConnection } from '@/app/actions/postgres';
 import { useDatasetStore } from './store';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useDashboardStore } from '@/entities/dashboard';
 import type { ColumnConfig, ColumnClassification, DatasetRow } from '@/types';
 import type { PgConnectionConfig } from '@/lib/logic/postgres-client';
 import { transliterate } from '@/shared/lib/utils/translit';
+import { toast } from 'sonner';
+import { decryptConfig, encryptConfig } from '@/shared/lib/utils/crypto';
 
 function classifyBySample(values: unknown[]): ColumnClassification {
   const valid = values.filter(v => v != null && v !== '');
@@ -70,13 +72,12 @@ export async function syncFromFile(file: File) {
 export async function syncFromPostgres(config: PgConnectionConfig, schema: string, table: string) {
   const { setSyncing, addDataset, setDatasetRows, switchDataset } = useDatasetStore.getState();
   const setConfigs = useColumnConfigStore.getState();
-  
   setSyncing(true);
   const datasetId = `pg-${nanoid()}`;
-  
+
   try {
     const schemaRes = await getPgSchema(config);
-    if (!schemaRes.success || !schemaRes.tables) throw new Error(schemaRes.error || 'Ошибка схемы');
+    if (!schemaRes.success || !schemaRes.tables) throw new Error('Ошибка схемы');
     
     const tableMeta = schemaRes.tables.find(t => t.schema === schema && t.table === table);
     if (!tableMeta) throw new Error('Таблица не найдена');
@@ -91,6 +92,10 @@ export async function syncFromPostgres(config: PgConnectionConfig, schema: strin
     }));
 
     setConfigs.setDatasetConfigs(datasetId, configs);
+
+    // 🔒 Шифруем и сохраняем конфиг подключения
+    const encrypted = await encryptConfig(config);
+
     addDataset(datasetId, {
       name: `${schema}.${table}`, sourceType: 'postgres',
       metadata: {
@@ -98,8 +103,9 @@ export async function syncFromPostgres(config: PgConnectionConfig, schema: strin
         sheetOrTableNames: [`${schema}.${table}`],
         totalRows: pgRows.length, totalColumns: dataRes.columns.length, sourceType: 'postgres'
       },
-      pgConfig: { schema, table, lastSyncAt: Date.now() }
+      pgConfig: { schema, table, lastSyncAt: Date.now(), encryptedConnection: encrypted }
     });
+
     setDatasetRows(datasetId, pgRows);
     switchDataset(datasetId);
     return { success: true, datasetId };
@@ -119,5 +125,46 @@ export function reconcileDashboardFilters(dashboardId: string) {
   const invalid = dashboard.hierarchyFilters.filter(f => !valid.has(f.columnName));
   if (invalid.length > 0) {
     useDashboardStore.getState().clearHierarchyFilters(dashboardId);
+  }
+}
+
+/**
+ * Обновление датасета
+ */
+export async function refreshPgDataset(datasetId: string) {
+  const store = useDatasetStore.getState();
+  const entry = store.datasets[datasetId];
+
+  if (!entry || entry.sourceType !== 'postgres' || !entry.pgConfig) {
+    toast.error('Некорректная конфигурация датасета');
+    return { success: false };
+  }
+
+  if (!entry.pgConfig.encryptedConnection) {
+    toast.error('Конфигурация подключения отсутствует. Переподключите датасет через настройки.');
+    return { success: false };
+  }
+
+  const { schema, table } = entry.pgConfig;
+  store.setPgStatus(datasetId, 'checking');
+
+  try {
+    const config = await decryptConfig<PgConnectionConfig>(entry.pgConfig.encryptedConnection);
+
+    const realTest = await testPgConnection(config);
+    if (!realTest.success) throw new Error(realTest.error || 'Отказано в доступе');
+
+    const dataRes = await fetchPgTableData(config, schema, table, 50000);
+    if (!dataRes.success) throw new Error(dataRes.error);
+
+    store.setDatasetRows(datasetId, dataRes.rows as DatasetRow[]);
+    store.setPgStatus(datasetId, 'online');
+    toast.success(`Данные "${entry.name}" обновлены (${dataRes.totalFetched} строк)`);
+    return { success: true };
+  } catch (error) {
+    console.error('[PG Refresh Failed]', error);
+    store.setPgStatus(datasetId, 'offline');
+    toast.warning(`Не удалось обновить "${entry.name}". Используются кэшированные данные.`);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown' };
   }
 }

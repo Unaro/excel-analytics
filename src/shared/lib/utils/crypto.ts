@@ -16,7 +16,7 @@ async function getOrCreateKey(): Promise<CryptoKey> {
   return crypto.subtle.importKey('raw', keyData, ALGO, true, ['encrypt', 'decrypt']);
 }
 
-export async function encryptConfig(config: Record<string, unknown>): Promise<string> {
+export async function encryptConfig<T extends object>(config: T): Promise<string> {
   const key = await getOrCreateKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encoded = new TextEncoder().encode(JSON.stringify(config));

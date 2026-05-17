@@ -4,7 +4,6 @@ import { persist } from 'zustand/middleware';
 import type { ColumnConfig, ColumnClassification } from '@/types';
 
 interface ColumnConfigState {
-  // 🔑 Ключ: datasetId, Значение: массив конфигов
   configsByDataset: Record<string, ColumnConfig[]>;
   
   // Действия
@@ -70,14 +69,13 @@ export const useColumnConfigStore = create<ColumnConfigState>()(
       
       getConfigs: (datasetId) => get().configsByDataset[datasetId] || [],
       getConfig: (datasetId, columnName) => get().configsByDataset[datasetId]?.find((col) => col.columnName === columnName),
-      getConfigsByClassification: (datasetId, classification) => 
-        get().configsByDataset[datasetId]?.filter((col) => col.classification === classification) || [],
+      getConfigsByClassification: (datasetId, classification) => get().configsByDataset[datasetId]?.filter((col) => col.classification === classification) || [],
       getCategoricalColumns: (datasetId) => get().getConfigsByClassification(datasetId, 'categorical'),
       getNumericColumns: (datasetId) => get().getConfigsByClassification(datasetId, 'numeric'),
     }),
     {
       name: 'column-config-storage',
-      version: 2, // Инкрементим версию из-за смены структуры
+      version: 2,
     }
   )
 );

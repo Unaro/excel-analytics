@@ -25,8 +25,11 @@ export function PostgresTableBrowser({ config, onComplete }: PostgresTableBrowse
   useEffect(() => {
     setLoading(true);
     getPgSchema(config).then(res => {
-      if (res.success && res.tables) setTables(res.tables);
-      else setError(res.error || 'Ошибка загрузки схемы');
+      if (res.success) {
+        setTables(res.tables);
+      } else {
+        setError(res.error || 'Ошибка загрузки схемы');
+      }
       setLoading(false);
     }).catch(() => {
       setError('Не удалось получить схему');

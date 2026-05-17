@@ -26,11 +26,11 @@ export interface PgSyncConfig {
   schema: string;
   table: string;
   lastSyncAt: number;
-  connectionId?: string;
+  encryptedConnection?: string;
 }
 
 /**
- * 🆕 Запись одного датасета в мульти-хранилище
+ * Запись одного датасета в мульти-хранилище
  */
 export interface DatasetEntry {
   id: string;
@@ -40,6 +40,7 @@ export interface DatasetEntry {
   pgConfig?: PgSyncConfig | null;
   rows: DatasetRow[] | null;
   lastAccessedAt: number;
+  pgStatus?: 'online' | 'offline' | 'checking' | 'unknown';
 }
 
 /**

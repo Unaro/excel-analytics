@@ -12,6 +12,8 @@ export const HierarchyFilterValueSchema = z.object({
   columnName: z.string().min(1),
   value: z.string(),
   displayValue: z.string().optional(),
+  operator: z.enum(['exact', '>', '<', '>=', '<=', 'between']).optional(),
+  value2: z.string().optional(),
 });
 
 export const VirtualMetricSchema = z.object({

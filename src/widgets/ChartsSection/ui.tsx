@@ -74,17 +74,18 @@ interface ChartComponentProps {
   activeMetricIds: string[];
   metricNames: Record<string, string>;
   axisColor: string;
+  isTimeSeries?: boolean;
 }
 
 const MemoizedBarChart = memo(function BarChartComp({
   data,
   activeMetricIds,
   metricNames,
-  axisColor
+  axisColor,
+  isTimeSeries
 }: ChartComponentProps) {
   return (
     <ResponsiveContainer width="100%" height="100%">
-      {/* ✅ Исправлены отступы: left: 20 (место для оси Y), bottom: 70 (место для наклонных подписей X) */}
       <BarChart data={data} margin={{ top: 20, right: 20, left: 20, bottom: 70 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={axisColor} strokeOpacity={0.2} />
         <XAxis
@@ -92,18 +93,23 @@ const MemoizedBarChart = memo(function BarChartComp({
           tick={{ fontSize: 10, fill: axisColor }}
           axisLine={false}
           tickLine={false}
-          angle={-25}
-          textAnchor="end"
+          angle={isTimeSeries ? 0 : -13} 
+          textAnchor="middle"
           interval={0}
           height={60}
-          padding={{ left: 10, right: 10 }}
+          padding={{ left: 10, right: 10}}
+          tickMargin={24}
+          type={isTimeSeries ? 'number' : 'category'}
+          domain={isTimeSeries ? ['auto', 'auto'] : undefined}
+          scale={isTimeSeries ? 'time' : undefined}
+          tickFormatter={isTimeSeries ? (val: number) => new Date(val).toLocaleDateString('ru-RU') : undefined}
         />
         <YAxis
           tick={{ fontSize: 10, fill: axisColor }}
           axisLine={false}
           tickLine={false}
           tickFormatter={(val: number) => formatCompactNumber(val)}
-          width={75} // ✅ Увеличено с 40 до 75, чтобы длинные значения не обрезались
+          width={75}
           tickMargin={5}
         />
         <Tooltip

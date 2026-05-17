@@ -10,18 +10,24 @@ import type { SheetData, DatasetMetadata, DatasetRow, ColumnStatistics } from '@
  */
 function parseCellValue(raw: unknown): string | number | boolean | null {
   if (raw === undefined || raw === null) return null;
-  if (typeof raw === 'number' || typeof raw === 'boolean') return raw;
   
+  if (raw instanceof Date) {
+    const iso = raw.toISOString().split('T')[0];
+    return isNaN(raw.getTime()) ? null : iso;
+  }
+  
+  if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    return raw.split('T')[0];
+  }
+
+  if (typeof raw === 'number' || typeof raw === 'boolean') return raw;
   const str = String(raw).trim();
   if (str === '') return null;
-
-  // Попытка парсинга числа (поддержка ru-locale запятой)
   const normalized = str.replace(',', '.');
   if (/^-?\d+(\.\d+)?$/.test(normalized)) {
     const num = Number(normalized);
     if (!isNaN(num) && isFinite(num)) return num;
   }
-
   return str;
 }
 

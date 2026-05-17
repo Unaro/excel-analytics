@@ -11,11 +11,10 @@ interface KPIGridProps {
   dashboardId: string;
   widgets: KPIWidget[];
   currentFilters: HierarchyFilterValue[];
-  isEditMode?: boolean; // Чтобы показывать кнопки удаления
+  isEditMode?: boolean;
 }
 
 export function KPIGrid({ dashboardId, widgets, currentFilters, isEditMode = false }: KPIGridProps) {
-  // Вызываем хук расчетов
   const results = useKPICalculation(widgets, currentFilters);
   const removeWidget = useDashboardStore(s => s.removeKPIWidget);
 

@@ -5,13 +5,21 @@ import { useDatasetStore } from '@/entities/dataset';
 import { Button } from '@/shared/ui/button';
 import { 
   Database, Trash2, ChevronDown, Check, FileSpreadsheet, 
-  Loader2, AlertCircle, Plus 
+  Loader2, AlertCircle, Plus, 
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { toast } from 'sonner';
+import { refreshPgDataset } from '@/entities/dataset/model/sync-engine';
 
-export function DatasetSwitcher() {
+interface DatasetSwitcherProps {
+  isDisabled?: boolean;
+}
+
+export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
   const [open, setOpen] = useState(false);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null); 
+
   const router = useRouter();
   const pathname = usePathname();
   
@@ -20,15 +28,24 @@ export function DatasetSwitcher() {
   const switchDataset = useDatasetStore(s => s.switchDataset);
   const removeDataset = useDatasetStore(s => s.removeDataset);
   const isSyncing = useDatasetStore(s => s.isSyncing);
-  
+  const setPgStatus = useDatasetStore(s => s.setPgStatus);
+
   const activeDataset = activeId ? datasets[activeId] : null;
   const datasetList = Object.values(datasets);
 
+  const StatusDot = ({ status }: { status?: string }) => {
+    if (status === 'online') return <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />;
+    if (status === 'offline') return <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)] animate-pulse" />;
+    if (status === 'checking') return <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />;
+    return <span className="w-2 h-2 rounded-full bg-slate-400" />;
+  };
+
+
   const handleSwitch = (id: string) => {
+    if (isDisabled) return;
     if (id !== activeId) {
       switchDataset(id);
-      // Если мы на странице, зависящей от данных — обновляем
-      if (['/dashboards', '/hierarchy', '/groups'].some(p => pathname?.startsWith(p))) {
+      if (['/dashboards', '/hierarchy', '/groups'].some(p => pathname?.startsWith(p))) { // В будущем нужно создать динамический список данных
         router.refresh();
       }
       toast.success('Датасет переключен');
@@ -38,6 +55,9 @@ export function DatasetSwitcher() {
 
   const handleRemove = (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isDisabled) {
+      return;
+    }
     const confirmed = window.confirm(
       `Удалить датасет "${name}"?\n\n⚠️ Это удалит только данные. 
       Настройки дашбордов, метрики и группы сохранятся.`
@@ -59,28 +79,51 @@ export function DatasetSwitcher() {
     router.push('/setup');
   };
 
+  const handleRefresh = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefreshingId(id);
+    try {
+      const res = await refreshPgDataset(id);
+      if (res?.success) {
+        // Принудительно перечитываем данные в дашборде без полной перезагрузки страницы
+        if (['/dashboards', '/hierarchy', '/groups'].some(p => pathname?.startsWith(p))) {
+          router.refresh();
+        }
+      }
+    } catch (err) {
+      console.error('[DatasetSwitcher] Refresh failed:', err);
+    } finally {
+      setRefreshingId(null);
+    }
+  };
+
   return (
     <div className="relative w-full">
       {/* Кнопка-триггер */}
       <Button
         variant="outline"
         size="sm"
-        onClick={() => setOpen(!open)}
+        onClick={() => !isDisabled && setOpen(!open)}
+        disabled={isDisabled}    
         className={cn(
           "w-full justify-between gap-2 h-auto py-2.5 px-3",
           "border-slate-200 dark:border-slate-700",
           "bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800",
-          open && "ring-2 ring-indigo-500 border-indigo-300 dark:border-indigo-700"
+          open && "ring-2 ring-indigo-500 border-indigo-300 dark:border-indigo-700",
+          isDisabled && "opacity-60 cursor-not-allowed" 
         )}
       >
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <Database 
-            size={16} 
-            className={cn(
-              "shrink-0 transition-colors",
-              activeDataset ? "text-indigo-600 dark:text-indigo-400" : "text-slate-400"
-            )} 
-          />
+          {activeDataset?.sourceType === 'postgres' && (
+            <div className="relative">
+              <Database size={16} className={cn("shrink-0 transition-colors", 
+                activeDataset.pgStatus === 'offline' ? "text-red-500" : "text-indigo-600 dark:text-indigo-400")} 
+              />
+              <div className="absolute -bottom-0.5 -right-0.5">
+                <StatusDot status={activeDataset.pgStatus} />
+              </div>
+            </div>
+          )}
           <div className="text-left min-w-0 flex-1">
             {isSyncing ? (
               <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
@@ -111,6 +154,11 @@ export function DatasetSwitcher() {
             open && "rotate-180"
           )} 
         />
+        {isDisabled && (
+          <span className="ml-2 text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+            Привязан к дашборду
+          </span>
+        )}
       </Button>
 
       {/* Выпадающий список */}
@@ -159,13 +207,9 @@ export function DatasetSwitcher() {
                     onClick={() => handleSwitch(ds.id)}
                   >
                     {/* Иконка источника */}
-                    <div className={cn(
-                      "p-1.5 rounded-md shrink-0",
-                      ds.sourceType === 'file' 
-                        ? "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400" 
-                        : "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
-                    )}>
+                    <div className="flex items-center gap-2">
                       {ds.sourceType === 'file' ? <FileSpreadsheet size={14} /> : <Database size={14} />}
+                      {ds.sourceType === 'postgres' && <StatusDot status={ds.pgStatus} />}
                     </div>
 
                     {/* Информация */}
@@ -188,6 +232,23 @@ export function DatasetSwitcher() {
                         )}
                       </div>
                     </div>
+    
+
+                    {/* Кнопка обновления */}
+                    {ds.sourceType === 'postgres' && (
+                      <button
+                        onClick={(e) => handleRefresh(ds.id, e)}
+                        disabled={refreshingId === ds.id}
+                        className={cn(
+                          "p-1.5 rounded-md transition-all opacity-0 group-hover:opacity-100",
+                          "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20",
+                          refreshingId === ds.id && "animate-spin cursor-wait"
+                        )}
+                        title="Обновить данные из БД"
+                      >
+                        {refreshingId === ds.id ? <Loader2 size={14} /> : <RefreshCw size={14} />}
+                      </button>
+                    )}
 
                     {/* Кнопка удаления */}
                     <button

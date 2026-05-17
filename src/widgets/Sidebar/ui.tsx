@@ -1,20 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation'; // Добавил useRouter
+import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, Database, Calculator, Layers, GitMerge, 
-  FileSpreadsheet, LucideIcon, X, 
-  Settings,
-  Trash2 // Иконка удаления
+  LucideIcon, X, 
+  Settings
 } from 'lucide-react';
-import { useDatasetStore } from '@/entities/dataset';
-import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
 import { ThemeToggle } from '@/features/ThemeToggle';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
-import { toast } from 'sonner'; // Для уведомлений
-import { DatasetSwitcher } from '@/entities/DatasetSwitcher';
+import DatasetSwitcher from '@/features/SwitchDataset';
 
 type MenuItemLink = { type: 'link'; href: string; label: string; icon: LucideIcon; };
 type MenuItemDivider = { type: 'divider'; };
@@ -27,12 +23,8 @@ interface SidebarProps {
 
 const SidebarComponent = ({ className, onClose }: SidebarProps) => {
   const pathname = usePathname();
-  const router = useRouter(); // Роутер для редиректа
-  const hydrated = useStoreHydration();
-  
-  // Достаем fileName и экшен удаления
-  const fileName = useDatasetStore(s => s.activeDatasetId ? s.datasets[s.activeDatasetId]?.metadata?.sourceName : undefined);
-  const clearDataset = useDatasetStore(s => s.clearAll);
+
+  const isDashboardPage = /^\/dashboards\/[^/]+$/.test(pathname || '');
 
   const menuItems: MenuItem[] = [
     { type: 'link', href: '/dashboards', label: 'Дашборды', icon: LayoutDashboard },
@@ -45,21 +37,6 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
     { type: 'divider' },
     { type: 'link', href: '/settings', label: 'Настройки', icon: Settings },
   ];
-
-  // Хендлер хот-свапа
-  const handleRemoveDataset = () => {
-    // Простой confirm (можно заменить на AlertDialog из shadcn для красоты)
-    const confirmed = window.confirm(
-      'Вы уверены? Это удалит ТЕКУЩИЕ данные, но сохранит все настройки, метрики и дашборды.\n\nЗагрузите новый файл с такой же структурой колонок, чтобы продолжить работу.'
-    );
-
-    if (confirmed) {
-      clearDataset(); // Очищаем только Excel Store
-      toast.success('Датасет отключен. Загрузите новые данные.');
-      router.push('/setup'); // Редирект на загрузку
-      if (onClose) onClose();
-    }
-  };
 
   return (
     <div className={cn(
@@ -84,7 +61,7 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
 
       {/* Статус файла (Hot Swap Zone) */}
       <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/30">
-        <DatasetSwitcher />
+        <DatasetSwitcher isDisabled={isDashboardPage} />
       </div>
 
       {/* Меню */}

@@ -69,6 +69,12 @@ export function ColumnManager() {
                         activeColor="bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-300 shadow-sm"
                         onClick={() => handleTypeChange(col.columnName, 'categorical')}
                       />
+                      <TypeButton
+                        isActive={col.classification === 'date'}
+                        label="Дата"
+                        activeColor="bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-300 shadow-sm"
+                        onClick={() => handleTypeChange(col.columnName, 'date')}
+                      />
                       <TypeButton 
                         isActive={col.classification === 'ignore'} 
                         label="Скрыто" 

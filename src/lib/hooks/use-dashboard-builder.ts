@@ -93,7 +93,6 @@ export function useDashboardBuilder(existingDashboardId?: string) {
   const saveDashboard = useCallback(() => {
     if (!name.trim()) throw new Error('Введите название дашборда');
 
-    // Берем активный датасет. Если редактируем старый — сохраняем его родной datasetId
     const targetDatasetId = activeDatasetId || existingDashboard?.datasetId;
     if (!targetDatasetId) throw new Error("Не выбран датасет");
 
@@ -113,7 +112,6 @@ export function useDashboardBuilder(existingDashboardId?: string) {
       updateDashboard(existingDashboardId, dashboardData);
       return existingDashboardId;
     }
-    // Передаем datasetId вторым аргументом (согласно обновленной сигнатуре стора)
     return addDashboard(dashboardData, targetDatasetId);
   }, [name, description, virtualMetrics, dashboardGroups, existingDashboardId, existingDashboard, addDashboard, updateDashboard, activeDatasetId]);
   return {

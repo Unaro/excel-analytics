@@ -61,7 +61,9 @@ export function TemplateManager() {
                 size="icon" 
                 className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                 onClick={() => {
-                  if(confirm('Удалить этот шаблон?')) {
+                  const isConfirmed = confirm(`Вы уверены, что хотите удалить шаблон "${template.name}"?`);
+
+                  if(isConfirmed) {
                     deleteTemplate(template.id);
                     toast.success('Шаблон удален');
                   }

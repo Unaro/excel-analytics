@@ -34,9 +34,34 @@ function normalizeValue(value: unknown): string {
 function filterDataByHierarchy(data: ExcelRow[], filters: HierarchyFilterValue[]): ExcelRow[] {
   if (filters.length === 0) return data;
   
-  return data.filter((row) =>
-    filters.every((filter) => normalizeValue(row[filter.columnName]) === normalizeValue(filter.value))
-  );
+  return data.filter((row) => {
+      return filters.every((filter) => {
+      const rawVal = row[filter.columnName];
+      // Нормализуем к строке для сравнения
+      const rowStr = rawVal != null ? String(rawVal).trim() : '';
+      const filterVal = filter.value.trim();
+      
+      // Если оператор не указан или 'exact' → старое поведение
+      if (!filter.operator || filter.operator === 'exact') {
+        return rowStr === filterVal;
+      }
+
+      const rowTs = rawVal instanceof Date ? rawVal.getTime() : new Date(rowStr).getTime();
+      const filterTs = new Date(filterVal).getTime();
+      const filterTs2 = filter.value2 ? new Date(filter.value2).getTime() : filterTs;
+
+      if (isNaN(rowTs) || isNaN(filterTs)) return false; // Пропускаем невалидные даты
+
+      switch (filter.operator) {
+        case '>': return rowTs > filterTs;
+        case '<': return rowTs < filterTs;
+        case '>=': return rowTs >= filterTs;
+        case '<=': return rowTs <= filterTs;
+        case 'between': return rowTs >= filterTs && rowTs <= filterTs2;
+        default: return rowStr === filterVal;
+      }
+    });
+  });
 }
 
 /**
@@ -212,7 +237,7 @@ function formatValue(value: number | null, format: string, decimals: number, uni
 }
 
 /**
- * 🟢 ГЛАВНЫЙ SERVER ACTION: Вычисление метрик дашборда
+ * Вычисление метрик дашборда
  */
 export async function computeDashboardMetrics(rawParams: unknown): Promise<DashboardComputationResult> {
   const start = Date.now();
