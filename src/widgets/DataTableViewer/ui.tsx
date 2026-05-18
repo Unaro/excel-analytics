@@ -1,6 +1,6 @@
 // widgets/DataTableViewer/ui.tsx
 'use client';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, ChevronsLeft, ChevronsRight, Loader2, Database } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
@@ -33,14 +33,6 @@ export function DataTableViewer({
 }: DataTableViewerProps) {
   const [page, setPage] = useState(1);
 
-  // Сброс страницы при изменении набора данных
-  useEffect(() => { setPage(1); }, [data.length, data[0]]);
-
-  const resolvedColumns = useMemo(() => {
-    if (columns?.length) return columns;
-    return data.length ? Object.keys(data[0]) : [];
-  }, [columns, data]);
-
   const totalPages = Math.max(1, Math.ceil(data.length / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
 
@@ -49,6 +41,11 @@ export function DataTableViewer({
     const start = (safePage - 1) * pageSize;
     return data.slice(start, start + pageSize);
   }, [data, safePage, pageSize, enablePagination]);
+
+  const resolvedColumns = useMemo(() => {
+    if (columns?.length) return columns;
+    return data.length ? Object.keys(data[0]) : [];
+  }, [columns, data]);
 
   // --- UI ---
   if (loading) {
