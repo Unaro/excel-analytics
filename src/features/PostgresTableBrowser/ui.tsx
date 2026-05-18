@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import type { PgConnectionConfig } from '@/lib/logic/postgres-client';
 
 interface PostgresTableBrowserProps {
-  config: PgConnectionConfig;
+  config: PgConnectionConfig | null;
   onComplete: () => void;
 }
 
@@ -36,6 +36,8 @@ export function PostgresTableBrowser({ config, onComplete }: PostgresTableBrowse
       setLoading(false);
     });
   }, [config]);
+
+  if (!config) return
 
   const handleSelectTable = async (schema: string, table: string) => {
     setSelectedTable({ schema, table });

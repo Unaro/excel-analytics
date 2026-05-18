@@ -37,26 +37,25 @@ export default function SetupPage() {
     activeId ? datasets[activeId] : null, 
     [activeId, datasets]
   );
-  const hasActiveData = !!activeDataset?.rows && activeDataset.rows.length > 0;
+  const hasActiveData = !!activeDataset && !!activeDataset?.rows && activeDataset.rows.length > 0;
   
   const [step, setStep] = useState<'manager' | 'upload' | 'columns'>('manager');
   const [sourceType, setSourceType] = useState<'file' | 'postgres'>('file');
   const [pgConfig, setPgConfig] = useState<PgConnectionConfig | null>(null);
   const [pgStep, setPgStep] = useState<'connection' | 'browser'>('connection');
 
-
   useEffect(() => {
-    if (hydrated) {
-      if (activeId && !datasets[activeId]) {
-        setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
-        return;
-      }
-      
-      if (activeId && hasActiveData) {
-        setStep('columns');
-      } else {
-        setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
-      }
+    if (!hydrated) return;
+    
+    if (activeId && !datasets[activeId]) {
+      setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
+      return;
+    }
+    
+    if (activeId && hasActiveData) {
+      setStep('columns');
+    } else {
+      setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
     }
   }, [hydrated, activeId, hasActiveData, datasets]);
 
@@ -76,12 +75,6 @@ export default function SetupPage() {
       }
     }
   }, [activeId, datasets, removeDataset, switchDataset]);
-
-  useEffect(() => {
-    if (hydrated && activeId && !datasets[activeId]) {
-      setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
-    }
-  }, [hydrated, activeId, datasets]);
 
   if (!hydrated) return <LoadingScreen message="Загрузка страницы настройки..." />;
 
@@ -227,7 +220,7 @@ export default function SetupPage() {
               pgStep === 'connection' ? (
                 <PostgresConnectionForm onConnected={handlePgConnected} />
               ) : (
-                pgConfig && <PostgresTableBrowser config={pgConfig} onComplete={handlePgSyncComplete} />
+                <PostgresTableBrowser config={pgConfig} onComplete={handlePgSyncComplete} />
               )
             )}
           </div>

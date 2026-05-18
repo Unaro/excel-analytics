@@ -85,7 +85,7 @@ function SortableLevelItem({ level, index, onDelete }: { level: HierarchyLevel, 
 
 export function HierarchyBuilder() {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
-  
+
   const addLevelRaw = useHierarchyStore(s => s.addLevel);
   const deleteLevelRaw = useHierarchyStore(s => s.deleteLevel);
   const reorderLevelsRaw = useHierarchyStore(s => s.reorderLevels);
@@ -97,27 +97,6 @@ export function HierarchyBuilder() {
   const configs = useColumnConfigStore(useShallow(s => 
     activeDatasetId ? (s.configsByDataset?.[activeDatasetId] || []) : []
   ));
-
-  if (!activeDatasetId) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800">
-        <p className="text-sm font-medium">Выберите датасет для настройки иерархии</p>
-      </div>
-    );
-  }
-
-  const addLevel = (level: Omit<HierarchyLevel, 'id' | 'order'>) => {
-    addLevelRaw(activeDatasetId, level);
-  };
-  
-  
-  const deleteLevel = (id: string) => {
-    deleteLevelRaw(activeDatasetId, id);
-  };
-  
-  const reorderLevels = (newLevels: HierarchyLevel[]) => {
-    reorderLevelsRaw(activeDatasetId, newLevels);
-  };
 
   const categoricalColumns = useMemo(() => 
     configs.filter((c: ColumnConfig) => c.classification === 'categorical'), 
@@ -131,13 +110,32 @@ export function HierarchyBuilder() {
     [categoricalColumns, levels]
   );
 
-
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  if (!activeDatasetId) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-slate-500 bg-slate-50 dark:bg-slate-900 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800">
+        <p className="text-sm font-medium">Выберите датасет для настройки иерархии</p>
+      </div>
+    );
+  }
+
+  const addLevel = (level: Omit<HierarchyLevel, 'id' | 'order'>) => {
+    addLevelRaw(activeDatasetId, level);
+  };
+  
+  const deleteLevel = (id: string) => {
+    deleteLevelRaw(activeDatasetId, id);
+  };
+  
+  const reorderLevels = (newLevels: HierarchyLevel[]) => {
+    reorderLevelsRaw(activeDatasetId, newLevels);
+  };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -146,7 +144,6 @@ export function HierarchyBuilder() {
       const oldIndex = levels.findIndex((l) => l.id === active.id);
       const newIndex = levels.findIndex((l) => l.id === over.id);
       
-      // arrayMove - утилита dnd-kit для перемещения элемента в массиве
       reorderLevels(arrayMove(levels, oldIndex, newIndex));
     }
   };

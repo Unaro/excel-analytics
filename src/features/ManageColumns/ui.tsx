@@ -9,6 +9,9 @@ import { useShallow } from 'zustand/react/shallow';
 export function ColumnManager() {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
 
+  const configs = useColumnConfigStore(useShallow(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []));  const updateColumn = useColumnConfigStore((s) => s.updateColumn);
+  const hasData = useDatasetStore((s) => s.hasData());
+
   if (!activeDatasetId) {
     return (
       <div className="text-center py-8 text-slate-400">
@@ -16,9 +19,6 @@ export function ColumnManager() {
       </div>
     );
   }
-
-  const configs = useColumnConfigStore(useShallow(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []));  const updateColumn = useColumnConfigStore((s) => s.updateColumn);
-  const hasData = useDatasetStore((s) => s.hasData());
 
   if (!hasData || configs.length === 0) return null;
 

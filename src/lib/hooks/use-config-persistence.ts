@@ -13,7 +13,6 @@ import { DatasetConfigExport } from '@/types';
 export function useConfigPersistence() {
   const router = useRouter();
 
-
   const exportDatasetConfig = useCallback((datasetId: string) => {
     const payload: DatasetConfigExport = {
       version: 1,

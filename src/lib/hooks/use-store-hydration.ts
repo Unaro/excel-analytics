@@ -30,7 +30,6 @@ export function useStoreHydration() {
 
     const hydrateAll = async () => {
       try {
-        // ✅ Promise.all корректно обрабатывает как void, так и Promise<void>
         await Promise.all(
           PERSISTED_STORES.map((store) => store.persist.rehydrate())
         );
