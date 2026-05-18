@@ -1,7 +1,7 @@
 'use client';
 import { Suspense, use, useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useDashboardCalculation } from '@/lib/hooks/use-dashboard-calculation';
 import { useHierarchyTree } from '@/lib/hooks/use-hierarchy-tree';
 import { ChartsSection } from '@/widgets/ChartsSection';
@@ -10,62 +10,78 @@ import { useDatasetStore } from '@/entities/dataset';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
 import { HierarchyTree } from '@/widgets/HierarchyFilter';
 import {
-  ArrowLeft, Edit, RotateCw, Filter, X, Layers, Loader2, Database, AlertCircle
+  ArrowLeft, Edit, RotateCw, RefreshCw, Filter, X, Layers, Loader2, Database, AlertCircle, FileSpreadsheet
 } from 'lucide-react';
 import { MetricCell } from '@/entities/metric/ui/metric-cell';
-import { MetricsSelector } from '@/features/ConfigureTableMetric/metrics-selector';
 import { MetricConfigPopover } from '@/features/ConfigureTableMetric';
 import { AddKPIDialog } from '@/features/AddKpiWidget';
 import { KPIGrid } from '@/widgets/KpiGrid';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { Button } from '@/shared/ui/button';
-import { useRouter } from 'next/navigation';
 import { useShallow } from 'zustand/react/shallow';
+import { toast } from 'sonner';
+import { refreshPgDataset } from '@/entities/dataset/model/sync-engine';
 
 function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
   const { id: dashboardId } = use(params);
   const router = useRouter();
-  const pathname = usePathname();
   const hydrated = useStoreHydration();
-
-
+  
   const dashboard = useDashboardStore(
-      useShallow(s => s.dashboards.find(d => d.id === dashboardId))
+    useShallow(s => s.dashboards.find(d => d.id === dashboardId))
   );
   const dashboardDatasetId = useDashboardStore(s => s.getDashboard(dashboardId)?.datasetId);
-  
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const switchDataset = useDatasetStore(s => s.switchDataset);
+  const isSyncing = useDatasetStore(s => s.isSyncing);
 
   useEffect(() => {
     if (!hydrated) return;
     if (!dashboard?.datasetId) return;
     if (activeDatasetId === dashboard.datasetId) return;
-    
     switchDataset(dashboard.datasetId);
   }, [hydrated, dashboard?.datasetId, activeDatasetId, switchDataset]);
 
-  const boundDataset = useDatasetStore(useShallow(s => 
+  const boundDataset = useDatasetStore(useShallow(s =>
     dashboardDatasetId ? s.datasets[dashboardDatasetId] : null
   ));
   const hasData = !!boundDataset?.rows && boundDataset.rows.length > 0;
-  const isSyncing = useDatasetStore(s => s.isSyncing);
-  const sourceType = boundDataset?.sourceType;
+  
+
+  const isPgSource = boundDataset?.sourceType === 'postgres';
+  const pgStatus = boundDataset?.pgStatus;
+  const [refreshingDataset, setRefreshingDataset] = useState(false);
+
+  const handleRefreshDataset = async () => {
+    if (!dashboardDatasetId || !isPgSource) return;
+    setRefreshingDataset(true);
+    try {
+      const res = await refreshPgDataset(dashboardDatasetId);
+      if (res?.success) {
+        router.refresh(); 
+      } else {
+        toast.error('Не удалось обновить датасет');
+      }
+    } catch (err) {
+      console.error('[Dashboard] Dataset refresh failed:', err);
+      toast.error('Ошибка синхронизации');
+    } finally {
+      setRefreshingDataset(false);
+    }
+  };
 
   const { currentPath } = useHierarchyTree(dashboardId);
   const { result, isComputing, error, recalculate } = useDashboardCalculation(dashboardId);
-  
   const [hiddenMetricIds, setHiddenMetricIds] = useState<string[]>([]);
+  
   const toggleMetricVisibility = (id: string) => {
     setHiddenMetricIds(prev => prev.includes(id) ? prev.filter(mId => mId !== id) : [...prev, id]);
   };
 
-  const visibleMetrics = useMemo(() => 
+  const visibleMetrics = useMemo(() =>
     result?.virtualMetrics.filter(vm => !hiddenMetricIds.includes(vm.id)) || [],
     [result?.virtualMetrics, hiddenMetricIds]
   );
-
-  const isDashboardPage = /^\/dashboards\/[^/]+$/.test(pathname || '');
 
   if (!hydrated) return <LoadingScreen message="Загрузка системы..." />;
   if (!dashboard) {
@@ -76,7 +92,6 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
       </div>
     );
   }
-
   if (!hasData && dashboard.datasetId) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-950 p-6">
@@ -86,7 +101,7 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
           </div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Датасет недоступен</h2>
           <p className="text-sm text-gray-500 dark:text-slate-400 mb-6">
-            Дашборд <strong>&quot;{dashboard.name}&quot;</strong> привязан к датасету, который был удален или не загружен.
+            Дашборд <strong>"{dashboard.name}"</strong> привязан к датасету, который был удален или не загружен.
           </p>
           <div className="flex flex-col gap-3">
             <Link href="/setup" className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
@@ -112,8 +127,11 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
             <p className="text-sm text-gray-500 dark:text-slate-400">{dashboard.description || 'Аналитическая таблица'}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="text-xs font-mono text-gray-400 dark:text-slate-500 mr-2">
+
+        {/* Правая часть хедера: Статус, Контролы, Обновления */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {/* Статус вычисления дашборда */}
+          <div className="text-xs font-mono text-gray-400 dark:text-slate-500 mr-1">
             {isComputing ? (
               <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 animate-pulse">
                 <Loader2 size={12} className="animate-spin" /> Вычисление...
@@ -122,32 +140,52 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
               <span>Обновлено: {new Date(result.computedAt).toLocaleTimeString()}</span>
             ) : null}
           </div>
-          {isSyncing && (
-            <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 animate-pulse text-xs">
-              <Loader2 size={12} className="animate-spin" /> Синхронизация...
-            </span>
+
+          {/* Бейдж статуса датасета + Кнопка обновления (только для PG) */}
+          {boundDataset && (
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+              {isPgSource ? (
+                <>
+                  <Database size={14} className={`shrink-0 ${pgStatus === 'offline' ? 'text-red-500' : 'text-indigo-600 dark:text-indigo-400'}`} />
+                  <span className={`w-2 h-2 rounded-full ${
+                    pgStatus === 'online' ? 'bg-emerald-500' :
+                    pgStatus === 'offline' ? 'bg-red-500 animate-pulse' :
+                    'bg-amber-400 animate-ping'
+                  }`} />
+                  <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wide">
+                    {boundDataset.rows?.length ?? 0} строк
+                  </span>
+                </>
+              ) : (
+                <>
+                  <FileSpreadsheet size={14} className="text-indigo-600 dark:text-indigo-400" />
+                  <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wide">Excel</span>
+                </>
+              )}
+
+              {isPgSource && (
+                <button
+                  onClick={handleRefreshDataset}
+                  disabled={refreshingDataset || isSyncing}
+                  className="ml-1 p-1.5 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Обновить данные из PostgreSQL"
+                >
+                  <RefreshCw size={13} className={refreshingDataset ? 'animate-spin' : ''} />
+                </button>
+              )}
+            </div>
           )}
-          {sourceType && !isSyncing && (
-            <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-              {sourceType === 'file' ? 'Excel' : 'PostgreSQL'}
-            </span>
-          )}
+
+          {/* Остальные контролы */}
           <AddKPIDialog dashboardId={dashboardId} />
           <button
             onClick={recalculate}
             disabled={isComputing}
             className="p-2 text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-md transition disabled:opacity-50"
-            title="Обновить данные"
+            title="Пересчитать показатели"
           >
             <RotateCw size={18} className={isComputing ? 'animate-spin' : ''} />
           </button>
-          {result && (
-            <MetricsSelector
-              metrics={result.virtualMetrics}
-              hiddenMetricIds={hiddenMetricIds}
-              onToggleMetric={toggleMetricVisibility}
-            />
-          )}
           <Link
             href={`/dashboards/${dashboardId}/edit`}
             className="flex items-center gap-2 bg-slate-900 dark:bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-slate-800 dark:hover:bg-indigo-700 transition text-sm font-medium shadow-sm"
@@ -191,7 +229,7 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
           )}
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 p-4 rounded-xl flex items-start gap-3">
-              <div className="p-1 bg-red-100 dark:bg-red-900/50 rounded-full"><X size={16} /></div>
+              <div className="p-1 bg-red-100 dark:bg-red-900/50 rounded-full"> <X size={16} /> </div>
               <div>
                 <h3 className="font-semibold text-sm">Ошибка расчета</h3>
                 <p className="text-sm mt-1 opacity-90">{error}</p>
@@ -212,14 +250,14 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
                 <thead className="bg-gray-50 dark:bg-slate-800/50">
                   <tr>
                     <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sticky left-0 bg-gray-50 dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 z-10 w-[250px] shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)]">
-                      <div className="flex items-center gap-2"><Layers size={14} className="text-indigo-500" />Показатель</div>
+                      <div className="flex items-center gap-2"> <Layers size={14} className="text-indigo-500" />Показатель</div>
                     </th>
                     {visibleMetrics.map((vmResult) => {
                       const liveMetric = dashboard?.virtualMetrics.find(m => m.id === vmResult.id) || vmResult;
                       return (
                         <th key={liveMetric.id} scope="col" className="px-6 py-4 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[150px] group/th relative">
                           <div className="flex justify-end gap-2 items-center">
-                            <div className="mt-0.5"><MetricConfigPopover dashboardId={dashboardId} metric={liveMetric} /></div>
+                            <div className="mt-0.5"> <MetricConfigPopover dashboardId={dashboardId} metric={liveMetric} /> </div>
                             <div className="flex flex-col items-end">
                               <span>{liveMetric.name}</span>
                               {liveMetric.unit && <span className="text-[10px] text-slate-400 lowercase bg-slate-100 dark:bg-slate-800 px-1.5 rounded mt-0.5">{liveMetric.unit}</span>}
@@ -235,7 +273,7 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
                 </thead>
                 <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-100 dark:divide-slate-800/50">
                   {!result && !isComputing && (
-                    <tr><td colSpan={100} className="px-6 py-20 text-center text-slate-400 dark:text-slate-600"><div className="flex flex-col items-center gap-2"><Filter size={32} className="opacity-20" /><span>Данные не рассчитаны</span></div></td></tr>
+                    <tr> <td colSpan={100} className="px-6 py-20 text-center text-slate-400 dark:text-slate-600"> <div className="flex flex-col items-center gap-2"> <Filter size={32} className="opacity-20" /> <span>Данные не рассчитаны</span> </div> </td> </tr>
                   )}
                   {result?.groups.map((group) => (
                     <tr key={group.groupId} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 group">
