@@ -3,31 +3,32 @@ import * as XLSX from 'xlsx';
 import type { SheetData, DatasetMetadata, DatasetRow, ColumnStatistics } from '@/types';
 
 /**
- * Безопасное преобразование значения ячейки
- * - Пустые строки/null → null
- * - Числовые строки (с запятой или точкой) → number
- * - Остальное → trimmed string
+ * Безопасное преобразование значения ячейки с полной поддержкой float
  */
 function parseCellValue(raw: unknown): string | number | boolean | null {
   if (raw === undefined || raw === null) return null;
-  
   if (raw instanceof Date) {
     const iso = raw.toISOString().split('T')[0];
     return isNaN(raw.getTime()) ? null : iso;
   }
-  
+  // Даты в строковом формате
   if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
     return raw.split('T')[0];
   }
+  if (typeof raw === 'number') return isFinite(raw) ? raw : null;
+  if (typeof raw === 'boolean') return raw;
 
-  if (typeof raw === 'number' || typeof raw === 'boolean') return raw;
   const str = String(raw).trim();
   if (str === '') return null;
-  const normalized = str.replace(',', '.');
-  if (/^-?\d+(\.\d+)?$/.test(normalized)) {
+
+
+  const normalized = str.replace(/\s/g, '').replace(',', '.');
+
+  if (/^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(normalized)) {
     const num = Number(normalized);
     if (!isNaN(num) && isFinite(num)) return num;
   }
+
   return str;
 }
 
@@ -79,7 +80,7 @@ export async function parseExcelFile(
 }
 
 /**
- * Сбор статистики по колонке (для авто-классификации типов)
+ * Сбор статистики по колонке (обновлен для float)
  */
 export async function getColumnStatistics(
   data: DatasetRow[],
@@ -88,10 +89,20 @@ export async function getColumnStatistics(
   const values = data.map((r) => r[columnName]).filter((v) => v != null && v !== '');
   if (values.length === 0) return null;
 
-  const nums = values.filter((v) => typeof v === 'number') as number[];
-  const strs = values.filter((v) => typeof v === 'string');
+  const nums = values
+    .filter((v): v is number => typeof v === 'number')
+    .concat(
+      values.filter((v): v is string => typeof v === 'string')
+        .map(v => {
+          const n = Number(v.replace(',', '.'));
+          return isFinite(n) ? n : null;
+        })
+        .filter((n): n is number => n !== null)
+    );
+
+  const strs = values.filter((v) => typeof v === 'string') as string[];
   const bools = values.filter((v) => typeof v === 'boolean');
-  const unique = new Set(values);
+  const unique = new Set(values.map(String));
 
   const stats: ColumnStatistics = {
     columnName,
@@ -101,13 +112,9 @@ export async function getColumnStatistics(
     numericCount: nums.length,
     textCount: strs.length,
     booleanCount: bools.length,
-    dateCount: 0, // Даты пока не парсятся отдельно, можно расширить
+    dateCount: 0,
     sampleValues: Array.from(unique).slice(0, 10),
-    min: undefined,
-    max: undefined,
-    avg: undefined,
-    sum: undefined,
-    median: undefined,
+    min: undefined, max: undefined, avg: undefined, sum: undefined, median: undefined,
   };
 
   if (nums.length > 0) {
@@ -119,6 +126,5 @@ export async function getColumnStatistics(
     const mid = Math.floor(sorted.length / 2);
     stats.median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
   }
-
   return stats;
 }

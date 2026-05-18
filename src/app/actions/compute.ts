@@ -29,6 +29,26 @@ function normalizeValue(value: unknown): string {
 }
 
 /**
+ * Безопасное преобразование значения в число с поддержкой float.
+ * Обрабатывает строки вида "12.5" и "12,5" (RU формат).
+ */
+function parseToFloat(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return isFinite(value) ? value : null;
+  
+  if (typeof value === 'string') {
+    // Заменяем запятую на точку для корректного парсинга RU формата
+    const normalized = value.trim().replace(',', '.');
+    if (normalized === '') return null;
+    const num = parseFloat(normalized);
+    return isFinite(num) ? num : null;
+  }
+  
+  return null;
+}
+
+
+/**
  * Фильтрация данных по иерархическим фильтрам
  */
 function filterDataByHierarchy(data: ExcelRow[], filters: HierarchyFilterValue[]): ExcelRow[] {
@@ -91,19 +111,20 @@ function computeAggregateMetric(
   const fn = template.aggregateFunction as AggregateFn | undefined;
   const field = template.aggregateField;
   if (!fn || !field) return null;
-
   const binding = metric.fieldBindings.find((fb) => fb.fieldAlias === field);
   if (!binding) return null;
-
   const col = binding.columnName;
-  // COUNT считает все не-null значения независимо от типа
+
   if (fn === 'COUNT') {
-    return data.filter((r) => r[col] != null && r[col] !== '').length;
+    return data.filter((r) => {
+      const val = r[col];
+      return val != null && String(val).trim() !== '';
+    }).length;
   }
 
   const nums = data
-    .map((r) => r[col])
-    .filter((v) => v != null && typeof v === 'number') as number[];
+    .map((r) => parseToFloat(r[col]))
+    .filter((v) => v !== null) as number[];
 
   if (nums.length === 0) return null;
 
@@ -132,31 +153,28 @@ function computeCalculatedMetric(
   metricValues: Map<string, number | null>
 ): number | null {
   if (!template.formula) return null;
-
   try {
     validateFormula(template.formula);
-
     const scope: Record<string, number> = {};
-
-    // Поля агрегируются как SUM (архитектурное ограничение, можно расширить)
+    
     for (const fb of metric.fieldBindings) {
       const nums = data
-        .map((r) => r[fb.columnName])
-        .filter((v) => v != null && typeof v === 'number') as number[];
+        .map((r) => parseToFloat(r[fb.columnName]))
+        .filter((v) => v !== null) as number[];
+      
       scope[fb.fieldAlias] = nums.reduce((a, b) => a + b, 0);
     }
-
-    // Зависимости от других метрик
+    
     for (const mb of metric.metricBindings) {
       scope[mb.metricAlias] = metricValues.get(mb.metricId) ?? 0;
     }
-
     return safeEvaluate(template.formula, scope);
   } catch (error) {
     console.error(`[compute] Formula error in metric ${metric.id}:`, error);
     return null;
   }
 }
+
 
 /**
  * Вычисление метрик одной группы

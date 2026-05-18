@@ -20,6 +20,7 @@ import {
 import { cn } from '@/shared/lib/utils';
 import type { PgConnectionConfig } from '@/lib/logic/postgres-client';
 import {useConfigPersistence} from '@/lib/hooks/use-config-persistence';
+import { RawDataViewer } from '@/widgets/RawDataViewer';
 
 export default function SetupPage() {
 
@@ -79,7 +80,6 @@ export default function SetupPage() {
   if (!hydrated) return <LoadingScreen message="Загрузка страницы настройки..." />;
 
   const handleFileSuccess = () => {
-    // toast.success('Файл успешно загружен');
     setStep('columns');
   };
 
@@ -226,25 +226,44 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* НАСТРОЙКА КОЛОНОК */}
+        {/* БЛОК НАСТРОЙКИ КОЛОНОК */}
         {step === 'columns' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {isSyncing ? (
-              <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-500">
-                <Loader2 className="animate-spin text-indigo-500" size={32} />
-                <span className="text-sm">Синхронизация данных...</span>
-              </div>
-            ) : (
-              <>
-                <ColumnManager />
-                <div className="flex justify-end pt-4 border-t dark:border-slate-800">
-                  <Button onClick={() => router.push('/hierarchy')} className="bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700">
-                    Далее: Настройка иерархии →
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
+            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {isSyncing ? (
+                    <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-500">
+                        <Loader2 className="animate-spin text-indigo-500" size={32} />
+                        <span className="text-sm">Синхронизация данных...</span>
+                    </div>
+                ) : (
+                    <>
+                        <div>
+                            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">
+                                1. Типы данных
+                            </h2>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                                Укажите, как система должна интерпретировать каждую колонку.
+                            </p>
+                            <ColumnManager />
+                        </div>
+
+                        <div className="pt-6 border-t border-slate-100 dark:border-slate-800">
+                            <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">
+                                2. Проверка данных
+                            </h2>
+                            <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                                Убедитесь, что данные загрузились корректно.
+                            </p>
+                            <RawDataViewer />
+                        </div>
+
+                        <div className="flex justify-end pt-4 border-t dark:border-slate-800">
+                            <Button onClick={() => router.push('/hierarchy')} className="bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700">
+                                Далее: Настройка иерархии →
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </div>
         )}
       </Card>
     </div>

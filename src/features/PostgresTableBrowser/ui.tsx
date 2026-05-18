@@ -7,6 +7,7 @@ import { Card } from '@/shared/ui/card';
 import { Table, Loader2, Check, Database, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PgConnectionConfig } from '@/lib/logic/postgres-client';
+import { DataTableViewer } from '@/widgets/DataTableViewer';
 
 interface PostgresTableBrowserProps {
   config: PgConnectionConfig | null;
@@ -77,6 +78,7 @@ export function PostgresTableBrowser({ config, onComplete }: PostgresTableBrowse
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* ЛЕВАЯ КОЛОНКА: Список таблиц */}
       <Card className="p-4 lg:col-span-1 max-h-[500px] overflow-y-auto custom-scrollbar space-y-2">
         <h3 className="font-semibold text-sm text-slate-900 dark:text-white mb-3 flex items-center gap-2">
           <Database size={16} /> Таблицы
@@ -100,44 +102,33 @@ export function PostgresTableBrowser({ config, onComplete }: PostgresTableBrowse
           </button>
         ))}
       </Card>
-
-      <Card className="p-4 lg:col-span-2 flex flex-col min-h-[500px]">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-semibold text-sm text-slate-900 dark:text-white">
-            Предпросмотр {selectedTable ? `(${selectedTable.schema}.${selectedTable.table})` : ''}
-          </h3>
-          {selectedTable && (
-            <Button onClick={handleSync} disabled={syncing} className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white">
-              {syncing ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              {syncing ? 'Синхронизация...' : 'Синхронизировать датасет'}
-            </Button>
-          )}
-        </div>
-
-        {!selectedTable && <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">Выберите таблицу слева для предпросмотра</div>}
-        {selectedTable && previewLoading && <div className="flex-1 flex items-center justify-center"><Loader2 className="animate-spin text-slate-400" size={24} /></div>}
-        {selectedTable && !previewLoading && previewRows.length > 0 && (
-          <div className="flex-1 overflow-auto custom-scrollbar border rounded-lg dark:border-slate-800">
-            <table className="min-w-full text-xs divide-y divide-slate-200 dark:divide-slate-800">
-              <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 z-10">
-                <tr>{Object.keys(previewRows[0]).map(col => <th key={col} className="px-3 py-2 text-left font-medium text-slate-500 dark:text-slate-400">{col}</th>)}</tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-950">
-                {previewRows.slice(0, 20).map((row, i) => (
-                    <tr key={i}>
-                        {Object.values(row).map((val, j) => (
-                        <td key={j} className="px-3 py-1.5 text-slate-700 dark:text-slate-300 truncate max-w-[150px]">
-                            {val != null ? String(val) : <span className="text-slate-300">null</span>}
-                        </td>
-                        ))}
-                    </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {selectedTable && !previewLoading && previewRows.length === 0 && <div className="flex-1 flex items-center justify-center text-slate-400 text-sm">Таблица пуста</div>}
-      </Card>
+      
+      {/* ПРАВАЯ КОЛОНКА: Универсальный просмотрщик */}
+      <div className="lg:col-span-2">
+        <DataTableViewer
+          data={previewRows}
+          columns={selectedTable ? Object.keys(previewRows[0] || {}) : []}
+          title={selectedTable ? `Просмотр: ${selectedTable.schema}.${selectedTable.table}` : 'Предпросмотр'}
+          loading={previewLoading}
+          error={null}
+          emptyMessage="Выберите таблицу или данные отсутствуют"
+          pageSize={20}
+          enablePagination={false}
+          actions={
+            selectedTable && !previewLoading && (
+              <Button 
+                onClick={handleSync} 
+                disabled={syncing} 
+                size="sm" 
+                className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {syncing ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                {syncing ? 'Синхронизация...' : 'Синхронизировать'}
+              </Button>
+            )
+          }
+        />
+      </div>
     </div>
   );
 }

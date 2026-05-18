@@ -127,48 +127,43 @@ export function validateFormula(formula: string): void {
   }
 }
 
+
 /**
  * Безопасное вычисление формулы
- * 
+ *
  * @param formula - Формула для вычисления
  * @param scope - Объект с переменными
  * @returns Результат вычисления или null при ошибке
  */
 export function safeEvaluate(
-  formula: string, 
-  scope: Record<string, number | null>
+  formula: string,
+  scope: Record<string, number | null | string>
 ): number | null {
   try {
-    // Сначала валидация
     validateFormula(formula);
     
-    // Проверяем, что все значения в scope — числа или null
-    for (const [key, value] of Object.entries(scope)) {
-      if (value !== null && typeof value !== 'number') {
-        console.warn(`Значение переменной "${key}" должно быть числом, получено: ${typeof value}`);
-      }
-    }
-    
-    // Создаём безопасный scope только с числами
     const safeScope: Record<string, number> = {};
     for (const [key, value] of Object.entries(scope)) {
-      if (typeof value === 'number' && !isNaN(value) && isFinite(value)) {
-        safeScope[key] = value;
+      let numValue = value;
+      
+      if (typeof value === 'string') {
+        numValue = parseFloat(value.replace(',', '.'));
+      }
+
+      if (typeof numValue === 'number' && !isNaN(numValue) && isFinite(numValue)) {
+        safeScope[key] = numValue;
       } else {
         safeScope[key] = 0;
       }
     }
-    
-    // Вычисляем только если всё безопасно
+
     const result = safeMath.evaluate(formula, safeScope);
-    
     if (typeof result === 'number') {
       if (!isFinite(result) || isNaN(result)) {
         return null;
       }
       return result;
     }
-    
     return null;
   } catch (error) {
     console.error('Formula evaluation error:', error);

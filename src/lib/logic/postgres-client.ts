@@ -1,3 +1,4 @@
+// lib/logic/postgres-client.ts
 import postgres from 'postgres';
 import type { DatasetRow } from '@/types';
 
@@ -10,16 +11,39 @@ export interface PgConnectionConfig {
   ssl?: boolean;
 }
 
+/**
+ * Преобразует строку в число с поддержкой float
+ */
+function tryParseFloat(val: string): number | null {
+  const normalized = val.replace(/\s/g, '').replace(',', '.');
+  if (/^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(normalized)) {
+    const num = Number(normalized);
+    return isFinite(num) ? num : null;
+  }
+  return null;
+}
+
 export function normalizePgRow(row: Record<string, unknown>): DatasetRow {
   const normalized: DatasetRow = {};
   for (const [key, value] of Object.entries(row)) {
-    if (value === null || value === undefined) normalized[key] = null;
-    else if (typeof value === 'number' || typeof value === 'boolean') normalized[key] = value;
-    else if (typeof value === 'bigint') normalized[key] = Number(value);
-    else if (value instanceof Date) normalized[key] = value.toISOString();
-    else {
+    if (value === null || value === undefined) {
+      normalized[key] = null;
+    } else if (typeof value === 'number') {
+      normalized[key] = isFinite(value) ? value : null;
+    } else if (typeof value === 'boolean') {
+      normalized[key] = value;
+    } else if (typeof value === 'bigint') {
+      normalized[key] = Number(value);
+    } else if (value instanceof Date) {
+      normalized[key] = value.toISOString();
+    } else {
       const str = String(value).trim();
-      normalized[key] = str === '' ? null : str;
+      if (str === '') {
+        normalized[key] = null;
+      } else {
+        const num = tryParseFloat(str);
+        normalized[key] = num !== null ? num : str;
+      }
     }
   }
   return normalized;
