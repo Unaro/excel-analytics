@@ -6,7 +6,8 @@ import { useGroupBuilder } from '@/lib/hooks/use-group-builder';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { 
   Save, Trash2, FunctionSquare, 
-  Calculator, Filter, Search, Hash 
+  Calculator, Filter, Search, Hash, 
+  Database
 } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -18,6 +19,7 @@ import { TemplateForm } from '@/features/CreateMetricTemplate';
 import { SearchableSelect } from '@/shared/ui/searchable-select';
 import { cn } from '@/shared/lib/utils';
 import { toast } from 'sonner';
+import { useDatasetStore } from '@/entities/dataset';
 
 export function GroupBuilder({ groupId }: { groupId?: string }) {
   const router = useRouter();
@@ -28,9 +30,29 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
     availableTemplates, availableColumns,
     columnSearchQuery, setColumnSearchQuery, updateMetricUnit, updateMetricCustomName
   } = useGroupBuilder(groupId);
+  const hasDataset = !!useDatasetStore(s => s.activeDatasetId);
 
   const templates = useMetricTemplateStore(s => s.templates);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+
+  if (!hasDataset) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center space-y-4 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-slate-50/50 dark:bg-slate-900/30">
+        <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center text-amber-600 dark:text-amber-400">
+          <Database size={28} />
+        </div>
+        <div className="space-y-1">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Датасет не выбран</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+            Для создания или редактирования группы метрик необходимо сначала выбрать активный датасет. 
+            Перейдите в раздел управления данными, чтобы загрузить или выбрать набор данных.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
 
   const handleSave = () => {
     try {

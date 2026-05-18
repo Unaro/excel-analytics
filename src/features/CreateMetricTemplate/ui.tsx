@@ -12,7 +12,7 @@ import { VisualFormulaBuilder } from '@/features/BuildFormula';
 
 interface TemplateFormProps {
   onCancel: () => void;
-  onSuccess: (newTemplateId: string) => void; // Возвращаем ID созданного шаблона
+  onSuccess: (newTemplateId: string) => void;
 }
 
 export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
@@ -124,7 +124,7 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
             initialFormula={formula}
             onChange={(newVal: string) => {
               setFormula(newVal);
-              validate(newVal); // Валидация на лету
+              validate(newVal);
             }}
           />
 

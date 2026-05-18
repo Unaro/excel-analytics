@@ -1,12 +1,14 @@
 'use client';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { FieldBinding, GroupMetric, MetricBinding } from '@/types';
 import { nanoid } from 'nanoid';
 import { extractVariables } from '@/shared/lib/utils/formula';
-import { useDatasetStore } from '@/entities/dataset';
+import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
+
+const EMPTY_COLUMNS: ColumnConfig[] = []
 
 export interface FormMetricState {
   templateId: string;
@@ -23,7 +25,9 @@ export function useGroupBuilder(existingGroupId?: string) {
   const { addGroup, updateGroup, getGroup } = useIndicatorGroupStore();
   const templates = useMetricTemplateStore((s) => s.templates);
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
-  const columns = useColumnConfigStore(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []);
+  const columns = useColumnConfigStore(s => 
+    activeDatasetId ? (s.configsByDataset[activeDatasetId] ?? EMPTY_COLUMNS) : EMPTY_COLUMNS
+  );
 
   const [name, setName] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState<FormMetricState[]>([]);
@@ -31,20 +35,24 @@ export function useGroupBuilder(existingGroupId?: string) {
   const [columnSearchQuery, setColumnSearchQuery] = useState('');
 
   // --- 1. ВЫЧИСЛЕНИЕ СПИСКА КОЛОНОК ---
-  const filteredColumns = columns.filter(c => {
-    const isUsed = selectedMetrics.some(m => Object.values(m.bindings).includes(c.columnName));
-    if (isUsed) return true;
-    if (!columnSearchQuery) return true;
-    const query = columnSearchQuery;
-    return (
-      c.displayName.includes(query) ||
-      c.columnName.includes(query) ||
-      c.alias.includes(query)
-    );
-  });
+  const filteredColumns = useMemo(() => {
+    if (!activeDatasetId || columns === EMPTY_COLUMNS) return [];
+    return columns.filter(c => {
+      const isUsed = selectedMetrics.some(m => Object.values(m.bindings).includes(c.columnName));
+      if (isUsed) return true;
+      if (!columnSearchQuery) return true;
+      const query = columnSearchQuery;
+      return (
+        c.displayName.includes(query) ||
+        c.columnName.includes(query) ||
+        c.alias.includes(query)
+      );
+    });
+  }, [columns, selectedMetrics, columnSearchQuery, activeDatasetId]);
 
   // --- 2. ЗАГРУЗКА СУЩЕСТВУЮЩЕЙ ГРУППЫ ---
   useEffect(() => {
+    if (!activeDatasetId) return;
     if (existingGroupId && !isInitialized) {
       const group = getGroup(existingGroupId);
       if (group) {
@@ -80,7 +88,6 @@ export function useGroupBuilder(existingGroupId?: string) {
           };
         });
         
-        // Маппинг ID для восстановления связей между метриками
         const idMap = new Map<string, string>();
         restoredMetrics.forEach(m => {
           if (m.originalMetricId) idMap.set(m.originalMetricId, m.tempId);
@@ -103,7 +110,7 @@ export function useGroupBuilder(existingGroupId?: string) {
         setIsInitialized(true);
       }
     }
-  }, [existingGroupId, getGroup, isInitialized, templates]);
+  }, [existingGroupId, getGroup, isInitialized, templates, activeDatasetId]);
 
   const addMetricToGroup = useCallback((templateId: string) => {
     const template = templates.find(t => t.id === templateId);
@@ -183,6 +190,8 @@ export function useGroupBuilder(existingGroupId?: string) {
   const saveGroup = useCallback(() => {
     if (!name.trim()) throw new Error("Введите название группы");
     
+    if (!activeDatasetId) throw new Error("Не выбран датасет");
+
     const allFieldMappings: FieldBinding[] = [];
     const uniqueColumnNames = new Set<string>();
     

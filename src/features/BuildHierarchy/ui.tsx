@@ -45,7 +45,7 @@ function SortableLevelItem({ level, index, onDelete }: { level: HierarchyLevel, 
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 10 : 1,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.5 : 1
   };
 
   return (
@@ -59,7 +59,7 @@ function SortableLevelItem({ level, index, onDelete }: { level: HierarchyLevel, 
         <GripVertical size={16} />
       </div>
       
-      <div className="flex-1">
+      <div className="flex-1 select-none">
         <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-0.5">
           Уровень {index + 1}
         </div>
