@@ -6,6 +6,15 @@ import { useMetricTemplateStore } from '@/entities/metric';
 import { HierarchyFilterValue, KPIWidget, MetricTemplate } from '@/types';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 
+function parseAny(val: unknown): number | null {
+  if (typeof val === 'number') return isFinite(val) ? val : null;
+  if (typeof val === 'string') {
+    const n = parseFloat(val.trim().replace(/\s/g, '').replace(',', '.'));
+    return isFinite(n) ? n : null;
+  }
+  return null;
+}
+
 function normalizeValue(value: unknown): string {
   if (value === null || value === undefined) return '';
   return String(value).trim();
@@ -59,8 +68,8 @@ export function useKPICalculation(
         if (!columnAlias) throw new Error(`Колонка "${fieldVariable}" не привязана`);
 
         const values = filteredRows
-          .map(r => (r as Record<string, unknown>)[columnAlias])
-          .filter(v => typeof v === 'number') as number[];
+          .map(r => parseAny((r as Record<string, unknown>)[columnAlias]))
+          .filter((v): v is number => v !== null); 
 
         switch (template.aggregateFunction) {
           case 'SUM': resultValue = values.reduce((a, b) => a + b, 0); break;
@@ -84,7 +93,12 @@ export function useKPICalculation(
 
       calculatedValues.set(widgetId, resultValue);
       let formatted = formatCompactNumber(resultValue);
-      if (template.displayFormat === 'percent') formatted = `${resultValue.toFixed(template.decimalPlaces)}%`;
+      if (template.displayFormat === 'percent') {
+        const mult = resultValue * 100;
+        const factor = Math.pow(10, template.decimalPlaces);
+        const rounded = Math.round((mult + Number.EPSILON) * factor) / factor;
+        formatted = `${rounded}%`;
+      }
       else if (template.displayFormat === 'currency') formatted = `${resultValue.toLocaleString()} ₽`;
       else if (template.displayFormat === 'decimal') formatted = resultValue.toLocaleString(undefined, { maximumFractionDigits: template.decimalPlaces });
 

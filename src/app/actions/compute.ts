@@ -25,7 +25,7 @@ type AggregateFn = 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT' | 'COUNT_DISTINCT' | 
  */
 function normalizeValue(value: unknown): string {
   if (value === null || value === undefined) return '';
-  return String(value).trim();
+  return String(value).trim().replace(',', '.');
 }
 
 /**
@@ -35,18 +35,17 @@ function normalizeValue(value: unknown): string {
 function parseToFloat(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number') return isFinite(value) ? value : null;
-  
   if (typeof value === 'string') {
-    // Заменяем запятую на точку для корректного парсинга RU формата
-    const normalized = value.trim().replace(',', '.');
-    if (normalized === '') return null;
+    const str = value.trim();
+    if (str === '') return null;
+    
+    const normalized = str.replace(/\s/g, '').replace(',', '.');
+    
     const num = parseFloat(normalized);
     return isFinite(num) ? num : null;
   }
-  
   return null;
 }
-
 
 /**
  * Фильтрация данных по иерархическим фильтрам
@@ -66,11 +65,20 @@ function filterDataByHierarchy(data: ExcelRow[], filters: HierarchyFilterValue[]
         return rowStr === filterVal;
       }
 
-      const rowTs = rawVal instanceof Date ? rawVal.getTime() : new Date(rowStr).getTime();
-      const filterTs = new Date(filterVal).getTime();
-      const filterTs2 = filter.value2 ? new Date(filter.value2).getTime() : filterTs;
+      let rowTs: number;
+      if (rawVal instanceof Date) {
+        rowTs = rawVal.getTime();
+      } else {
+        const isoDate = rowStr.replace(/^(\d{2})\.(\d{2})\.(\d{4})$/, '$3-$2-$1');
+        rowTs = new Date(isoDate).getTime();
+      }
 
-      if (isNaN(rowTs) || isNaN(filterTs)) return false; // Пропускаем невалидные даты
+      const filterIso = filterVal.replace(/^(\d{2})\.(\d{2})\.(\d{4})$/, '$3-$2-$1');
+      const filterTs = new Date(filterIso).getTime();
+
+      const filterTs2 = filter.value2 ? new Date(filter.value2.replace(/^(\d{2})\.(\d{2})\.(\d{4})$/, '$3-$2-$1')).getTime() : filterTs;
+
+      if (isNaN(rowTs) || isNaN(filterTs)) return false;
 
       switch (filter.operator) {
         case '>': return rowTs > filterTs;
@@ -234,26 +242,38 @@ async function computeGroupMetrics(
  */
 function formatValue(value: number | null, format: string, decimals: number, unit?: string): string {
   if (value === null) return '—';
+
+  const preciseRound = (num: number, d: number) => {
+    const factor = Math.pow(10, d);
+    return Math.round((num + Number.EPSILON) * factor) / factor;
+  };
+
   let res: string;
   switch (format) {
     case 'decimal':
-      res = value.toLocaleString('ru-RU', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+    case 'currency': {
+      const rounded = preciseRound(value, decimals);
+      res = rounded.toLocaleString('ru-RU', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
       break;
-    case 'percent':
-      res = `${(value * 100).toFixed(decimals)}%`;
+    }
+    case 'percent': {
+      const rounded = preciseRound(value * 100, decimals);
+      res = `${rounded}%`;
       break;
-    case 'currency':
-      res = value.toLocaleString('ru-RU', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-      break;
+    }
     case 'scientific':
       res = value.toExponential(decimals);
       break;
-    default:
-      res = value.toFixed(decimals);
+    default: {
+      const rounded = preciseRound(value, decimals);
+      res = rounded.toLocaleString('ru-RU', { maximumFractionDigits: decimals });
+    }
   }
-  return unit && format !== 'percent' ? `${res}${unit}` : res;
+  return unit && format !== 'percent' ? `${res} ${unit}` : res;
 }
-
 /**
  * Вычисление метрик дашборда
  */

@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, ChevronsLeft, ChevronsRight, Loader2, Database }
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
 import type { DatasetRow } from '@/types';
+import { formatDataValue } from '@/shared/lib/utils/format';
 
 interface DataTableViewerProps {
   data: DatasetRow[];
@@ -103,15 +104,23 @@ export function DataTableViewer({
                       {(safePage - 1) * pageSize + idx + 1}
                     </td>
                   )}
-                  {resolvedColumns.map(col => (
-                    <td key={col} className="p-3 max-w-[250px] truncate text-slate-600 dark:text-slate-400">
-                      {row[col] != null && row[col] !== '' ? (
-                        String(row[col])
-                      ) : (
-                        <span className="text-slate-300 dark:text-slate-600 italic">null</span>
-                      )}
-                    </td>
-                  ))}
+
+                  {resolvedColumns.map(col => {
+                    const cellValue = formatDataValue(row[col]);
+
+                    return (
+                      <td key={col} className={cn(
+                        "p-3 max-w-[250px] truncate text-right transition-colors",
+                        typeof cellValue.type === 'number' 
+                          ? "text-slate-900 dark:text-slate-100 font-mono font-medium" 
+                          : "text-slate-600 dark:text-slate-400",
+                        typeof cellValue.type === 'boolean' && "text-center",
+                        cellValue.display === "—" && "text-slate-300 dark:text-slate-600 italic"
+                      )}>
+                          {cellValue.display}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
