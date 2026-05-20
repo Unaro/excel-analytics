@@ -560,7 +560,7 @@ export const useDashboardStore = create<DashboardState>()(
     }),
     {
       name: 'dashboard-storage',
-      version: 2, // Обновляем версию из-за изменений в структуре данных
+      version: 2,
     }
   )
 );

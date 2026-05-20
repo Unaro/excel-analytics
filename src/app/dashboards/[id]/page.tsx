@@ -240,7 +240,6 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
           <DashboardMetricsTable
             dashboardId={dashboardId}
             groups={result?.groups || []}
-            metrics={visibleMetrics}
             loading={isComputing}
             hiddenMetricIds={hiddenMetricIds}
             onToggleMetricVisibility={toggleMetricVisibility}

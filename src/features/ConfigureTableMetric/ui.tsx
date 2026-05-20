@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Settings, Plus, Trash2 } from 'lucide-react';
-import { VirtualMetric, FormattingRule, ConditionOperator, MetricColor } from "@/entities/dashboard";
+import { FormattingRule, ConditionOperator, MetricColor } from "@/entities/dashboard";
 import { useDashboardStore } from "@/entities/dashboard";
 import { COLOR_STYLES } from "@/shared/lib/utils/metric-colors";
 import { cn } from "@/shared/lib/utils";
@@ -11,49 +11,51 @@ import { nanoid } from "nanoid";
 
 interface MetricConfigPopoverProps {
   dashboardId: string;
-  metric: VirtualMetric;
+  metricId: string;
 }
 
-export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopoverProps) {
+export function MetricConfigPopover({ dashboardId, metricId }: MetricConfigPopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number; side: 'top' | 'bottom' }>({ 
+    top: 0, 
+    left: 0, 
+    side: 'bottom' 
+  });
   
-  // Стейт координат + флаг, открываемся ли мы вверх
-  const [position, setPosition] = useState<{ top: number; left: number; side: 'top' | 'bottom' }>({ top: 0, left: 0, side: 'bottom' });
-  
-  const updateMetric = useDashboardStore((s) => s.updateVirtualMetric);
-  const rules = metric.colorConfig?.rules || [];
+  const metric = useDashboardStore(useCallback((state) => {
+    const dashboard = state.dashboards.find(d => d.id === dashboardId);
+    return dashboard?.virtualMetrics.find(m => m.id === metricId);
+  }, [dashboardId, metricId]));
 
-  const toggleOpen = (e: React.MouseEvent) => {
+  if (!metric) return null;
+
+  const updateMetric = useDashboardStore((s) => s.updateVirtualMetric);
+  
+  const rules = useMemo(() => metric.colorConfig?.rules || [], [metric.colorConfig?.rules]);
+  const currentColorConfig = useMemo(() => metric.colorConfig, [metric.colorConfig]);
+
+  const toggleOpen = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     
     if (!isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
-      const POPOVER_HEIGHT = 420; // Примерная максимальная высота окна
+      const POPOVER_HEIGHT = 420;
       const SCREEN_PADDING = 10;
 
-      // 1. Расчет вертикали (Smart Positioning)
       const spaceBelow = window.innerHeight - rect.bottom;
-      const showOnTop = spaceBelow < POPOVER_HEIGHT; // Если снизу мало места -> вверх
+      const showOnTop = spaceBelow < POPOVER_HEIGHT;
 
-      let top = 0;
-      if (showOnTop) {
-        // Позиция над кнопкой
-        top = rect.top + window.scrollY - 5; 
-      } else {
-        // Позиция под кнопкой
-        top = rect.bottom + window.scrollY + 5;
-      }
+      let top = showOnTop 
+        ? rect.top + window.scrollY - 5 
+        : rect.bottom + window.scrollY + 5;
 
-      // 2. Расчет горизонтали (чтобы не ушло за правый край)
       const POPOVER_WIDTH = 340;
-      let left = rect.left + window.scrollX - 250; // Сдвиг влево по умолчанию
+      let left = rect.left + window.scrollX - 250;
 
-      // Если вылезает справа
       if (left + POPOVER_WIDTH > window.innerWidth) {
         left = window.innerWidth - POPOVER_WIDTH - SCREEN_PADDING;
       }
-      // Если вылезает слева
       if (left < SCREEN_PADDING) {
         left = SCREEN_PADDING;
       }
@@ -61,22 +63,22 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
       setPosition({ top, left, side: showOnTop ? 'top' : 'bottom' });
     }
     
-    setIsOpen(!isOpen);
-  };
+    setIsOpen(prev => !prev);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
 
     function handleClickOutside(event: MouseEvent) {
       const target = event.target;
-      if (!(target instanceof Element)) return; // ✅ Безопасная проверка
+      if (!(target instanceof Element)) return;
       if (target.closest('.metric-popover-content') || target.closest('.metric-settings-btn')) return;
       setIsOpen(false);
     }
 
     function handleScroll(event: Event) {
       const target = event.target;
-      if (!(target instanceof Element)) return; // ✅ Безопасная проверка
+      if (!(target instanceof Element)) return;
       if (target.closest('.metric-popover-content')) return;
       setIsOpen(false);
     }
@@ -90,35 +92,54 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
     };
   }, [isOpen]);
 
-  // --- ACTIONS ---
-
-  const addRule = () => {
+  // ✅ ACTIONS: используем currentColorConfig для сохранения других полей
+  const addRule = useCallback(() => {
     const newRule: FormattingRule = {
       id: nanoid(),
       operator: '>',
       value: 0,
       color: 'emerald'
     };
-    updateMetric(dashboardId, metric.id, {
-      colorConfig: { rules: [...rules, newRule] }
-    });
-  };
-
-  const removeRule = (ruleId: string) => {
-    updateMetric(dashboardId, metric.id, {
-      colorConfig: { rules: rules.filter(r => r.id !== ruleId) }
-    });
-  };
-
-  const updateRule = (ruleId: string, updates: Partial<FormattingRule>) => {
-    updateMetric(dashboardId, metric.id, {
+    
+    updateMetric(dashboardId, metricId, {
       colorConfig: {
-        rules: rules.map(r => r.id === ruleId ? { ...r, ...updates } : r)
+        ...(currentColorConfig || {}),
+        rules: [...(currentColorConfig?.rules || []), newRule]
       }
     });
-  };
+  }, [dashboardId, metricId, updateMetric, currentColorConfig]);
 
-  // --- UI PART ---
+  const removeRule = useCallback((ruleId: string) => {
+    updateMetric(dashboardId, metricId, {
+      colorConfig: {
+        ...(currentColorConfig || {}),
+        rules: (currentColorConfig?.rules || []).filter(r => r.id !== ruleId)
+      }
+    });
+  }, [dashboardId, metricId, updateMetric, currentColorConfig]);
+
+  const updateRule = useCallback((ruleId: string, updates: Partial<FormattingRule>) => {
+    updateMetric(dashboardId, metricId, {
+      colorConfig: {
+        ...(currentColorConfig || {}),
+        rules: (currentColorConfig?.rules || []).map(r => 
+          r.id === ruleId ? { ...r, ...updates } : r
+        )
+      }
+    });
+  }, [dashboardId, metricId, updateMetric, currentColorConfig]);
+
+  const getColorHex = useCallback((color: MetricColor): string => {
+    const map: Record<MetricColor, string> = {
+      emerald: '#10b981',
+      rose: '#f43f5e',
+      amber: '#f59e0b',
+      blue: '#3b82f6',
+      indigo: '#6366f1',
+      slate: '#94a3b8',
+    };
+    return map[color] || '#ccc';
+  }, []);
 
   const popoverContent = (
     <div 
@@ -130,7 +151,6 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
       style={{ 
         top: position.top, 
         left: position.left,
-        // Если открываемся вверх, нам нужно сдвинуть элемент на его высоту вверх (через transform)
         transform: position.side === 'top' ? 'translateY(-100%)' : 'none'
       }}
       onClick={(e) => e.stopPropagation()}
@@ -139,7 +159,11 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
         <h4 className="font-semibold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
           Условное форматирование
         </h4>
-        <button onClick={addRule} className="text-indigo-600 hover:text-indigo-700 text-xs font-medium flex items-center gap-1">
+        <button 
+          onClick={addRule} 
+          className="text-indigo-600 hover:text-indigo-700 text-xs font-medium flex items-center gap-1"
+          type="button"
+        >
           <Plus size={14} /> Добавить
         </button>
       </div>
@@ -153,9 +177,7 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
         ) : (
           rules.map((rule) => (
             <div key={rule.id} className="flex flex-col gap-2 bg-slate-50 dark:bg-slate-800/50 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
-              
               <div className="flex items-center gap-2 w-full">
-                {/* 1. Оператор */}
                 <select
                   value={rule.operator}
                   onChange={(e) => updateRule(rule.id, { operator: e.target.value as ConditionOperator })}
@@ -169,9 +191,7 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
                   <option value="==">Равно (=)</option>
                 </select>
 
-                {/* 2. Значения */}
                 <div className="flex flex-1 gap-1 items-center">
-                   {/* Первое значение */}
                    <input
                       type="number"
                       value={rule.value}
@@ -180,7 +200,6 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
                       placeholder="0"
                     />
                     
-                    {/* Второе значение (ТОЛЬКО ДЛЯ BETWEEN) */}
                     {rule.operator === 'between' && (
                       <>
                         <span className="text-slate-400 text-xs">-</span>
@@ -195,16 +214,15 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
                     )}
                 </div>
 
-                {/* 3. Кнопка удаления */}
                 <button 
                   onClick={() => removeRule(rule.id)}
                   className="text-slate-400 hover:text-red-500 transition-colors p-1"
+                  type="button"
                 >
                   <Trash2 size={14} />
                 </button>
               </div>
 
-              {/* 4. Выбор цвета (отдельная строка для удобства) */}
               <div className="flex gap-1.5 pt-1 border-t border-slate-100 dark:border-slate-700/50 justify-between items-center">
                  <span className="text-[10px] text-slate-400 uppercase font-bold">Цвет</span>
                  <div className="flex gap-1">
@@ -220,6 +238,7 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
                       )}
                       style={{ backgroundColor: getColorHex(colorKey) }}
                       title={colorKey}
+                      type="button"
                     />
                   ))}
                  </div>
@@ -245,6 +264,7 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
           "metric-settings-btn p-1 rounded-md transition-colors opacity-0 group-hover/th:opacity-100 focus:opacity-100 relative", 
           isOpen ? "bg-indigo-100 text-indigo-600 opacity-100" : "hover:bg-slate-100 text-slate-400"
         )}
+        type="button"
       >
         <Settings size={14} />
       </button>
@@ -252,16 +272,4 @@ export function MetricConfigPopover({ dashboardId, metric }: MetricConfigPopover
       {isOpen && typeof document !== 'undefined' && createPortal(popoverContent, document.body)}
     </>
   );
-}
-
-function getColorHex(color: MetricColor): string {
-  switch (color) {
-    case 'emerald': return '#10b981';
-    case 'rose': return '#f43f5e';
-    case 'amber': return '#f59e0b';
-    case 'blue': return '#3b82f6';
-    case 'indigo': return '#6366f1';
-    case 'slate': return '#94a3b8';
-    default: return '#ccc';
-  }
 }

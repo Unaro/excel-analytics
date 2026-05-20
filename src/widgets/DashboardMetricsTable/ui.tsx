@@ -2,15 +2,15 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { Layers, Filter, Loader2 } from 'lucide-react';
-import type { GroupComputationResult, VirtualMetric } from '@/types';
+import type { GroupComputationResult } from '@/types';
 import { MetricCell } from '@/entities/metric/ui/metric-cell';
 import { MetricConfigPopover } from '@/features/ConfigureTableMetric';
+import { useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
 
 export interface DashboardMetricsTableProps {
   dashboardId: string;
   groups: GroupComputationResult[];
-  metrics: VirtualMetric[];
   loading: boolean;
   hiddenMetricIds: string[];
   onToggleMetricVisibility: (id: string) => void;
@@ -21,13 +21,18 @@ export interface DashboardMetricsTableProps {
 export function DashboardMetricsTable({
   dashboardId,
   groups,
-  metrics,
   loading,
   hiddenMetricIds,
   onToggleMetricVisibility,
   getGroupHref = (id) => `/groups/${id}`,
   className
 }: DashboardMetricsTableProps) {
+  
+  const metrics = useDashboardStore(useMemo(() => (state) => {
+    const dashboard = state.dashboards.find(d => d.id === dashboardId);
+    return dashboard?.virtualMetrics || [];
+  }, [dashboardId]));
+
   const visibleMetrics = useMemo(
     () => metrics.filter((m) => !hiddenMetricIds.includes(m.id)),
     [metrics, hiddenMetricIds]
@@ -73,7 +78,7 @@ export function DashboardMetricsTable({
                 <th key={metric.id} scope="col" className="px-6 py-4 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider min-w-[150px] group/th relative">
                   <div className="flex justify-end gap-2 items-center">
                     <div className="mt-0.5">
-                      <MetricConfigPopover dashboardId={dashboardId} metric={metric} />
+                      <MetricConfigPopover dashboardId={dashboardId} metricId={metric.id} />
                     </div>
                     <div className="flex flex-col items-end">
                       <span>{metric.name}</span>
