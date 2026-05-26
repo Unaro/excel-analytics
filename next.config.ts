@@ -1,32 +1,71 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  reactStrictMode: true,
-  experimental: {
-    serverActions: {
-      bodySizeLimit: '10mb'
-    }
+  // ═══════════════════════════════════════════════════════════
+  // 1. TURBOPACK КОНФИГУРАЦИЯ (новая, для Next.js 16)
+  // ═══════════════════════════════════════════════════════════
+  turbopack: {
+    // Разрешения для импортов (аналог webpack resolve.extensions)
+    resolveExtensions: ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.json', '.wasm'],
+    
+    // Правила для специфичных типов файлов
+    rules: {
+      // WASM файлы — обрабатываем как ассеты
+      '*.wasm': {
+        loaders: [],
+        as: '*.wasm',
+      },
+    },
   },
-  webpack: (config) => {
+
+  // ═══════════════════════════════════════════════════════════
+  // 2. СЕРВЕРНЫЕ ВНЕШНИЕ ПАКЕТЫ (заменяет webpack externals)
+  // ═══════════════════════════════════════════════════════════
+  // Эти пакеты НЕ бандлятся, а импортируются через require() на сервере.
+  // Это решает проблему "Module not found: Can't resolve 'fs'/'net'"
+  // для пакета postgres и duckdb-wasm.
+  serverExternalPackages: [
+    'postgres',            // Node.js only (fs, net, tls)
+    '@duckdb/duckdb-wasm', // Работает только в браузере
+  ],
+
+  // ═══════════════════════════════════════════════════════════
+  // 3. WEBPACK КОНФИГ (оставляем для обратной совместимости)
+  // ═══════════════════════════════════════════════════════════
+  webpack: (config, { isServer }) => {
     config.experiments = {
       ...config.experiments,
       asyncWebAssembly: true,
       layers: true,
     };
-    config.resolve.alias = {
-      ...config.resolve.alias,
-    };
-    // Обработка .wasm файлов
-    config.module.rules.push({
-      test: /\.wasm$/,
-      type: 'asset/resource',
-    });
+
+    if (isServer) {
+      config.externals = config.externals || [];
+      if (Array.isArray(config.externals)) {
+        config.externals.push('@duckdb/duckdb-wasm');
+        config.externals.push('postgres');
+      }
+    }
+
     return config;
   },
-  async rewrites() {
-    return [];
-  }
-};
 
+  // ═══════════════════════════════════════════════════════════
+  // 4. ЗАГОЛОВКИ ДЛЯ DUCKDB-WASM (опционально, для многопоточности)
+  // ═══════════════════════════════════════════════════════════
+  // Если используешь EH bundle с SharedArrayBuffer — нужны COOP/COEP заголовки
+  // Для single-threaded режима можно пропустить
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          { key: 'Cross-Origin-Embedder-Policy', value: 'require-corp' },
+        ],
+      },
+    ];
+  },
+};
 
 export default nextConfig;
