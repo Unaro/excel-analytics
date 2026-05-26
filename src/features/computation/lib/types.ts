@@ -24,10 +24,17 @@ export interface CompiledQuery {
     metricId: string;
     templateId: string;
     formula: string;
-    dependencies: { alias: string; baseExpr: string }[];
+    fieldDependencies: {
+      alias: string;
+      columnName: string;
+      aggregateFn: string;     // SUM, AVG, COUNT, MIN, MAX, COUNT_DISTINCT
+    }[];
+    metricDependencies: {
+      alias: string;
+      metricId: string;
+    }[];
   }>;
 }
-
 export interface IComputeEngine {
   initialize(datasetId: string): Promise<void>;
   compute(params: ClientComputeParams): Promise<DashboardComputationResult>;

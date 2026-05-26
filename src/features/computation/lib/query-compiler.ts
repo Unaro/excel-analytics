@@ -2,29 +2,47 @@ import type { ComputeDialect, CompiledQuery, QueryParam, ClientComputeParams } f
 
 const quote = (id: string) => `"${id.replace(/"/g, '""')}"`;
 
-/**
- * Оборачивает выражение в приведение к числовому типу.
- * 
- * Для DuckDB: TRY_CAST(... AS DOUBLE) — возвращает NULL вместо ошибки
- *   если значение не число (строка "—", "" и т.д.).
- * Для Postgres: NULLIF(..., '')::DOUBLE PRECISION — превращает пустые
- *   строки в NULL и приводит к DOUBLE.
- * 
- * Не применяется для COUNT — он работает с любыми типами.
- */
-function castToNumeric(expr: string, dialect: ComputeDialect): string {
-  if (dialect === 'duckdb') {
-    return `TRY_CAST(${expr} AS DOUBLE)`;
-  } else {
-    return `NULLIF(${expr}, '')::DOUBLE PRECISION`;
-  }
-}
-
 function escapeDuckDBValue(val: QueryParam): string {
   if (val === null || val === undefined) return 'NULL';
   if (typeof val === 'number') return String(val);
   if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
   return `'${String(val).replace(/'/g, "''")}'`;
+}
+
+/**
+ * Приведение к числовому типу для агрегаций.
+ * COUNT/COUNT_DISTINCT работают с любыми типами, остальные требуют число.
+ */
+function castToNumeric(expr: string, dialect: ComputeDialect): string {
+  if (dialect === 'duckdb') return `TRY_CAST(${expr} AS DOUBLE)`;
+  return `NULLIF(${expr}, '')::DOUBLE PRECISION`;
+}
+
+/**
+ * Оборачивает колонку в агрегатную функцию с учётом диалекта и типа.
+ */
+function buildAggregateExpr(
+  columnName: string,
+  aggregateFn: string,
+  dialect: ComputeDialect
+): string {
+  const col = quote(columnName);
+  const fn = aggregateFn.toUpperCase();
+  
+  // COUNT и COUNT_DISTINCT работают с любыми типами
+  if (fn === 'COUNT') return `COUNT(${col})`;
+  if (fn === 'COUNT_DISTINCT') return `COUNT(DISTINCT ${col})`;
+  
+  // Остальные требуют числового приведения
+  const castedCol = castToNumeric(col, dialect);
+  
+  if (fn === 'MEDIAN') {
+    return dialect === 'duckdb' 
+      ? `MEDIAN(${castedCol})` 
+      : `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${castedCol})`;
+  }
+  
+  return `${fn}(${castedCol})`;
 }
 
 export function compileQuery(params: ClientComputeParams, dialect: ComputeDialect): CompiledQuery {
@@ -72,45 +90,46 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
       if (!tpl) continue;
       const alias = `${cfg.groupId}__${metric.id}`;
 
+      // ═══════════════════════════════════════════════════════════
+      // AGGREGATE: идёт в SQL как SUM/AVG/COUNT/etc.
+      // ═══════════════════════════════════════════════════════════
       if (tpl.type === 'aggregate' && tpl.aggregateFunction && tpl.aggregateField) {
         const binding = metric.fieldBindings.find(b => b.fieldAlias === tpl.aggregateField);
         if (!binding) continue;
-        const col = quote(binding.columnName);
-        let fn = tpl.aggregateFunction.toUpperCase();
-
-        // ✅ НОВОЕ: COUNT работает с любым типом, остальные требуют число
-        const needsNumericCast = !['COUNT', 'COUNT_DISTINCT'].includes(fn);
-        const castedCol = needsNumericCast ? castToNumeric(col, dialect) : col;
-
-        if (fn === 'COUNT_DISTINCT') fn = 'COUNT(DISTINCT';
-        if (fn === 'MEDIAN') {
-          fn = dialect === 'duckdb' ? 'MEDIAN' : 'PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY';
-        }
-
-        if (fn.startsWith('PERCENTILE')) {
-          selectParts.push(`${fn} ${castedCol}) AS ${quote(alias)}`);
-        } else if (fn === 'COUNT(DISTINCT') {
-          selectParts.push(`${fn} ${col}) AS ${quote(alias)}`);
-        } else {
-          selectParts.push(`${fn}(${castedCol}) AS ${quote(alias)}`);
-        }
+        
+        const expr = buildAggregateExpr(binding.columnName, tpl.aggregateFunction, dialect);
+        selectParts.push(`${expr} AS ${quote(alias)}`);
       }
+      // ═══════════════════════════════════════════════════════════
+      // CALCULATED: fieldBindings → SQL, metricBindings → post-process
+      // ═══════════════════════════════════════════════════════════
       else if (tpl.type === 'calculated' && tpl.formula) {
         const baseAlias = `base_${alias}`;
-        // ✅ НОВОЕ: зависимости в calculated метриках тоже кастуются
-        const dependencies = metric.fieldBindings.map(b => ({
-          alias: b.fieldAlias,
-          baseExpr: `SUM(${castToNumeric(quote(b.columnName), dialect)})`
+        
+        const fieldDependencies = metric.fieldBindings.map(fb => {
+          const aggregateFn = (fb as any).aggregateFn || 'SUM';
+          const depAlias = `${baseAlias}__${fb.fieldAlias}`;
+          const expr = buildAggregateExpr(fb.columnName, aggregateFn, dialect);
+          selectParts.push(`${expr} AS ${quote(depAlias)}`);
+          return {
+            alias: fb.fieldAlias,
+            columnName: fb.columnName,
+            aggregateFn,
+          };
+        });
+        
+        const metricDependencies = metric.metricBindings.map(mb => ({
+          alias: mb.metricAlias,
+          metricId: mb.metricId,
         }));
-
-        selectParts.push(`(${dependencies.map(d => d.baseExpr).join(' + ')}) AS ${quote(baseAlias)}`);
-
+        
         formulas.set(baseAlias, {
           groupId: cfg.groupId,
           metricId: metric.id,
           templateId: tpl.id,
           formula: tpl.formula,
-          dependencies
+          fieldDependencies,
+          metricDependencies,
         });
       }
     }
