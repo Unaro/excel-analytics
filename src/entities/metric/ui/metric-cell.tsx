@@ -1,8 +1,8 @@
 'use client';
 
 import { cn } from "@/shared/lib/utils";
-import { VirtualMetric } from "@/entities/dashboard";
 import { COLOR_STYLES, checkRule } from "@/shared/lib/utils/metric-colors";
+import { VirtualMetric } from "@/shared/lib/validators";
 
 interface MetricCellProps {
   value: number | null;

@@ -1,16 +1,16 @@
 'use client';
 import { memo, useState, useMemo, useCallback, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Check, Filter, X } from 'lucide-react';
-import { getHierarchyNodesLocal } from '@/lib/logic/hierarchy-client';
-import { useHierarchyStore } from '@/entities/hierarchy';
-import { useDatasetStore } from '@/entities/dataset';
+import { HierarchyLevel, HierarchyNode, useHierarchyStore } from '@/entities/hierarchy';
+import { DatasetRow, useDatasetStore } from '@/entities/dataset';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useDashboardStore } from '@/entities/dashboard';
-import type { HierarchyLevel, HierarchyFilterValue, HierarchyNode, DatasetRow } from '@/types';
-import { useFilterActions } from '@/lib/hooks/use-filter-actions';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
 import { useShallow } from 'zustand/react/shallow';
+import { useFilterActions } from '@/features/hierarchy-filters/model/use-filter-actions';
+import { getHierarchyNodesLocal } from '@/entities/hierarchy/lib/hierarchy-client';
+import { HierarchyFilterValue } from '@/shared/lib/validators';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ROOT COMPONENT

@@ -158,7 +158,7 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
                 </div>
                 <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
                   <span className="truncate">
-                    {activeDataset.rows?.length ?? 0} строк
+                    {activeDataset.metadata?.totalRows ?? 0} строк
                   </span>
                 </div>
               </>
@@ -246,7 +246,7 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
                         )}
                       </div>
                       <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                        <span>{ds.rows?.length ?? 0} строк</span>
+                        <span>{ds.metadata?.totalRows ?? 0} строк</span>
                         {ds.metadata?.totalColumns && (
                           <span>• {ds.metadata.totalColumns} колонок</span>
                         )}

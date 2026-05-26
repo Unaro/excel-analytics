@@ -2,15 +2,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
-import { useMetricTemplateStore } from '@/entities/metric';
-import { computeDashboardMetrics } from '@/app/actions/compute';
-import {
-  HierarchyFilterValue,
-  VirtualMetric,
-  IndicatorGroupInDashboard,
-  GroupComputationResult
-} from '@/types';
+import { GroupComputationResult, useMetricTemplateStore } from '@/entities/metric';
 import { toast } from 'sonner';
+import { HierarchyFilterValue, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
+import { computeDashboardMetrics } from '@/app/actions/compute';
 
 export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]) {
   const excelData = useDatasetStore(s => s.getAllData());

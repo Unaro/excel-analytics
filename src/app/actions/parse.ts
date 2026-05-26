@@ -1,6 +1,7 @@
 'use server';
+import type { SheetData } from '@/entities/columnConfig';
+import type { ColumnStatistics, DatasetMetadata, DatasetRow } from '@/entities/dataset';
 import * as XLSX from 'xlsx';
-import type { SheetData, DatasetMetadata, DatasetRow, ColumnStatistics } from '@/types';
 
 /**
  * Безопасное преобразование значения ячейки с полной поддержкой float

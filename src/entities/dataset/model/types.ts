@@ -41,6 +41,7 @@ export interface DatasetEntry {
   rows: DatasetRow[] | null;
   lastAccessedAt: number;
   pgStatus?: 'online' | 'offline' | 'checking' | 'unknown';
+  engineStatus?: 'loading' | 'ready' | 'error';
 }
 
 /**

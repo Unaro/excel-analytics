@@ -1,6 +1,6 @@
-import { type ColumnDataType } from '@/types';
 import { MetricDependency } from '@/entities/metric';
 import { ValidationError } from './validation-types';
+import { ColumnDataType } from '@/entities/dataset';
 
 /**
  * Оператор в формуле

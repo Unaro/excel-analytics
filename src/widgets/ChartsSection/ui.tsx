@@ -4,11 +4,11 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend
 } from 'recharts';
-import { DashboardComputationResult } from '@/types';
 import { Card } from '@/shared/ui/card';
 import { BarChart3, Hexagon, Check } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { DashboardComputationResult } from '@/entities/metric';
 
 interface ChartsSectionProps {
   result: DashboardComputationResult;

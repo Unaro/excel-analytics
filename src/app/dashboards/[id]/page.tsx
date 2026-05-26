@@ -1,19 +1,15 @@
 'use client';
 import { Suspense, use, useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { useDashboardCalculation } from '@/lib/hooks/use-dashboard-calculation';
-import { useHierarchyTree } from '@/lib/hooks/use-hierarchy-tree';
+import { useRouter } from 'next/navigation';
 import { ChartsSection } from '@/widgets/ChartsSection';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
 import { HierarchyTree } from '@/widgets/HierarchyFilter';
 import {
-  ArrowLeft, Edit, RotateCw, RefreshCw, Filter, X, Layers, Loader2, Database, AlertCircle, FileSpreadsheet
+  ArrowLeft, Edit, RotateCw, RefreshCw, X, Loader2, Database, AlertCircle, FileSpreadsheet
 } from 'lucide-react';
-import { MetricCell } from '@/entities/metric/ui/metric-cell';
-import { MetricConfigPopover } from '@/features/ConfigureTableMetric';
 import { AddKPIDialog } from '@/features/AddKpiWidget';
 import { KPIGrid } from '@/widgets/KpiGrid';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
@@ -22,6 +18,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { toast } from 'sonner';
 import { refreshPgDataset } from '@/entities/dataset/model/sync-engine';
 import { DashboardMetricsTable } from '@/widgets/DashboardMetricsTable';
+import { useDashboardCalculation } from '@/features/computation/model/use-dashboard-calculation';
+import { useHierarchyTree } from '@/entities/hierarchy/lib/hooks/use-hierarchy-tree';
 
 function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
   const { id: dashboardId } = use(params);
@@ -79,11 +77,6 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
     setHiddenMetricIds(prev => prev.includes(id) ? prev.filter(mId => mId !== id) : [...prev, id]);
   };
 
-  const visibleMetrics = useMemo(() =>
-    result?.virtualMetrics.filter(vm => !hiddenMetricIds.includes(vm.id)) || [],
-    [result?.virtualMetrics, hiddenMetricIds]
-  );
-
   if (!hydrated) return <LoadingScreen message="Загрузка системы..." />;
   if (!dashboard) {
     return (
@@ -116,7 +109,7 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 p-6 space-y-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 space-y-6">
       {/* --- ХЕДЕР --- */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-slate-800">
         <div className="flex items-center gap-4">

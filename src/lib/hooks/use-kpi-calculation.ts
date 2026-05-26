@@ -1,24 +1,15 @@
 'use client';
-import { useMemo } from 'react';
-import { safeEvaluate } from '@/lib/logic/safe-math';
+import { useEffect, useMemo, useState } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
-import { useMetricTemplateStore } from '@/entities/metric';
-import { HierarchyFilterValue, KPIWidget, MetricTemplate } from '@/types';
-import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { DashboardComputationResult, MetricTemplate, useMetricTemplateStore } from '@/entities/metric';
+import { createComputeEngine } from '@/features/computation/lib/engine-factory';
+import { compileKPIsToComputeParams, KPI_VIRTUAL_GROUP_ID } from '@/features/computation/lib/kpi-compiler';
+import { createComputationCache } from '@/lib/storage';
+import { generateFiltersHash } from '@/shared/lib/utils/hash';
+import type { ClientComputeParams } from '@/features/computation/lib/types';
+import { KPIWidget } from '@/entities/dashboard';
+import { HierarchyFilterValue } from '@/shared/lib/validators';
 
-function parseAny(val: unknown): number | null {
-  if (typeof val === 'number') return isFinite(val) ? val : null;
-  if (typeof val === 'string') {
-    const n = parseFloat(val.trim().replace(/\s/g, '').replace(',', '.'));
-    return isFinite(n) ? n : null;
-  }
-  return null;
-}
-
-function normalizeValue(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  return String(value).trim();
-}
 
 export interface KPIResult {
   widget: KPIWidget;
@@ -28,94 +19,125 @@ export interface KPIResult {
   error?: string;
 }
 
+/**
+ * Вычисляет KPI-виджеты через DuckDB (для файлов) или PostgreSQL.
+ * Использует тот же engine что и дашборд, обеспечивая согласованность цифр.
+ */
 export function useKPICalculation(
   widgets: KPIWidget[],
   filters: HierarchyFilterValue[]
 ): KPIResult[] {
-  const allRows = useDatasetStore(s => s.getAllData());
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  const dataset = useDatasetStore(s => s.getActiveDataset());
+  const sourceType = dataset?.sourceType ?? 'file';
+  const isSyncing = useDatasetStore(s => s.isSyncing);
   const templates = useMetricTemplateStore(s => s.templates);
 
-  const filteredRows = useMemo(() => {
-    if (filters.length === 0) return allRows;
-    return allRows.filter((row) => {
-      return filters.every((filter) => {
-        const rowVal = normalizeValue((row as Record<string, unknown>)[filter.columnName]);
-        const filterVal = normalizeValue(filter.value);
-        return rowVal === filterVal;
-      });
-    });
-  }, [allRows, filters]);
+  const [results, setResults] = useState<KPIResult[]>([]);
+  const engine = useMemo(() => createComputeEngine(sourceType), [sourceType]);
+  const cache = useMemo(() => createComputationCache(sourceType), [sourceType]);
 
-  const results = useMemo(() => {
-    if (widgets.length === 0) return [];
-    const calculatedValues = new Map<string, number>();
-    const resultsMap = new Map<string, KPIResult>();
+  // Детерминированные ключи
+  const filtersHash = useMemo(() => generateFiltersHash(filters), [filters]);
+  const widgetsKey = useMemo(
+    () => widgets.map(w => `${w.id}:${w.templateId}:${JSON.stringify(w.bindings)}`).join('|'),
+    [widgets]
+  );
 
-    const calculateWidget = (widgetId: string, stack: string[] = []): number => {
-      if (stack.includes(widgetId)) throw new Error('Циклическая зависимость');
-      if (calculatedValues.has(widgetId)) return calculatedValues.get(widgetId)!;
+  useEffect(() => {
+    if (!activeDatasetId || widgets.length === 0 || isSyncing) {
+      setResults([]);
+      return;
+    }
 
-      const widget = widgets.find(w => w.id === widgetId);
-      if (!widget) throw new Error('Виджет не найден');
-      const template = templates.find(t => t.id === widget.templateId);
-      if (!template) throw new Error('Шаблон не найден');
+    let cancelled = false;
 
-      let resultValue = 0;
-
-      if (template.type === 'aggregate') {
-        const fieldVariable = template.aggregateField || 'value';
-        const columnAlias = widget.bindings[fieldVariable];
-        if (!columnAlias) throw new Error(`Колонка "${fieldVariable}" не привязана`);
-
-        const values = filteredRows
-          .map(r => parseAny((r as Record<string, unknown>)[columnAlias]))
-          .filter((v): v is number => v !== null); 
-
-        switch (template.aggregateFunction) {
-          case 'SUM': resultValue = values.reduce((a, b) => a + b, 0); break;
-          case 'AVG': resultValue = values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0; break;
-          case 'MIN': resultValue = values.length ? Math.min(...values) : 0; break;
-          case 'MAX': resultValue = values.length ? Math.max(...values) : 0; break;
-          case 'COUNT': resultValue = filteredRows.filter(r => {
-            const val = (r as Record<string, unknown>)[columnAlias];
-            return val != null && val !== '';
-          }).length; break;
-          default: resultValue = 0;
+    const compute = async () => {
+      try {
+        // 1. Компилируем KPI в формат для engine
+        const compiled = compileKPIsToComputeParams(widgets, templates);
+        if (compiled.groups[0].metrics.length === 0) {
+          setResults([]);
+          return;
         }
-      } else if (template.type === 'calculated' && template.formula) {
-        const scope: Record<string, number> = {};
-        for (const [varName, targetWidgetId] of Object.entries(widget.bindings)) {
-          scope[varName] = calculateWidget(targetWidgetId, [...stack, widgetId]);
+
+        // 2. Проверяем кэш (отдельный namespace для KPI)
+        const cacheKey = {
+          datasetId: activeDatasetId,
+          dashboardId: `kpi:${widgetsKey}`,
+          filtersHash,
+        };
+        const cached = await cache.get(cacheKey);
+        if (cached && !cancelled) {
+          setResults(mapResultsToKPI(cached.result, widgets, templates, compiled.widgetToVmMap));
+          return;
         }
-        // Безопасное вычисление через общую утилиту (гарантирует результат как на сервере)
-        resultValue = safeEvaluate(template.formula, scope) ?? 0;
-      }
 
-      calculatedValues.set(widgetId, resultValue);
-      let formatted = formatCompactNumber(resultValue);
-      if (template.displayFormat === 'percent') {
-        const mult = resultValue * 100;
-        const factor = Math.pow(10, template.decimalPlaces);
-        const rounded = Math.round((mult + Number.EPSILON) * factor) / factor;
-        formatted = `${rounded}%`;
-      }
-      else if (template.displayFormat === 'currency') formatted = `${resultValue.toLocaleString()} ₽`;
-      else if (template.displayFormat === 'decimal') formatted = resultValue.toLocaleString(undefined, { maximumFractionDigits: template.decimalPlaces });
+        // 3. Запускаем engine.compute
+        const params: ClientComputeParams = {
+          datasetId: activeDatasetId,
+          dashboardId: `kpi:${widgetsKey}`,
+          tableName: 'kpi-data', 
+          encryptedConfig: dataset?.pgConfig?.encryptedConnection,
+          filters,
+          groups: compiled.groups,
+          dashboardGroupsConfig: compiled.dashboardGroupsConfig,
+          metricTemplates: templates,
+          virtualMetrics: compiled.virtualMetrics,
+        };
 
-      resultsMap.set(widgetId, { widget, template, value: resultValue, formattedValue: formatted });
-      return resultValue;
+        await engine.initialize(activeDatasetId);
+        const result: DashboardComputationResult = await engine.compute(params);
+
+        if (cancelled) return;
+
+        // 4. Кэшируем и маппим
+        await cache.set(cacheKey, result);
+        setResults(mapResultsToKPI(result, widgets, templates, compiled.widgetToVmMap));
+      } catch (err) {
+        console.error('[KPICalculation] Compute failed:', err);
+        if (!cancelled) {
+          setResults(widgets.map(w => ({
+            widget: w,
+            template: templates.find(t => t.id === w.templateId)!,
+            value: 0,
+            formattedValue: 'Error',
+            error: err instanceof Error ? err.message : 'Error',
+          })));
+        }
+      }
     };
 
-    widgets.forEach(w => {
-      try { calculateWidget(w.id); }
-      catch (e) {
-        const template = templates.find(t => t.id === w.templateId);
-        resultsMap.set(w.id, { widget: w, template: template!, value: 0, formattedValue: 'Error', error: e instanceof Error ? e.message : 'Error' });
-      }
-    });
-
-    return widgets.map(w => resultsMap.get(w.id)).filter(Boolean) as KPIResult[];
-  }, [filteredRows, widgets, templates]);
+    compute();
+    return () => { cancelled = true; };
+  }, [activeDatasetId, widgetsKey, filtersHash, sourceType, engine, cache, templates, dataset, widgets, filters, isSyncing]);
 
   return results;
+}
+
+/**
+ * Извлекает значения KPI из DashboardComputationResult
+ */
+function mapResultsToKPI(
+  result: DashboardComputationResult,
+  widgets: KPIWidget[],
+  templates: MetricTemplate[],
+  widgetToVmMap: Map<string, string>
+): KPIResult[] {
+  const kpiGroup = result.groups.find(g => g.groupId === KPI_VIRTUAL_GROUP_ID);
+  if (!kpiGroup) return [];
+
+  return widgets.map(widget => {
+    const template = templates.find(t => t.id === widget.templateId)!;
+    const vmId = widgetToVmMap.get(widget.id);
+    const vmResult = kpiGroup.virtualMetrics.find(vm => vm.virtualMetricId === vmId);
+
+    return {
+      widget,
+      template,
+      value: vmResult?.value ?? 0,
+      formattedValue: vmResult?.formattedValue ?? '—',
+      error: vmResult?.error,
+    };
+  });
 }

@@ -2,8 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Settings2, Check } from 'lucide-react';
-import { VirtualMetric } from "@/entities/dashboard";
 import { cn } from "@/shared/lib/utils";
+import { VirtualMetric } from '@/shared/lib/validators';
+
 
 interface MetricsSelectorProps {
   metrics: VirtualMetric[];

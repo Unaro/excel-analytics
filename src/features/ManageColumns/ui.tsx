@@ -1,23 +1,20 @@
 'use client';
 
 import { useColumnConfigStore } from '@/entities/columnConfig';
-import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
-import { ColumnClassification } from '@/types';
+import { ColumnClassification, ColumnConfig, useDatasetStore } from '@/entities/dataset';
 import { cn } from '@/shared/lib/utils';
 import { useShallow } from 'zustand/react/shallow';
 
 export function ColumnManager() {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  const activeDataset = useDatasetStore(s => activeDatasetId ? s.datasets[activeDatasetId] : null);
+  const configs = useColumnConfigStore(useShallow(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []));  
+  const updateColumn = useColumnConfigStore((s) => s.updateColumn);
 
-  const configs = useColumnConfigStore(useShallow(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []));  const updateColumn = useColumnConfigStore((s) => s.updateColumn);
-  const hasData = useDatasetStore((s) => s.hasData());
+  const hasData = (activeDataset?.metadata?.totalRows ?? 0) > 0;
 
   if (!activeDatasetId) {
-    return (
-      <div className="text-center py-8 text-slate-400">
-        Выберите датасет для настройки колонок
-      </div>
-    );
+    return <div className="text-center py-8 text-slate-400">Выберите датасет</div>;
   }
 
   if (!hasData || configs.length === 0) return null;

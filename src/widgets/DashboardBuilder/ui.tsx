@@ -2,9 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useDashboardBuilder } from '@/lib/hooks/use-dashboard-builder';
 import { useMetricTemplateStore } from '@/entities/metric';
-import { IndicatorGroupInDashboard, VirtualMetric, IndicatorGroup } from '@/types';
 import { Plus, Save, Trash2, LayoutGrid, Columns } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -12,6 +10,8 @@ import { Card } from '@/shared/ui/card';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { toast } from 'sonner';
 import { cn } from '@/shared/lib/utils';
+import { useDashboardBuilder } from '@/features/dashboard-builder/model/use-dashboard-builder';
+import { IndicatorGroup, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
 
 export function DashboardBuilder({ dashboardId }: { dashboardId?: string }) {
   const router = useRouter();

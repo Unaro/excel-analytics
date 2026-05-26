@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useGroupBuilder } from '@/lib/hooks/use-group-builder';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { 
   Save, Trash2, FunctionSquare, 
@@ -20,6 +19,7 @@ import { SearchableSelect } from '@/shared/ui/searchable-select';
 import { cn } from '@/shared/lib/utils';
 import { toast } from 'sonner';
 import { useDatasetStore } from '@/entities/dataset';
+import { useGroupBuilder } from '@/features/group-builder/model/use-group-builder';
 
 export function GroupBuilder({ groupId }: { groupId?: string }) {
   const router = useRouter();

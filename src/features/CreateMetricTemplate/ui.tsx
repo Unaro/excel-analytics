@@ -1,14 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { useMetricTemplateStore } from '@/entities/metric';
-import { useFormulaValidation } from '@/lib/hooks/use-formula-validation';
-import { AggregateFunction } from '@/types';
+import { AggregateFunction, useMetricTemplateStore } from '@/entities/metric';
 import { Check, X } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { toast } from 'sonner';
 import { VisualFormulaBuilder } from '@/features/BuildFormula';
+import { useFormulaValidation } from '@/entities/formula/lib/hooks/use-formula-validation';
 
 interface TemplateFormProps {
   onCancel: () => void;

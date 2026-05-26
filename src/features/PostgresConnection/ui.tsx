@@ -6,7 +6,7 @@ import { Input } from '@/shared/ui/input';
 import { Card } from '@/shared/ui/card';
 import { Database, CheckCircle2, AlertCircle, Loader2, Lock } from 'lucide-react';
 import { toast } from 'sonner';
-import type { PgConnectionConfig } from '@/lib/logic/postgres-client';
+import type { PgConnectionConfig } from '@/shared/api/postgres/client';
 
 interface PostgresConnectionFormProps {
   onConnected: (config: PgConnectionConfig) => void;

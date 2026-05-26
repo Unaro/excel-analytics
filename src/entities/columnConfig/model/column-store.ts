@@ -1,7 +1,7 @@
 // lib/stores/column-config-store.ts
+import { ColumnClassification, ColumnConfig } from '@/entities/dataset';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ColumnConfig, ColumnClassification } from '@/types';
 
 interface ColumnConfigState {
   configsByDataset: Record<string, ColumnConfig[]>;

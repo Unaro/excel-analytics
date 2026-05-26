@@ -1,7 +1,8 @@
 // entities/hierarchy/model/store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { HierarchyLevel, HierarchyConfig } from '@/types';
+import { HierarchyConfig, HierarchyLevel } from './types';
+
 
 interface HierarchyState {
   levelsByDataset: Record<string, HierarchyLevel[]>;

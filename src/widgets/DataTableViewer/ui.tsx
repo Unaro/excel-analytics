@@ -4,8 +4,8 @@ import { useState, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, ChevronsLeft, ChevronsRight, Loader2, Database } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
-import type { DatasetRow } from '@/types';
 import { formatDataValue } from '@/shared/lib/utils/format';
+import { DatasetRow } from '@/entities/dataset';
 
 interface DataTableViewerProps {
   data: DatasetRow[];

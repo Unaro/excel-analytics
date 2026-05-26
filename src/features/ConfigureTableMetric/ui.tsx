@@ -92,7 +92,6 @@ export function MetricConfigPopover({ dashboardId, metricId }: MetricConfigPopov
     };
   }, [isOpen]);
 
-  // ✅ ACTIONS: используем currentColorConfig для сохранения других полей
   const addRule = useCallback(() => {
     const newRule: FormattingRule = {
       id: nanoid(),

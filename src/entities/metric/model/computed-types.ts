@@ -1,5 +1,6 @@
 import { HierarchyFilterValue } from '@/entities/hierarchy/model/types';
-import { VirtualMetric } from '@/entities/dashboard/model/types';
+import { VirtualMetric } from '@/shared/lib/validators';
+
 
 /**
  * Контекст вычисления метрики

@@ -1,28 +1,16 @@
-// types/dashboards.ts
-import { HierarchyFilterValue } from '@/entities/hierarchy/model/types';
-import { DisplayFormat } from '@/entities/metric/model/types';
-import { IndicatorGroupInDashboard } from '@/lib/logic/validators';
 
+import type { 
+  VirtualMetric, 
+  IndicatorGroupInDashboard 
+} from '@/shared/lib/validators';
 
-export interface KPIWidget {
-  id: string;
-  templateId: string;           // Ссылка на шаблон
-  bindings: Record<string, string>; // Привязка переменных:
-                                    // Для Aggregate Template: variable -> columnAlias
-                                    // Для Calculated Template: variable -> otherWidgetId
-  
-  // Переопределения визуализации
-  customName?: string;          // Если хотим переименовать
-  color?: 'indigo' | 'emerald' | 'rose' | 'amber' | 'blue';
-}
+import type { HierarchyFilterValue } from '@/entities/hierarchy/model/types';
+import type { DisplayFormat } from '@/entities/metric/model/types';
 
-// Доступные цвета (ключи)
+// Оставляем ТОЛЬКО UI-типы:
 export type MetricColor = 'emerald' | 'rose' | 'amber' | 'blue' | 'indigo' | 'slate';
+export type ConditionOperator = '>' | '>=' | '<' | '<=' | '==' | '!=' | 'between';
 
-// Операторы сравнения
-export type ConditionOperator = '>' | '>=' | '<' | '<=' | '==' | '!=' | 'between';;
-
-// Правило форматирования
 export interface FormattingRule {
   id: string;
   operator: ConditionOperator;
@@ -35,23 +23,13 @@ export interface ColorConfig {
   rules: FormattingRule[]; 
 }
 
-
-/**
- * Виртуальная метрика - общий показатель для всех групп
- * Каждая группа вычисляет его по своей формуле
- */
-export interface VirtualMetric {
+export interface KPIWidget {
   id: string;
-  name: string;                    // "Загруженность"
-  description?: string;
-  displayFormat: DisplayFormat;    // 'percent'
-  decimalPlaces: number;           // 1
-  unit?: string;                   // "%"
-  order: number;                   // Порядок колонки в таблице
-
-  colorConfig?: ColorConfig;        // Настройки цветового форматирования
+  templateId: string;
+  bindings: Record<string, string>;
+  customName?: string;
+  color?: MetricColor;
 }
-
 /**
  * Тип виджета
  */

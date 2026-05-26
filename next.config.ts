@@ -7,16 +7,26 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '10mb'
     }
   },
-  // Пустая конфигурация turbopack для silence ошибки
-  // Turbopack используется по умолчанию в Next.js 16
-  turbopack: {},
-  // webpack конфиг оставляем для совместимости
   webpack: (config) => {
+    config.experiments = {
+      ...config.experiments,
+      asyncWebAssembly: true,
+      layers: true,
+    };
     config.resolve.alias = {
       ...config.resolve.alias,
     };
+    // Обработка .wasm файлов
+    config.module.rules.push({
+      test: /\.wasm$/,
+      type: 'asset/resource',
+    });
     return config;
   },
+  async rewrites() {
+    return [];
+  }
 };
+
 
 export default nextConfig;

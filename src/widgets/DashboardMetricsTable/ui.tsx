@@ -2,11 +2,11 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { Layers, Filter, Loader2 } from 'lucide-react';
-import type { GroupComputationResult } from '@/types';
 import { MetricCell } from '@/entities/metric/ui/metric-cell';
 import { MetricConfigPopover } from '@/features/ConfigureTableMetric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
+import { GroupComputationResult } from '@/entities/metric';
 
 export interface DashboardMetricsTableProps {
   dashboardId: string;

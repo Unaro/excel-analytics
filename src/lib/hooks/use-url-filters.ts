@@ -1,8 +1,8 @@
 'use client';
 
+import { HierarchyFilterValue } from '@/shared/lib/validators';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useCallback, useMemo } from 'react';
-import { HierarchyFilterValue } from '@/types';
 
 export function useUrlFilters() {
   const router = useRouter();

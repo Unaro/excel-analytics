@@ -1,11 +1,10 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { useFileImport } from '@/lib/hooks/use-file-import';
 import { UploadCloud, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
-import { toast } from 'sonner';
+import { useFileImport } from '../dataset-import/model/use-file-import';
 
 // Добавляем проп
 interface FileUploaderProps {
@@ -55,7 +54,11 @@ export function FileUploader({ onSuccess }: FileUploaderProps) {
         onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => {
+          if (typeof document !== 'undefined') {
+            fileInputRef.current?.click();
+          }
+        }}  
       >
         <input
           type="file"

@@ -46,13 +46,14 @@ export interface MetricDependency {
 }
 
 
+// Импортируем и реэкспортируем типы строго из валидаторов
 import type {
   MetricTemplate,
   GroupMetric,
   FieldBinding,
   MetricBinding,
   IndicatorGroup
-} from '@/lib/logic/validators';
+} from '@/shared/lib/validators'; // Актуальный путь
 
 export type {
   MetricTemplate,

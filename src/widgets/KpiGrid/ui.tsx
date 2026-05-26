@@ -1,11 +1,11 @@
 'use client';
 
-import { KPIWidget, HierarchyFilterValue } from '@/types';
 import { useKPICalculation } from '@/lib/hooks/use-kpi-calculation';
 import { Card } from '@/shared/ui/card';
 import { Layers, Trash2, Calculator } from 'lucide-react';
-import { useDashboardStore } from '@/entities/dashboard';
+import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
+import { HierarchyFilterValue } from '@/shared/lib/validators';
 
 interface KPIGridProps {
   dashboardId: string;

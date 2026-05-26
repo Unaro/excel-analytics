@@ -1,22 +1,16 @@
 'use client';
 import { nanoid } from 'nanoid';
-import { parseExcelFile } from '@/app/actions/parse';
 import { fetchPgTableData, getPgSchema, testPgConnection } from '@/app/actions/postgres';
 import { useDatasetStore } from './store';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useDashboardStore } from '@/entities/dashboard';
-import type { ColumnConfig, ColumnClassification, DatasetRow } from '@/types';
-import type { PgConnectionConfig } from '@/lib/logic/postgres-client';
 import { transliterate } from '@/shared/lib/utils/translit';
 import { toast } from 'sonner';
 import { decryptConfig, encryptConfig } from '@/shared/lib/utils/crypto';
-
-function classifyBySample(values: unknown[]): ColumnClassification {
-  const valid = values.filter(v => v != null && v !== '');
-  if (valid.length === 0) return 'ignore';
-  const nums = valid.filter(v => typeof v === 'number');
-  return nums.length / valid.length > 0.7 ? 'numeric' : 'categorical';
-}
+import { duckdbManager } from '@/features/computation/lib/duckdb/manager';
+import { PgConnectionConfig } from '@/shared/api/postgres/client';
+import { ColumnClassification, ColumnConfig, DatasetRow } from './types';
+import { set } from 'idb-keyval';
 
 function mapPgType(type: string): ColumnClassification {
   const t = type.toLowerCase();
@@ -29,37 +23,58 @@ function mapPgType(type: string): ColumnClassification {
 export async function syncFromFile(file: File) {
   const { setSyncing, addDataset, setDatasetRows, switchDataset } = useDatasetStore.getState();
   const setConfigs = useColumnConfigStore.getState();
-  
   setSyncing(true);
-  const datasetId = `file-${nanoid()}`;
-  
+  const datasetId = `file_${nanoid()}`;
+
   try {
     const buffer = await file.arrayBuffer();
-    const { data: sheets } = await parseExcelFile(buffer, file.name);
-    if (sheets.length === 0 || sheets[0].rows.length === 0) throw new Error('Файл пуст');
+    
+    // 1. Импортируем ВЕСЬ файл в DuckDB
+    const { configs, totalRows, totalColumns, sheetNames } = await duckdbManager.importExcelBuffer(
+      datasetId,
+      file.name,
+      buffer
+    );
 
-    const flatRows: DatasetRow[] = sheets.flatMap(s => s.rows) as DatasetRow[];
-    const headers = sheets[0].headers;
+    let arrowBuffer: Uint8Array | null = null;
+    try {
+      arrowBuffer = await duckdbManager.exportArrowBuffer(datasetId);
+      await set(`arrow:${datasetId}`, arrowBuffer);
+      console.log(`[syncFromFile] ✅ Arrow buffer saved to IndexedDB: ${(arrowBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`);
+    } catch (exportErr) {
+      console.warn('[syncFromFile] Arrow export failed, data will not persist across reloads:', exportErr);
+    }
 
-    const configs: ColumnConfig[] = headers.map((col, idx) => {
-      const sample = flatRows.slice(0, 100).map(r => (r as Record<string, unknown>)[col]);
-      return {
-        columnName: col, displayName: col, alias: transliterate(col) || `col_${idx}`,
-        classification: classifyBySample(sample), description: `Из файла ${file.name}`
-      };
-    });
+    // 3. Запрашиваем PREVIEW для UI
+    let previewRows: DatasetRow[] = [];
+    try {
+      previewRows = await duckdbManager.getPreviewRows(datasetId, 500);
+      console.log(`[syncFromFile] ✅ Preview fetched: ${previewRows.length} rows (из ${totalRows} всего)`);
+    } catch (previewErr) {
+      console.warn('[syncFromFile] Preview fetch failed:', previewErr);
+    }
 
+    // 4. Сохраняем метаданные
     setConfigs.setDatasetConfigs(datasetId, configs);
+    
     addDataset(datasetId, {
-      name: file.name, sourceType: 'file',
+      name: file.name,
+      sourceType: 'file',
+      engineStatus: 'ready',
       metadata: {
-        sourceName: file.name, uploadedAt: Date.now(),
-        sheetOrTableNames: sheets.map(s => s.sheetName),
-        totalRows: flatRows.length, totalColumns: headers.length, sourceType: 'file'
+        sourceName: file.name,
+        uploadedAt: Date.now(),
+        sheetOrTableNames: sheetNames,
+        totalRows,
+        totalColumns,
+        sourceType: 'file'
       }
     });
-    setDatasetRows(datasetId, flatRows);
+
+    // 5. Сохраняем PREVIEW в store
+    setDatasetRows(datasetId, previewRows);
     switchDataset(datasetId);
+
     return { success: true, datasetId };
   } catch (error) {
     console.error('[DatasetSync] File sync failed:', error);
@@ -69,33 +84,29 @@ export async function syncFromFile(file: File) {
   }
 }
 
+// ==========================================================
+// PostgreSQL логика оставлена БЕЗ ИЗМЕНЕНИЙ (работает через старую схему)
+// ==========================================================
+
 export async function syncFromPostgres(config: PgConnectionConfig, schema: string, table: string) {
   const { setSyncing, addDataset, setDatasetRows, switchDataset } = useDatasetStore.getState();
   const setConfigs = useColumnConfigStore.getState();
   setSyncing(true);
   const datasetId = `pg-${nanoid()}`;
-
   try {
     const schemaRes = await getPgSchema(config);
     if (!schemaRes.success || !schemaRes.tables) throw new Error('Ошибка схемы');
-    
     const tableMeta = schemaRes.tables.find(t => t.schema === schema && t.table === table);
     if (!tableMeta) throw new Error('Таблица не найдена');
-
     const dataRes = await fetchPgTableData(config, schema, table, 50000);
     if (!dataRes.success) throw new Error(dataRes.error);
-
     const pgRows: DatasetRow[] = dataRes.rows as DatasetRow[];
     const configs: ColumnConfig[] = tableMeta.columns.map((col, idx) => ({
       columnName: col.name, displayName: col.name, alias: transliterate(col.name) || `col_${idx}`,
       classification: mapPgType(col.type), description: `PG тип: ${col.type}`
     }));
-
     setConfigs.setDatasetConfigs(datasetId, configs);
-
-    // 🔒 Шифруем и сохраняем конфиг подключения
     const encrypted = await encryptConfig(config);
-
     addDataset(datasetId, {
       name: `${schema}.${table}`, sourceType: 'postgres',
       metadata: {
@@ -105,7 +116,6 @@ export async function syncFromPostgres(config: PgConnectionConfig, schema: strin
       },
       pgConfig: { schema, table, lastSyncAt: Date.now(), encryptedConnection: encrypted }
     });
-
     setDatasetRows(datasetId, pgRows);
     switchDataset(datasetId);
     return { success: true, datasetId };
@@ -128,26 +138,19 @@ export function reconcileDashboardFilters(dashboardId: string) {
   }
 }
 
-/**
- * Обновление датасета
- */
 export async function refreshPgDataset(datasetId: string) {
   const store = useDatasetStore.getState();
   const entry = store.datasets[datasetId];
-
   if (!entry || entry.sourceType !== 'postgres' || !entry.pgConfig) {
     toast.error('Некорректная конфигурация датасета');
     return { success: false };
   }
-
   if (!entry.pgConfig.encryptedConnection) {
     toast.error('Конфигурация подключения отсутствует. Переподключите датасет через настройки.');
     return { success: false };
   }
-
   const { schema, table } = entry.pgConfig;
   store.setPgStatus(datasetId, 'checking');
-
   try {
     const config = await decryptConfig<PgConnectionConfig>(entry.pgConfig.encryptedConnection);
 

@@ -1,4 +1,4 @@
-import type { DatasetRow } from "@/types";
+import { DatasetRow } from "@/entities/dataset";
 
 /**
  * Статистика по колонке (для авто-классификации и UI)

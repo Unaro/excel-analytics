@@ -2,11 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
-import {
-  IndicatorGroup,
-  FieldBinding,
-  GroupMetric,
-} from '@/types';
+import { FieldBinding, GroupMetric, IndicatorGroup } from '@/entities/metric';
 
 interface IndicatorGroupState {
   groups: IndicatorGroup[];

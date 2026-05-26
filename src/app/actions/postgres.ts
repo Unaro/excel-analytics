@@ -1,7 +1,7 @@
 'use server';
 import { z } from 'zod';
-import { createPgClient, normalizePgRow, type PgConnectionConfig } from '@/lib/logic/postgres-client';
-import type { DatasetRow } from '@/types';
+import { createPgClient, normalizePgRow, PgConnectionConfig } from '@/shared/api/postgres/client';
+import { DatasetRow } from '@/entities/dataset';
 
 const PgConfigSchema = z.object({
   host: z.string().min(1, 'Хост обязателен'),

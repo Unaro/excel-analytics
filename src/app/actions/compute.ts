@@ -1,22 +1,19 @@
 'use server';
-import { safeEvaluate, validateFormula } from '@/lib/logic/safe-math';
+
 import {
-  ComputeParamsSchema
-} from '@/lib/logic/validators';
-import type {
-  DashboardComputationResult,
-  GroupComputationResult,
-  VirtualMetricValue,
-  ActiveHierarchyFilter,
+  ComputeParamsSchema,
   ExcelRow,
-  IndicatorGroup,
+  GroupMetric,
   HierarchyFilterValue,
-  VirtualMetric,
+  IndicatorGroup,
   IndicatorGroupInDashboard,
   MetricTemplate,
-  GroupMetric
-} from '@/types';
+  VirtualMetric
+} from '@/shared/lib/validators';
+import { safeEvaluate, validateFormula } from '@/shared/lib/math/safe-math';
+
 import { z } from 'zod';
+import { ActiveHierarchyFilter, DashboardComputationResult, GroupComputationResult, VirtualMetricValue } from '@/entities/metric';
 
 type AggregateFn = 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT' | 'COUNT_DISTINCT' | 'MEDIAN' | 'PERCENTILE';
 

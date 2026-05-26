@@ -7,7 +7,7 @@ import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useDashboardStore } from '@/entities/dashboard';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
-import { DatasetConfigExport } from '@/types';
+import { DatasetConfigExport } from '@/entities/exportPackage/types';
 
 
 export function useConfigPersistence() {
@@ -73,8 +73,8 @@ export function useConfigPersistence() {
       const mergedGroups = [...currentGroups];
       for (const impGroup of importedGroups) {
         const idx = mergedGroups.findIndex(g => g.id === impGroup.id);
-        if (idx !== -1) mergedGroups[idx] = impGroup; // Обновляем существующую
-        else mergedGroups.push(impGroup);             // Добавляем новую
+        if (idx !== -1) mergedGroups[idx] = impGroup;
+        else mergedGroups.push(impGroup);
       }
       useIndicatorGroupStore.setState({ groups: mergedGroups });
 

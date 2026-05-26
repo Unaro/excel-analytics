@@ -1,4 +1,7 @@
-import { ColumnConfig, HierarchyLevel, Dashboard, IndicatorGroup, MetricTemplate } from "@/types";
+import { Dashboard } from "../dashboard";
+import { ColumnConfig } from "../dataset";
+import { HierarchyLevel } from "../hierarchy";
+import { IndicatorGroup, MetricTemplate } from "../metric";
 
 
 // types/index.ts

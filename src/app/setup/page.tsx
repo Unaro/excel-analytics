@@ -18,9 +18,9 @@ import {
   Upload
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
-import type { PgConnectionConfig } from '@/lib/logic/postgres-client';
 import {useConfigPersistence} from '@/lib/hooks/use-config-persistence';
 import { RawDataViewer } from '@/widgets/RawDataViewer';
+import type { PgConnectionConfig } from '@/shared/api/postgres/client';
 
 export default function SetupPage() {
 
@@ -34,11 +34,12 @@ export default function SetupPage() {
   const removeDataset = useDatasetStore(s => s.removeDataset);
   const { importToDataset } = useConfigPersistence();
 
-  const activeDataset = useMemo(() => 
+const activeDataset = useMemo(() => 
     activeId ? datasets[activeId] : null, 
     [activeId, datasets]
   );
-  const hasActiveData = !!activeDataset && !!activeDataset?.rows && activeDataset.rows.length > 0;
+  
+  const hasActiveData = !!activeDataset && (activeDataset.metadata?.totalRows ?? 0) > 0;
   
   const [step, setStep] = useState<'manager' | 'upload' | 'columns'>('manager');
   const [sourceType, setSourceType] = useState<'file' | 'postgres'>('file');

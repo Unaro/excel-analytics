@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { useHierarchyStore } from '@/entities/hierarchy';
+import { HierarchyLevel, useHierarchyStore } from '@/entities/hierarchy';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { Plus, Trash2, GripVertical } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
@@ -26,7 +26,6 @@ import {
   useSortable
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { HierarchyLevel } from '@/types';
 import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
 import { useShallow } from 'zustand/react/shallow';
 
