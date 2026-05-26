@@ -1,15 +1,14 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
-import { DashboardComputationResult, MetricTemplate, useMetricTemplateStore } from '@/entities/metric';
+import { DashboardComputationResult, useMetricTemplateStore } from '@/entities/metric';
 import { createComputeEngine } from '@/features/computation/lib/engine-factory';
 import { compileKPIsToComputeParams, KPI_VIRTUAL_GROUP_ID } from '@/features/computation/lib/kpi-compiler';
 import { createComputationCache } from '@/lib/storage';
-import { generateFiltersHash } from '@/shared/lib/utils/hash';
+import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
 import type { ClientComputeParams } from '@/features/computation/lib/types';
+import { HierarchyFilterValue, MetricTemplate } from '@/shared/lib/validators';
 import { KPIWidget } from '@/entities/dashboard';
-import { HierarchyFilterValue } from '@/shared/lib/validators';
-
 
 export interface KPIResult {
   widget: KPIWidget;
@@ -21,9 +20,10 @@ export interface KPIResult {
 
 /**
  * Вычисляет KPI-виджеты через DuckDB (для файлов) или PostgreSQL.
- * Использует тот же engine что и дашборд, обеспечивая согласованность цифр.
+ * 
  */
 export function useKPICalculation(
+  dashboardId: string,
   widgets: KPIWidget[],
   filters: HierarchyFilterValue[]
 ): KPIResult[] {
@@ -37,15 +37,54 @@ export function useKPICalculation(
   const engine = useMemo(() => createComputeEngine(sourceType), [sourceType]);
   const cache = useMemo(() => createComputationCache(sourceType), [sourceType]);
 
-  // Детерминированные ключи
+  // Хеш фильтров
   const filtersHash = useMemo(() => generateFiltersHash(filters), [filters]);
-  const widgetsKey = useMemo(
-    () => widgets.map(w => `${w.id}:${w.templateId}:${JSON.stringify(w.bindings)}`).join('|'),
-    [widgets]
-  );
+
+  const configHash = useMemo(() => {
+    return generateConfigHash({
+      groups: [{
+        id: KPI_VIRTUAL_GROUP_ID,
+        name: 'KPI',
+        fieldMappings: [],
+        metrics: widgets.map((w, idx) => ({
+          id: `kpi_m_${w.id}`,
+          templateId: w.templateId,
+          fieldBindings: Object.entries(w.bindings).map(([alias, columnName]) => ({
+            id: `fb_${w.id}_${alias}`,
+            fieldAlias: alias,
+            columnName,
+          })),
+          metricBindings: [],
+          enabled: true,
+          order: idx,
+        })),
+        order: 0,
+        createdAt: 0,
+        updatedAt: 0,
+      }],
+      metricTemplates: templates,
+      dashboardGroupsConfig: [{
+        groupId: KPI_VIRTUAL_GROUP_ID,
+        enabled: true,
+        order: 0,
+        virtualMetricBindings: widgets.map(w => ({
+          virtualMetricId: `kpi_vm_${w.id}`,
+          metricId: `kpi_m_${w.id}`,
+        })),
+      }],
+      virtualMetrics: widgets.map((w, idx) => ({
+        id: `kpi_vm_${w.id}`,
+        name: w.customName || templates.find(t => t.id === w.templateId)?.name || 'KPI',
+        displayFormat: templates.find(t => t.id === w.templateId)?.displayFormat || 'number',
+        decimalPlaces: templates.find(t => t.id === w.templateId)?.decimalPlaces || 2,
+        order: idx,
+        unit: templates.find(t => t.id === w.templateId)?.suffix,
+      })),
+    });
+  }, [widgets, templates]);
 
   useEffect(() => {
-    if (!activeDatasetId || widgets.length === 0 || isSyncing) {
+    if (!activeDatasetId || !dashboardId || widgets.length === 0 || isSyncing) {
       setResults([]);
       return;
     }
@@ -54,30 +93,29 @@ export function useKPICalculation(
 
     const compute = async () => {
       try {
-        // 1. Компилируем KPI в формат для engine
         const compiled = compileKPIsToComputeParams(widgets, templates);
         if (compiled.groups[0].metrics.length === 0) {
           setResults([]);
           return;
         }
 
-        // 2. Проверяем кэш (отдельный namespace для KPI)
         const cacheKey = {
           datasetId: activeDatasetId,
-          dashboardId: `kpi:${widgetsKey}`,
+          dashboardId: dashboardId,
           filtersHash,
+          configHash,
         };
+
         const cached = await cache.get(cacheKey);
         if (cached && !cancelled) {
           setResults(mapResultsToKPI(cached.result, widgets, templates, compiled.widgetToVmMap));
           return;
         }
 
-        // 3. Запускаем engine.compute
         const params: ClientComputeParams = {
           datasetId: activeDatasetId,
-          dashboardId: `kpi:${widgetsKey}`,
-          tableName: 'kpi-data', 
+          dashboardId: dashboardId,
+          tableName: 'placeholder',
           encryptedConfig: dataset?.pgConfig?.encryptedConnection,
           filters,
           groups: compiled.groups,
@@ -91,7 +129,6 @@ export function useKPICalculation(
 
         if (cancelled) return;
 
-        // 4. Кэшируем и маппим
         await cache.set(cacheKey, result);
         setResults(mapResultsToKPI(result, widgets, templates, compiled.widgetToVmMap));
       } catch (err) {
@@ -110,14 +147,11 @@ export function useKPICalculation(
 
     compute();
     return () => { cancelled = true; };
-  }, [activeDatasetId, widgetsKey, filtersHash, sourceType, engine, cache, templates, dataset, widgets, filters, isSyncing]);
+  }, [activeDatasetId, dashboardId, configHash, filtersHash, sourceType, engine, cache, templates, dataset, widgets, filters, isSyncing]);
 
   return results;
 }
 
-/**
- * Извлекает значения KPI из DashboardComputationResult
- */
 function mapResultsToKPI(
   result: DashboardComputationResult,
   widgets: KPIWidget[],

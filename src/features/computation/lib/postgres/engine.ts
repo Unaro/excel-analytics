@@ -39,6 +39,13 @@ export class PgEngine implements IComputeEngine {
     const { formulas } = compileQuery(pgParams, 'postgres');
     const processed = postProcessAggregates(rows, formulas);
 
+    const firstRow = rows[0] || {};
+    const totalRecords = typeof firstRow['_record_count'] === 'number'
+      ? firstRow['_record_count']
+      : typeof firstRow['_record_count'] === 'bigint'
+      ? Number(firstRow['_record_count'])
+      : rows.length;
+
     const groups: GroupComputationResult[] = dashboardGroupsConfig
       .filter(cfg => cfg.enabled)
       .map(cfg => {
@@ -58,9 +65,9 @@ export class PgEngine implements IComputeEngine {
         });
         return {
           groupId: cfg.groupId,
-          groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,  // ← Фоллбэк
+          groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
           virtualMetrics: groupVirtualMetrics,
-          recordCount: rows.length > 0 ? (rows[0]['_record_count'] as number) ?? rows.length : 0,
+          recordCount: totalRecords,
           computedAt: Date.now()
         };
       });
@@ -71,7 +78,7 @@ export class PgEngine implements IComputeEngine {
       activeFilter: getActiveFilter(filters),
       virtualMetrics,
       groups,
-      totalRecords: rows.length,
+      totalRecords,
       computedAt: Date.now(),
       computationTime: Date.now() - start,
     };

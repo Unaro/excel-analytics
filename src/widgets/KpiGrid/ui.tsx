@@ -15,7 +15,7 @@ interface KPIGridProps {
 }
 
 export function KPIGrid({ dashboardId, widgets, currentFilters, isEditMode = false }: KPIGridProps) {
-  const results = useKPICalculation(widgets, currentFilters);
+  const results = useKPICalculation(dashboardId, widgets, currentFilters);
   const removeWidget = useDashboardStore(s => s.removeKPIWidget);
 
   if (results.length === 0) return null;

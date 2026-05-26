@@ -53,6 +53,8 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
   const pgParams: QueryParam[] = [];
   const whereConditions: string[] = [];
 
+  selectParts.push(`COUNT(*) AS "_record_count"`);
+
   // 1. WHERE Clause (без изменений)
   if (filters.length > 0) {
     filters.forEach((f) => {
@@ -136,9 +138,9 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
   }
 
   return {
-    sql: selectParts.length > 0
+    sql: selectParts.length > 1
       ? `SELECT ${selectParts.join(', ')} FROM ${tableName} ${whereClause}`
-      : `SELECT 1 AS dummy`,
+      : `SELECT COUNT(*) AS "_record_count" FROM ${tableName} ${whereClause}`,
     params: dialect === 'postgres' ? pgParams : undefined,
     formulas
   };

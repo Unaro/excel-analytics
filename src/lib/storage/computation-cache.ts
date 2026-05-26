@@ -10,7 +10,7 @@ export class FileComputationCache implements IComputationCache {
   private prefix = 'comp:file:';
 
   async set(key: CacheKey, result: DashboardComputationResult, ttlMs = FILE_TTL): Promise<void> {
-    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
+    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}${key.configHash ? `:${key.configHash}` : ''}`;
     const meta: CacheMetadata = {
       storedAt: Date.now(),
       expiresAt: Date.now() + ttlMs,
@@ -30,7 +30,7 @@ export class FileComputationCache implements IComputationCache {
   }
 
   async get(key: CacheKey): Promise<CachedComputationEntry | null> {
-    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
+    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}${key.configHash ? `:${key.configHash}` : ''}`;
     const entry = await get(storageKey);
     if (!entry) return null;
     if (Date.now() > entry.meta.expiresAt) {
@@ -41,7 +41,7 @@ export class FileComputationCache implements IComputationCache {
   }
 
   async invalidate(key: CacheKey): Promise<void> {
-    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
+    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}${key.configHash ? `:${key.configHash}` : ''}`;
     await del(storageKey);
   }
 

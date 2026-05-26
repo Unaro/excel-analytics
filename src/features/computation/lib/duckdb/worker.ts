@@ -7,6 +7,7 @@ import { transliterate } from '@/shared/lib/utils/translit';
 
 import { ClientComputeParams } from '../types';
 import { parseExcelInWorker } from './excel-parser';
+import { buildDuckDBTableName } from './table-name';
 
 // --- 1. ОПРЕДЕЛЯЕМ СТРОГИЕ ТИПЫ ДЛЯ СООБЩЕНИЙ ---
 
@@ -114,7 +115,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
     if (type === 'REGISTER_ARROW') {
       const { datasetId, buffer } = payload;
-      const tableName = `dt_${datasetId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+      const tableName = buildDuckDBTableName(datasetId);
       
       await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
       
@@ -127,16 +128,20 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     if (type === 'COMPUTE') {
       const { params } = payload;
       const { dashboardId, dashboardGroupsConfig, virtualMetrics, filters } = params;
-      
       const { sql, formulas } = compileQuery(params, 'duckdb');
-      
-      // Запрос к DuckDB
+
       const table = await conn!.query(sql);
       const rows = table.toArray() as Record<string, unknown>[];
       
-      // Тяжелая математика тоже выполняется в фоне
-      const processed = postProcessAggregates(rows, formulas);
+      const firstRow = rows[0] || {};
+      const totalRecords = typeof firstRow['_record_count'] === 'number' 
+        ? firstRow['_record_count']
+        : typeof firstRow['_record_count'] === 'bigint'
+        ? Number(firstRow['_record_count'])
+        : rows.length;
       
+      const processed = postProcessAggregates(rows, formulas);
+
       const groups = dashboardGroupsConfig
         .filter(cfg => cfg.enabled)
         .map(cfg => {
@@ -158,7 +163,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
             groupId: cfg.groupId,
             groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
             virtualMetrics: groupVirtualMetrics,
-            recordCount: rows.length > 0 ? (rows[0]['_record_count'] as number) ?? rows.length : 0,
+            recordCount: totalRecords,
             computedAt: Date.now()
           };
         });
@@ -169,7 +174,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         activeFilter: getActiveFilter(filters),
         virtualMetrics,
         groups,
-        totalRecords: rows.length,
+        totalRecords,
         computedAt: Date.now()
       };
 
@@ -187,7 +192,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
       const flatRows = sheets.flatMap(s => s.rows);
       const headers = sheets[0].headers;
-      const tableName = `dt_${datasetId.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+      const tableName = buildDuckDBTableName(datasetId);
       
       await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
 
@@ -239,7 +244,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     // Внутри self.onmessage, после блока IMPORT_EXCEL добавить:
     if (type === 'GET_PREVIEW') {
       const { datasetId, limit } = payload;
-      const tableName = `dt_${datasetId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+      const tableName = buildDuckDBTableName(datasetId)
       
       try {
         // Проверяем что таблица существует
@@ -294,7 +299,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
     if (type === 'EXPORT_ARROW') {
   const { datasetId } = payload;
-  const tableName = `dt_${datasetId.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  const tableName = buildDuckDBTableName(datasetId);
   
   try {
     // Проверяем что таблица существует

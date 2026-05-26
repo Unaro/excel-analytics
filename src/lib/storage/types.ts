@@ -4,6 +4,7 @@ export interface CacheKey {
   datasetId: string;
   dashboardId: string;
   filtersHash: string;
+  configHash?: string;
 }
 
 export interface CacheMetadata {
