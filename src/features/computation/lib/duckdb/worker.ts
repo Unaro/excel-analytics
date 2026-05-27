@@ -7,7 +7,7 @@ import { transliterate } from '@/shared/lib/utils/translit';
 
 import { ClientComputeParams } from '../types';
 import { parseExcelInWorker } from './excel-parser';
-import { buildDuckDBTableName } from './table-name';
+import { buildTableName } from './table-name';
 
 // --- 1. ОПРЕДЕЛЯЕМ СТРОГИЕ ТИПЫ ДЛЯ СООБЩЕНИЙ ---
 
@@ -35,12 +35,17 @@ export interface ExportArrowPayload {
   datasetId: string;
 }
 
+export interface DropTablePayload {
+  datasetId: string;
+}
+
 export type WorkerMessage = 
   | { type: 'REGISTER_ARROW'; id: number; payload: RegisterArrowPayload }
   | { type: 'COMPUTE'; id: number; payload: ComputePayload }
   | { type: 'IMPORT_EXCEL'; id: number; payload: ImportExcelPayload }
   | { type: 'GET_PREVIEW'; id: number; payload: GetPreviewPayload }
-  | { type: 'EXPORT_ARROW'; id: number; payload: ExportArrowPayload };
+  | { type: 'EXPORT_ARROW'; id: number; payload: ExportArrowPayload }
+  | { type: 'DROP_TABLE'; id: number; payload: DropTablePayload };
 
 // --- ОСТАЛЬНАЯ ЛОГИКА ---
 
@@ -115,7 +120,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
     if (type === 'REGISTER_ARROW') {
       const { datasetId, buffer } = payload;
-      const tableName = buildDuckDBTableName(datasetId);
+      const tableName = buildTableName(datasetId);
       
       await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
       
@@ -192,7 +197,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
       const flatRows = sheets.flatMap(s => s.rows);
       const headers = sheets[0].headers;
-      const tableName = buildDuckDBTableName(datasetId);
+      const tableName = buildTableName(datasetId);
       
       await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
 
@@ -241,10 +246,9 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       });
     }
 
-    // Внутри self.onmessage, после блока IMPORT_EXCEL добавить:
     if (type === 'GET_PREVIEW') {
       const { datasetId, limit } = payload;
-      const tableName = buildDuckDBTableName(datasetId)
+      const tableName = buildTableName(datasetId)
       
       try {
         // Проверяем что таблица существует
@@ -298,40 +302,58 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     }
 
     if (type === 'EXPORT_ARROW') {
-  const { datasetId } = payload;
-  const tableName = buildDuckDBTableName(datasetId);
-  
-  try {
-    // Проверяем что таблица существует
-    const checkTable = await conn!.query(`
-      SELECT COUNT(*) as cnt 
-      FROM information_schema.tables 
-      WHERE table_name = '${tableName}'
-    `);
-    const tableExists = (checkTable.toArray()[0] as any)?.cnt > 0;
-    
-    if (!tableExists) {
-      throw new Error(`Table ${tableName} does not exist`);
+      const { datasetId } = payload;
+      const tableName = buildTableName(datasetId);
+      
+      try {
+        // Проверяем что таблица существует
+        const checkTable = await conn!.query(`
+          SELECT COUNT(*) as cnt 
+          FROM information_schema.tables 
+          WHERE table_name = '${tableName}'
+        `);
+        const tableExists = (checkTable.toArray()[0] as any)?.cnt > 0;
+        
+        if (!tableExists) {
+          throw new Error(`Table ${tableName} does not exist`);
+        }
+        
+        // Экспортируем ВСЕ данные из таблицы в Arrow IPC format
+        const table = await conn!.query(`SELECT * FROM ${tableName}`);
+        
+        // Конвертируем Arrow Table в IPC Stream (Uint8Array)
+        const { tableToIPC } = await import('apache-arrow');
+        const arrowBuffer = tableToIPC(table, 'stream');
+        
+        // Передаём buffer как Transferable для zero-copy
+        self.postMessage({ id, success: true, result: arrowBuffer });
+      } catch (err) {
+        console.error('[Worker] EXPORT_ARROW failed:', err);
+        self.postMessage({ 
+          id, 
+          success: false, 
+          error: err instanceof Error ? err.message : 'Export failed' 
+        });
+      }
     }
-    
-    // Экспортируем ВСЕ данные из таблицы в Arrow IPC format
-    const table = await conn!.query(`SELECT * FROM ${tableName}`);
-    
-    // Конвертируем Arrow Table в IPC Stream (Uint8Array)
-    const { tableToIPC } = await import('apache-arrow');
-    const arrowBuffer = tableToIPC(table, 'stream');
-    
-    // Передаём buffer как Transferable для zero-copy
-    self.postMessage({ id, success: true, result: arrowBuffer });
-  } catch (err) {
-    console.error('[Worker] EXPORT_ARROW failed:', err);
-    self.postMessage({ 
-      id, 
-      success: false, 
-      error: err instanceof Error ? err.message : 'Export failed' 
-    });
-  }
-}
+
+    // === DROP_TABLE: удаляет таблицу из DuckDB ===
+    if (type === 'DROP_TABLE') {
+      const { datasetId } = payload;
+      const tableName = buildTableName(datasetId);
+      try {
+        await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
+        console.log(`[Worker] Dropped table: ${tableName}`);
+        self.postMessage({ id, success: true });
+      } catch (err) {
+        console.error('[Worker] DROP_TABLE failed:', err);
+        self.postMessage({
+          id,
+          success: false,
+          error: err instanceof Error ? err.message : 'Drop table failed'
+        });
+      }
+    }
 
   } catch (error) {
     self.postMessage({ id, success: false, error: error instanceof Error ? error.message : 'Unknown error' });

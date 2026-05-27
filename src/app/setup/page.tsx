@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useDatasetStore } from '@/entities/dataset';
+import { replaceDatasetFile, useDatasetStore } from '@/entities/dataset';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
 import { FileUploader } from '@/features/UploadExcel';
 import { ColumnManager } from '@/features/ManageColumns';
@@ -15,7 +15,8 @@ import { toast } from 'sonner';
 import { 
   Trash2, Plus, Database, FileSpreadsheet, ArrowLeft, 
   Check, TableProperties, ChevronRight, Loader2, 
-  Upload
+  Upload,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import {useConfigPersistence} from '@/lib/hooks/use-config-persistence';
@@ -77,6 +78,62 @@ const activeDataset = useMemo(() =>
       }
     }
   }, [activeId, datasets, removeDataset, switchDataset]);
+
+  const handleReplaceFile = useCallback(async (datasetId: string, currentName: string) => {
+    // 1. Диалог выбора файла
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls,.csv';
+
+    input.onchange = async (ev: Event) => {
+      const file = (ev.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      input.remove();
+
+      // 2. Диалог подтверждения
+      const confirmed = window.confirm(
+        `Заменить файл для датасета "${currentName}"?\n\n` +
+        `⚠️ Это действие:\n` +
+        `• Загрузит новые данные в DuckDB\n` +
+        `• Сохранит настройки колонок (классификацию, алиасы)\n` +
+        `• Сбросит кэш вычислений дашбордов\n` +
+        `• Пометит удалённые колонки как "скрытые" (не удалит)\n\n` +
+        `Продолжить?`
+      );
+      if (!confirmed) return;
+
+      // 3. Выполняем замену с toast-индикатором
+      const toastId = 'replace-' + Date.now();
+      toast.loading('Замена файла...', { id: toastId });
+
+      try {
+        const res = await replaceDatasetFile(datasetId, file);
+        if (res.success) {
+          const addedCount = res.addedColumns?.length ?? 0;
+          const removedCount = res.removedColumns?.length ?? 0;
+
+          let message = `✅ Датасет обновлён\n` +
+            `Добавлено колонок: ${addedCount}\n` +
+            `Удалено колонок: ${removedCount}`;
+
+          if (res.removedColumns && res.removedColumns.length > 0) {
+            const preview = res.removedColumns.slice(0, 3).join(', ');
+            const more = res.removedColumns.length > 3 ? ` и ещё ${res.removedColumns.length - 3}` : '';
+            message += `\n\n⚠️ Удалены: ${preview}${more}\nОни помечены как "скрытые" в настройках колонок.`;
+          }
+
+          toast.success(message, { id: toastId, duration: 8000 });
+          setStep('columns'); // Переходим к проверке
+        } else {
+          toast.error(`❌ Ошибка: ${res.error}`, { id: toastId });
+        }
+      } catch (err) {
+        toast.error('Непредвиденная ошибка при замене', { id: toastId });
+      }
+    };
+
+    input.click();
+  }, []);
 
   if (!hydrated) return <LoadingScreen message="Загрузка страницы настройки..." />;
 
@@ -168,6 +225,20 @@ const activeDataset = useMemo(() =>
                     {ds.id === activeId && <Badge variant="outline" className="ml-2 text-[10px] border-indigo-200 text-indigo-600 dark:border-indigo-800 dark:text-indigo-400">Активен</Badge>}
                   </div>
                   <div className="flex items-center gap-2">
+                    {ds.sourceType === 'file' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Заменить файл (обновить данные)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReplaceFile(ds.id, ds.name);
+                        }}
+                      >
+                        <RefreshCw size={14} />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => { e.stopPropagation(); handleDeleteDataset(ds.id); }}>
                       <Trash2 size={14} />
                     </Button>

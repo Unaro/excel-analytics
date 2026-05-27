@@ -32,6 +32,10 @@ interface WorkerEventMap {
     payload: { datasetId: string };
     response: Uint8Array;
   };
+  DROP_TABLE: {
+    payload: { datasetId: string };
+    response: void;
+  };
 }
 
 // Тип для входящего сообщения от воркера к менеджеру
@@ -103,6 +107,14 @@ export class DuckDBWorkerManager {
     buffer: ArrayBuffer
   ): Promise<ImportExcelResult> {
     return this.dispatch('IMPORT_EXCEL', { datasetId, fileName, buffer }, [buffer]);
+  }
+
+  /**
+ * Удаляет таблицу датасета из DuckDB.
+ * Используется при замене файла или удалении датасета.
+ */
+  async dropTable(datasetId: string): Promise<void> {
+    return this.dispatch('DROP_TABLE', { datasetId });
   }
 }
 

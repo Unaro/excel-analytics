@@ -94,3 +94,10 @@ export interface ColumnConfig {
   displayName: string;                   // Название для отображения в UI
   description?: string;                  // Описание колонки
 }
+
+export interface ReplaceFileResult {
+  success: boolean;
+  error?: string;
+  addedColumns?: string[];
+  removedColumns?: string[];
+}

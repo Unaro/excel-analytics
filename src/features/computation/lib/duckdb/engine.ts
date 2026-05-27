@@ -1,7 +1,7 @@
 import { DashboardComputationResult } from '@/entities/metric';
 import type { ClientComputeParams, IComputeEngine } from '../types';
 import { duckdbManager } from './manager';
-import { buildDuckDBTableName } from './table-name';
+import { buildTableName } from './table-name';
 
 
 export class DuckDbEngine implements IComputeEngine {
@@ -11,7 +11,7 @@ export class DuckDbEngine implements IComputeEngine {
     const start = Date.now();
     const duckParams = {
       ...params,
-      tableName: buildDuckDBTableName(params.datasetId),
+      tableName: buildTableName(params.datasetId),
     };
     const result = await duckdbManager.computeDashboard(duckParams);
     return {

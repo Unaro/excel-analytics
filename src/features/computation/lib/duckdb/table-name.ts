@@ -2,10 +2,8 @@
  * Генерирует детерминированное имя таблицы из datasetId.
  * 
  * Regex: /[^a-zA-Z0-9_]/g — разрешены ТОЛЬКО буквы, цифры и подчёркивание.
- * Дефис ЗАПРЕЩЁН, т.к. в DuckDB идентификаторы с дефисом требуют кавычек
- * и могут вызывать проблемы с парсером SQL.
  */
-export function buildDuckDBTableName(datasetId: string): string {
+export function buildTableName(datasetId: string): string {
   // 1. Заменяем всё, кроме [a-zA-Z0-9_], на подчёркивание
   const safeId = datasetId.replace(/[^a-zA-Z0-9_]/g, '_');
   
