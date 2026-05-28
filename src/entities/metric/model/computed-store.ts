@@ -1,8 +1,7 @@
 // lib/stores/computed-metrics-store.ts
 import { create } from 'zustand';
-import { ComputedMetricValue, DashboardComputationResult, GroupComputationResult, MetricCache } from './computed-types';
+import { ComputedMetricValue, DashboardComputationResult, GroupComputationResult, MetricCache, VirtualMetricValue } from './computed-types';
 import { HierarchyFilterValue } from '@/shared/lib/validators';
-
 
 interface ComputedMetricsState {
   // Кеш результатов вычислений

@@ -1,43 +1,55 @@
 import { safeMath } from '@/shared/lib/math/safe-math';
 import type { CompiledQuery } from './types';
 
+// Универсальный тип для скомпилированной формулы, чтобы не зависеть от глобальных типов mathjs
+type CompiledFormula = { evaluate: (scope: Record<string, number>) => unknown };
+
 /**
  * Пост-обработка SQL-результата.
- * 
- * Алгоритм:
- * 1. Извлекаем значения всех AGGREGATE метрик из SQL rows (они уже посчитаны)
- * 2. Топологически сортируем CALCULATED метрики (чтобы учесть зависимости)
- * 3. Для каждой calculated собираем scope из двух источников:
- *    - fieldDependencies → из SQL (базовые агрегаты колонок)
- *    - metricDependencies → из уже вычисленных метрик
- * 4. Вычисляем формулу через mathjs
+ * Поддерживает режимы с GROUP BY (массив строк) и без него.
  */
 export function postProcessAggregates(
   sqlRows: Record<string, unknown>[],
   formulas: CompiledQuery['formulas']
+): Record<string, number | null>[] {
+  if (sqlRows.length === 0) return [];
+
+  const sortedCalculated = topologicalSort(formulas);
+
+  const compiledFormulas = new Map<string, CompiledFormula>();
+  for (const [baseAlias, meta] of formulas.entries()) {
+    try {
+      compiledFormulas.set(baseAlias, safeMath.compile(meta.formula) as CompiledFormula);
+    } catch (error) {
+      console.error(`[post-process] Formula compilation error for ${baseAlias}:`, error);
+    }
+  }
+
+  return sqlRows.map(row => processRow(row, formulas, compiledFormulas, sortedCalculated));
+}
+
+/**
+ * Обрабатывает одну строку SQL-результата
+ */
+function processRow(
+  row: Record<string, unknown>,
+  formulas: CompiledQuery['formulas'],
+  compiledFormulas: Map<string, CompiledFormula>,
+  sortedCalculated: string[]
 ): Record<string, number | null> {
   const results: Record<string, number | null> = {};
-  const row = sqlRows[0] || {};
 
-  // ═══════════════════════════════════════════════════════════
-  // 1. Извлекаем AGGREGATE значения из SQL
-  //    Все ключи из row, кроме 'dummy' и ключей формул — это агрегаты
-  // ═══════════════════════════════════════════════════════════
+  // Извлекаем AGGREGATE значения из SQL
   for (const [key, val] of Object.entries(row)) {
-    if (key === 'dummy') continue;
+    // Игнорируем служебные поля и базы
+    if (key === 'dummy' || key === '_group_label' || key === '_record_count') continue;
     if (key.startsWith('base_')) continue;
     if (formulas.has(key)) continue;
+    
     results[key] = typeof val === 'number' ? val : (typeof val === 'bigint' ? Number(val) : null);
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // 2. Топологическая сортировка CALCULATED метрик
-  // ═══════════════════════════════════════════════════════════
-  const sortedCalculated = topologicalSort(formulas);
-
-  // ═══════════════════════════════════════════════════════════
-  // 3. Вычисляем CALCULATED метрики по порядку
-  // ═══════════════════════════════════════════════════════════
+  // Вычисляем CALCULATED метрики по уже отсортированному порядку
   for (const baseAlias of sortedCalculated) {
     const meta = formulas.get(baseAlias);
     if (!meta) continue;
@@ -45,20 +57,28 @@ export function postProcessAggregates(
     try {
       const scope: Record<string, number> = {};
 
+      // Значения из SQL (fieldDependencies)
       for (const dep of meta.fieldDependencies) {
         const depAlias = `${baseAlias}__${dep.alias}`;
-        const rawVal = (row as Record<string, unknown>)[depAlias];
+        const rawVal = row[depAlias];
         scope[dep.alias] = typeof rawVal === 'number' ? rawVal : 
                            (typeof rawVal === 'bigint' ? Number(rawVal) : 0);
       }
 
+      // Значения из других метрик (metricDependencies)
       for (const dep of meta.metricDependencies) {
         const depValue = findMetricValue(results, dep.metricId, meta.groupId);
         scope[dep.alias] = depValue ?? 0;
       }
 
-      const value = safeEvaluateFormula(meta.formula, scope);
-      results[baseAlias.replace('base_', '')] = value;
+      const compiled = compiledFormulas.get(baseAlias);
+      if (compiled) {
+        const value = compiled.evaluate(scope);
+        // Защита от NaN, Infinity и нечисловых результатов деления
+        results[baseAlias.replace('base_', '')] = typeof value === 'number' && isFinite(value) ? value : null;
+      } else {
+        results[baseAlias.replace('base_', '')] = null;
+      }
     } catch (err) {
       console.error(`[post-process] Error calculating ${baseAlias}:`, err);
       results[baseAlias.replace('base_', '')] = null;
@@ -69,8 +89,7 @@ export function postProcessAggregates(
 }
 
 /**
- * Топологическая сортировка calculated метрик по их metric-зависимостям.
- * Обнаруживает циклы и возвращает валидный порядок вычислений.
+ * Топологическая сортировка calculated метрик по их metric-зависимостям
  */
 function topologicalSort(formulas: CompiledQuery['formulas']): string[] {
   const calculatedAliases = Array.from(formulas.keys());
@@ -113,8 +132,7 @@ function topologicalSort(formulas: CompiledQuery['formulas']): string[] {
 }
 
 /**
- * Ищет значение метрики по её ID в уже вычисленных результатах.
- * В results ключи имеют формат "groupId__metricId".
+ * Ищет значение метрики по её ID в уже вычисленных результатах
  */
 function findMetricValue(
   results: Record<string, number | null>,
@@ -129,21 +147,4 @@ function findMetricValue(
   }
 
   return null;
-}
-
-/**
- * Безопасное вычисление формулы через mathjs с именованными переменными.
- */
-function safeEvaluateFormula(
-  formula: string,
-  scope: Record<string, number>
-): number | null {
-  try {
-    const result = safeMath.evaluate(formula, scope);
-    if (typeof result === 'number' && isFinite(result)) return result;
-    return null;
-  } catch (err) {
-    console.error(`[post-process] Formula "${formula}" failed with scope`, scope, err);
-    return null;
-  }
 }

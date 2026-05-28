@@ -46,16 +46,20 @@ function buildAggregateExpr(
 }
 
 export function compileQuery(params: ClientComputeParams, dialect: ComputeDialect): CompiledQuery {
-  const { filters, groups, dashboardGroupsConfig, metricTemplates, tableName } = params;
-
+  const { filters, groups, dashboardGroupsConfig, metricTemplates, tableName, groupByColumn } = params;
+  
   const formulas: CompiledQuery['formulas'] = new Map();
   const selectParts: string[] = [];
   const pgParams: QueryParam[] = [];
   const whereConditions: string[] = [];
 
+  if (groupByColumn) {
+    selectParts.push(`${quote(groupByColumn)} AS "_group_label"`);
+  }
+
   selectParts.push(`COUNT(*) AS "_record_count"`);
 
-  // 1. WHERE Clause (без изменений)
+  // 1. WHERE Clause
   if (filters.length > 0) {
     filters.forEach((f) => {
       const col = quote(f.columnName);
@@ -109,7 +113,7 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
         const baseAlias = `base_${alias}`;
         
         const fieldDependencies = metric.fieldBindings.map(fb => {
-          const aggregateFn = (fb as any).aggregateFn || 'SUM';
+          const aggregateFn = 'SUM';
           const depAlias = `${baseAlias}__${fb.fieldAlias}`;
           const expr = buildAggregateExpr(fb.columnName, aggregateFn, dialect);
           selectParts.push(`${expr} AS ${quote(depAlias)}`);
@@ -137,10 +141,33 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
     }
   }
 
+  let groupByClause = '';
+  let orderByClause = '';
+  let limitClause = '';
+  
+  if (groupByColumn) {
+    groupByClause = `GROUP BY ${quote(groupByColumn)}`;
+    const firstMetricAlias = selectParts.find(p => p.includes('__') && !p.includes('_record_count'));
+    if (firstMetricAlias) {
+      const match = firstMetricAlias.match(/AS "([^"]+)"/);
+      if (match) {
+        orderByClause = `ORDER BY ${quote(match[1])} DESC`;
+      }
+    }
+    limitClause = 'LIMIT 100';
+  }
+
+  const parts = [
+    `SELECT ${selectParts.join(', ')}`,
+    `FROM ${tableName}`,
+    whereClause,
+    groupByClause,
+    orderByClause,
+    limitClause,
+  ].filter(Boolean);
+
   return {
-    sql: selectParts.length > 1
-      ? `SELECT ${selectParts.join(', ')} FROM ${tableName} ${whereClause}`
-      : `SELECT COUNT(*) AS "_record_count" FROM ${tableName} ${whereClause}`,
+    sql: parts.join(' '),
     params: dialect === 'postgres' ? pgParams : undefined,
     formulas
   };

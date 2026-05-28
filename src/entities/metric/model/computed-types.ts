@@ -114,3 +114,24 @@ export interface MetricCache {
   value: ComputedMetricValue;
   expiresAt: number;        // Время истечения кеша
 }
+
+/**
+ * Одна строка в разбивке (breakdown) по дочернему уровню иерархии
+ */
+export interface BreakdownItem {
+  /** Значение группирующей колонки (например, "ЦАО") */
+  label: string;
+  /** Количество записей в этой группе */
+  recordCount: number;
+  /** Значения метрик для этой группы */
+  virtualMetrics: VirtualMetricValue[];
+}
+
+export interface GroupComputationResult {
+  groupId: string;
+  groupName: string;
+  virtualMetrics: VirtualMetricValue[];
+  breakdown?: BreakdownItem[]; 
+  recordCount: number;
+  computedAt: number;
+}

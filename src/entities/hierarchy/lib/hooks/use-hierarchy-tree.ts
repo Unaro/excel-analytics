@@ -1,17 +1,19 @@
 // lib/hooks/use-hierarchy-tree.ts
 import { useMemo } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
-import { useHierarchyStore } from '@/entities/hierarchy';
+import { HierarchyLevel, useHierarchyStore } from '@/entities/hierarchy';
 import { useDatasetStore } from '@/entities/dataset';
 import { useShallow } from 'zustand/react/shallow';
 import { getHierarchyNodesLocal } from '../hierarchy-client';
+
+const EMPTY_LEVELS: HierarchyLevel[] = [];
 
 export function useHierarchyTree(dashboardId: string) {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   
   const dashboard = useDashboardStore(useShallow(s => s.getDashboard(dashboardId)));
   const levels = useHierarchyStore(useShallow(s => 
-    activeDatasetId ? s.getLevels(activeDatasetId) : []
+    activeDatasetId ? s.getLevels(activeDatasetId) : EMPTY_LEVELS
   ));
   const excelData = useDatasetStore(useShallow(s => s.getAllData()));
   

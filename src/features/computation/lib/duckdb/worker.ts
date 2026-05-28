@@ -132,12 +132,13 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
     if (type === 'COMPUTE') {
       const { params } = payload;
-      const { dashboardId, dashboardGroupsConfig, virtualMetrics, filters } = params;
+      const { dashboardId, dashboardGroupsConfig, virtualMetrics, filters, groupByColumn } = params;
       const { sql, formulas } = compileQuery(params, 'duckdb');
 
       const table = await conn!.query(sql);
       const rows = table.toArray() as Record<string, unknown>[];
       
+      // Извлекаем общее количество обработанных записей (из первой строки)
       const firstRow = rows[0] || {};
       const totalRecords = typeof firstRow['_record_count'] === 'number' 
         ? firstRow['_record_count']
@@ -145,12 +146,25 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         ? Number(firstRow['_record_count'])
         : rows.length;
       
-      const processed = postProcessAggregates(rows, formulas);
+      // Обрабатываем ВСЕ строки (postProcessAggregates теперь возвращает массив)
+      const processedRows = postProcessAggregates(rows, formulas);
 
       const groups = dashboardGroupsConfig
         .filter(cfg => cfg.enabled)
         .map(cfg => {
-          const groupDef = params.groups.find(g => g.id === cfg.groupId);
+      const groupDef = params.groups.find(g => g.id === cfg.groupId);
+          
+      const breakdownItems = groupByColumn ? processedRows
+        .map((processed, idx) => {
+          const rawLabel = rows[idx]['_group_label'];
+          const label = rawLabel === null || rawLabel === undefined
+            ? ''
+            : String(rawLabel).trim();
+
+          const recordCount = typeof rows[idx]['_record_count'] === 'number'
+            ? rows[idx]['_record_count']
+            : Number(rows[idx]['_record_count'] ?? 0);
+
           const groupVirtualMetrics = virtualMetrics.map(vm => {
             const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
             if (!binding) return { virtualMetricId: vm.id, virtualMetricName: vm.name, value: null, formattedValue: '—', sourceMetricId: '' };
@@ -164,14 +178,42 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
               sourceMetricId: binding.metricId
             };
           });
+
+          return { label, recordCount, virtualMetrics: groupVirtualMetrics };
+        })
+        .filter(item => item.label !== '')
+        : undefined;
+          
+        // ═══════════════════════════════════════════════════════════
+        // Сводные значения (сумма по всем строкам)
+        // ═══════════════════════════════════════════════════════════
+        const summaryProcessed = groupByColumn 
+          ? aggregateProcessedRows(processedRows) 
+          : processedRows[0] || {};
+        
+        const groupVirtualMetrics = virtualMetrics.map(vm => {
+          const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
+          if (!binding) return { virtualMetricId: vm.id, virtualMetricName: vm.name, value: null, formattedValue: '—', sourceMetricId: '' };
+          const alias = `${cfg.groupId}__${binding.metricId}`;
+          const numericValue = typeof summaryProcessed[alias] === 'number' ? summaryProcessed[alias] : null;
           return {
-            groupId: cfg.groupId,
-            groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
-            virtualMetrics: groupVirtualMetrics,
-            recordCount: totalRecords,
-            computedAt: Date.now()
+            virtualMetricId: vm.id,
+            virtualMetricName: vm.name,
+            value: numericValue,
+            formattedValue: formatValue(numericValue, vm.displayFormat, vm.decimalPlaces, vm.unit),
+            sourceMetricId: binding.metricId
           };
         });
+        
+        return {
+          groupId: cfg.groupId,
+          groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
+          virtualMetrics: groupVirtualMetrics,
+          breakdown: breakdownItems,
+          recordCount: totalRecords,
+          computedAt: Date.now()
+        };
+      });
 
       const result = {
         dashboardId,
@@ -182,8 +224,29 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         totalRecords,
         computedAt: Date.now()
       };
-
       self.postMessage({ id, success: true, result });
+    }
+
+    /**
+     * Агрегирует массив обработанных строк в одну сводную строку
+     * (суммирует все числовые значения)
+     */
+    function aggregateProcessedRows(processedRows: Record<string, number | null>[]): Record<string, number | null> {
+      if (processedRows.length === 0) return {};
+      
+      const summary: Record<string, number | null> = {};
+      const keys = Object.keys(processedRows[0]);
+      
+      for (const key of keys) {
+        const values = processedRows.map(row => row[key]).filter(v => v !== null && v !== undefined) as number[];
+        if (values.length > 0) {
+          summary[key] = values.reduce((a, b) => a + b, 0);
+        } else {
+          summary[key] = null;
+        }
+      }
+      
+      return summary;
     }
     
     if (type === 'IMPORT_EXCEL') {
@@ -195,7 +258,15 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         throw new Error('Файл пуст');
       }
 
-      const flatRows = sheets.flatMap(s => s.rows);
+      const flatRows = sheets
+        .flatMap(s => s.rows)
+        .filter(row => Object.values(row).some(v => v !== null && v !== ''));
+      
+      
+      if (flatRows.length === 0) {
+        throw new Error('После фильтрации пустых строк данных не осталось');
+      }
+
       const headers = sheets[0].headers;
       const tableName = buildTableName(datasetId);
       
@@ -207,7 +278,6 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       for (let i = 0; i < flatRows.length; i += BATCH_SIZE) {
         const chunk = flatRows.slice(i, i + BATCH_SIZE);
         
-        // tableFromJSON конвертирует массив JS-объектов в компактный Arrow-формат
         const arrowTable = tableFromJSON(chunk);
         
         await conn!.insertArrowTable(arrowTable, { name: tableName });
@@ -233,7 +303,6 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         };
       });
 
-      // Возвращаем ТОЛЬКО легковесные метаданные обратно в главный поток
       self.postMessage({ 
         id, 
         success: true, 

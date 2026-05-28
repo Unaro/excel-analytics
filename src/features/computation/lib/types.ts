@@ -14,6 +14,7 @@ export interface ClientComputeParams {
   dashboardGroupsConfig: IndicatorGroupInDashboard[];
   metricTemplates: MetricTemplate[];
   virtualMetrics: VirtualMetric[];
+  groupByColumn?: string; 
 }
 
 export interface CompiledQuery {

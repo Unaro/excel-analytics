@@ -1,32 +1,74 @@
 'use client';
-
-import { Suspense, use } from 'react';
-import Link from 'next/link';
-import { useUrlFilters } from '@/lib/hooks/use-url-filters';
-import { useGroupProfile } from '@/lib/hooks/use-group-profile';
+import { Suspense, use, useState, useMemo, useCallback, useEffect } from 'react';
+import { useGroupBreakdown } from '@/lib/hooks/use-group-breakdown';
+import { useGroupPath } from '@/lib/hooks/use-group-path';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
-import { HierarchyTree } from '@/widgets/HierarchyFilter';
-import { Card } from '@/shared/ui/card';
-import { Button } from '@/shared/ui/button';
-import { ArrowLeft, Layers, Loader2, Calculator, Edit, BarChart3 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
+import { Button } from '@/shared/ui/button';
+import Link from 'next/link';
+import { GroupPageHeader } from './components/GroupPageHeader';
+import { GroupKpiGrid } from './components/GroupKpiGrid';
+import { GroupBreakdownTable } from './components/GroupBreakdownTable';
+import { GroupChartsPanel } from './components/GroupChartsPanel';
+import { ChartTypeSelector, ChartType } from './components/ChartTypeSelector';
 
 function GroupProfileContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const hydrated = useStoreHydration();
+  const { path, setPath } = useGroupPath();
 
-  const { filters, setFilters } = useUrlFilters();
-  const { group, result, isComputing, virtualMetrics } = useGroupProfile(id, filters);
+  const {
+    group, currentPath, nextLevel, summary, breakdown,
+    virtualMetrics, isComputing, error,
+    drillDown, resetToLevel, resetAll,
+  } = useGroupBreakdown(id, path);
 
-  if (!hydrated) {
-    return <LoadingScreen message="Загрузка системы..." />;
-  }
+  const [activeMetricIds, setActiveMetricIds] = useState<string[]>([]);
+  const [chartTypes, setChartTypes] = useState<ChartType[]>(['bar', 'radar']);
+
+  useEffect(() => {
+    const pathsEqual =
+      path.length === currentPath.length &&
+      path.every((p, i) =>
+        p.levelId === currentPath[i]?.levelId &&
+        p.value === currentPath[i]?.value
+      );
+    if (!pathsEqual) {
+      setPath(currentPath);
+    }
+  }, [currentPath, path, setPath]);
+
+  // Авто-выбор первой метрики при загрузке группы
+  useEffect(() => {
+    if (virtualMetrics.length > 0 && activeMetricIds.length === 0) {
+      setActiveMetricIds([virtualMetrics[0].id]);
+    }
+  }, [virtualMetrics]);
+
+  const handleToggleMetric = useCallback((metricId: string) => {
+    setActiveMetricIds(prev => {
+      const isAlready = prev.includes(metricId);
+      if (isAlready) {
+        // Не даём отключить последнюю метрику
+        if (prev.length === 1) return prev;
+        return prev.filter(id => id !== metricId);
+      }
+      return [...prev, metricId];
+    });
+  }, []);
+
+  const handleChartTypesChange = useCallback((types: ChartType[]) => {
+    setChartTypes(types);
+  }, []);
+
+  const summaryVirtualMetrics = summary?.virtualMetrics ?? [];
+
+  if (!hydrated) return <LoadingScreen message="Загрузка системы..." />;
 
   if (!group) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-white">
-        <div className="text-xl font-bold mb-2">Группа не найдена</div>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-950 gap-4">
+        <div className="text-xl font-bold text-slate-900 dark:text-white">Группа не найдена</div>
         <Button variant="ghost" asChild>
           <Link href="/groups">Вернуться к списку</Link>
         </Button>
@@ -34,125 +76,68 @@ function GroupProfileContent({ params }: { params: Promise<{ id: string }> }) {
     );
   }
 
-  const chartData = result ? virtualMetrics.map(vm => {
-    const val = result.virtualMetrics.find(r => r.virtualMetricId === vm.id);
-    return {
-      name: vm.name,
-      value: val?.value || 0,
-      formatted: val?.formattedValue
-    };
-  }) : [];
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 p-6 space-y-6 transition-colors">
+      {/* Хедер + Breadcrumbs */}
+      <GroupPageHeader
+        group={group}
+        groupId={id}
+        currentPath={currentPath}
+        onResetAll={resetAll}
+        onResetToLevel={resetToLevel}
+      />
 
-      {/* Хедер */}
-      <div className="flex items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-slate-800">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild className="rounded-full">
-            <Link href="/groups">
-              <ArrowLeft size={20} />
-            </Link>
-          </Button>
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl">
-               <Layers size={20} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{group.name}</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Детальный профиль показателей</p>
-            </div>
-          </div>
-        </div>
-        <Button variant="outline" size="sm" asChild>
-           <Link href={`/groups/${id}/edit`}>
-             <Edit size={16} className="mr-2" /> Настроить группу
-           </Link>
-        </Button>
+      {/* KPI карточки с мультивыбором */}
+      <GroupKpiGrid
+        metrics={summaryVirtualMetrics}
+        activeMetricIds={activeMetricIds}
+        recordCount={summary?.recordCount ?? 0}
+        onToggleMetric={handleToggleMetric}
+      />
+
+      {/* Селектор визуализаций */}
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Визуализации</h2>
+        <ChartTypeSelector selected={chartTypes} onChange={handleChartTypesChange} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* ЛЕВАЯ КОЛОНКА: Фильтры */}
-        <div className="lg:col-span-3">
-          <HierarchyTree
-            currentFilters={filters}
-            onFilterChange={setFilters}
-          />
+      {/* Индикатор ошибки */}
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 rounded-xl">
+          <p className="font-semibold text-sm">Ошибка расчёта</p>
+          <p className="text-sm mt-1">{error}</p>
         </div>
+      )}
 
-        {/* ПРАВАЯ КОЛОНКА: Контент */}
-        <div className="lg:col-span-9 space-y-6">
-
-          {/* Карточки показателей (KPI Cards) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {isComputing ? (
-               [1,2,3].map(i => <div key={i} className="h-32 bg-slate-200 dark:bg-slate-800 rounded-xl animate-pulse" />)
-            ) : result?.virtualMetrics.map(metric => {
-               return (
-                 <Card key={metric.virtualMetricId} className="p-5 flex flex-col justify-between hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors duration-300 group">
-                    <div className="flex justify-between items-start">
-                       <span className="text-sm font-medium text-slate-500 dark:text-slate-400 h-10 line-clamp-2" title={metric.virtualMetricName}>
-                         {metric.virtualMetricName}
-                       </span>
-                       <div className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-400 group-hover:text-indigo-500 transition-colors">
-                         <Calculator size={14} />
-                       </div>
-                    </div>
-                    <div className="mt-2">
-                       <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">
-                          {metric.value === null ? <span className="text-slate-300">—</span> : metric.formattedValue}
-                       </div>
-                    </div>
-                 </Card>
-               );
-            })}
-          </div>
-
-          {/* График */}
-          <Card className="p-6 min-h-[400px]">
-             <div className="flex items-center gap-2 mb-6">
-               <BarChart3 className="text-indigo-500" size={20} />
-               <h3 className="font-bold text-slate-900 dark:text-white">Визуализация значений</h3>
-             </div>
-
-             <div className="h-[350px] w-full">
-               <ResponsiveContainer width="100%" height="100%">
-                 <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 30 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#94a3b8" strokeOpacity={0.2} />
-                    <XAxis type="number" hide />
-                    <YAxis
-                      dataKey="name"
-                      type="category"
-                      width={180}
-                      tick={{fontSize: 12, fill: '#94a3b8'}}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip
-                      cursor={{fill: 'transparent'}}
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          return (
-                            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-2 rounded shadow-xl text-xs">
-                              <span className="font-bold text-slate-900 dark:text-white">{payload[0].payload.formatted}</span>
-                            </div>
-                          );
-                        }
-                        return null;
-                      }}
-                    />
-                    <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={24} animationDuration={1000}>
-                      {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={index % 2 === 0 ? '#10b981' : '#34d399'} />
-                      ))}
-                    </Bar>
-                 </BarChart>
-               </ResponsiveContainer>
-             </div>
-          </Card>
-
+      {/* Состояние загрузки */}
+      {isComputing && (
+        <div className="p-8 text-center text-slate-400">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-2 border-indigo-500 border-t-transparent" />
+          <p className="mt-2 text-sm">Пересчёт показателей...</p>
         </div>
-      </div>
+      )}
+
+      {/* Таблица с разбивкой */}
+      {!isComputing && breakdown && breakdown.length > 0 && (
+        <GroupBreakdownTable
+          breakdown={breakdown}
+          summary={summary}
+          virtualMetrics={summaryVirtualMetrics}
+          nextLevel={nextLevel}
+          onDrillDown={drillDown}
+          activeMetricIds={activeMetricIds}
+        />
+      )}
+
+      {/* Панель графиков */}
+      {!isComputing && breakdown && breakdown.length > 0 && (
+        <GroupChartsPanel
+          breakdown={breakdown}
+          virtualMetrics={summaryVirtualMetrics}
+          activeMetricIds={activeMetricIds}
+          chartTypes={chartTypes}
+        />
+      )}
     </div>
   );
 }

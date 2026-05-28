@@ -7,19 +7,6 @@ export interface ParsedSheet {
   rows: DatasetRow[];
 }
 
-/**
- * Безопасное преобразование значения ячейки.
- * 
- * Логика:
- * - null/undefined → null
- * - Date → ISO строка (YYYY-MM-DD)
- * - boolean → boolean
- * - number (валидный) → number
- * - строка "—" / "-" / "н/д" / "" → null (явное обнуление прочерков)
- * - строка с числом (с пробелами/запятыми) → number
- * - строка с датой YYYY-MM-DD → строка (без времени)
- * - прочее → строка
- */
 function parseCellValue(raw: unknown): string | number | boolean | null {
   if (raw === undefined || raw === null) return null;
 
@@ -39,16 +26,14 @@ function parseCellValue(raw: unknown): string | number | boolean | null {
       return null;
     }
 
-    // Даты в ISO-формате
     if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
       return trimmed.split('T')[0];
     }
 
-    // Числа: убираем пробелы-разделители тысяч и заменяем запятую на точку
     const normalized = trimmed
-      .replace(/\s+/g, '')          // Убираем пробелы ("1 234" → "1234")
-      .replace(/\u00A0/g, '')       // Убираем неразрывные пробелы
-      .replace(',', '.');           // Запятая → точка
+      .replace(/\s+/g, '')
+      .replace(/\u00A0/g, '')
+      .replace(',', '.');
     
     if (/^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(normalized)) {
       const num = Number(normalized);
@@ -59,6 +44,10 @@ function parseCellValue(raw: unknown): string | number | boolean | null {
   }
 
   return String(raw);
+}
+
+function isRowEmpty(row: DatasetRow): boolean {
+  return Object.values(row).every(v => v === null || v === '' || v === undefined);
 }
 
 export function parseExcelInWorker(fileBuffer: ArrayBuffer): ParsedSheet[] {
@@ -78,13 +67,18 @@ export function parseExcelInWorker(fileBuffer: ArrayBuffer): ParsedSheet[] {
       .map((h) => String(h ?? '').trim())
       .filter((h) => h !== '');
 
-    const rows: DatasetRow[] = rawRows.slice(1).map((row) => {
-      const obj: DatasetRow = {};
-      headers.forEach((header) => {
-        obj[header] = parseCellValue(row[headers.indexOf(header)]);
-      });
-      return obj;
-    });
+    if (headers.length === 0) return { sheetName, headers: [], rows: [] };
+
+    const rows: DatasetRow[] = rawRows
+      .slice(1)
+      .map((row) => {
+        const obj: DatasetRow = {};
+        headers.forEach((header, idx) => {
+          obj[header] = parseCellValue(row[idx]);
+        });
+        return obj;
+      })
+      .filter(row => !isRowEmpty(row));
 
     return { sheetName, headers, rows };
   });
