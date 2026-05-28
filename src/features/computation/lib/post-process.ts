@@ -1,7 +1,6 @@
 import { safeMath } from '@/shared/lib/math/safe-math';
 import type { CompiledQuery } from './types';
 
-// Универсальный тип для скомпилированной формулы, чтобы не зависеть от глобальных типов mathjs
 type CompiledFormula = { evaluate: (scope: Record<string, number>) => unknown };
 
 /**
@@ -28,9 +27,6 @@ export function postProcessAggregates(
   return sqlRows.map(row => processRow(row, formulas, compiledFormulas, sortedCalculated));
 }
 
-/**
- * Обрабатывает одну строку SQL-результата
- */
 function processRow(
   row: Record<string, unknown>,
   formulas: CompiledQuery['formulas'],
@@ -39,17 +35,25 @@ function processRow(
 ): Record<string, number | null> {
   const results: Record<string, number | null> = {};
 
+  // ═══════════════════════════════════════════════════════════
   // Извлекаем AGGREGATE значения из SQL
+  // ═══════════════════════════════════════════════════════════
   for (const [key, val] of Object.entries(row)) {
-    // Игнорируем служебные поля и базы
     if (key === 'dummy' || key === '_group_label' || key === '_record_count') continue;
     if (key.startsWith('base_')) continue;
     if (formulas.has(key)) continue;
-    
-    results[key] = typeof val === 'number' ? val : (typeof val === 'bigint' ? Number(val) : null);
+
+    const numericVal = typeof val === 'number' ? val : (typeof val === 'bigint' ? Number(val) : null);
+    results[key] = numericVal;
+
+    if (key.startsWith('__agg_sum__') || key.startsWith('__agg_count__')) {
+      results[key] = numericVal;
+    }
   }
 
+  // ═══════════════════════════════════════════════════════════
   // Вычисляем CALCULATED метрики по уже отсортированному порядку
+  // ═══════════════════════════════════════════════════════════
   for (const baseAlias of sortedCalculated) {
     const meta = formulas.get(baseAlias);
     if (!meta) continue;
@@ -57,15 +61,13 @@ function processRow(
     try {
       const scope: Record<string, number> = {};
 
-      // Значения из SQL (fieldDependencies)
       for (const dep of meta.fieldDependencies) {
         const depAlias = `${baseAlias}__${dep.alias}`;
         const rawVal = row[depAlias];
-        scope[dep.alias] = typeof rawVal === 'number' ? rawVal : 
-                           (typeof rawVal === 'bigint' ? Number(rawVal) : 0);
+        scope[dep.alias] = typeof rawVal === 'number' ? rawVal :
+          (typeof rawVal === 'bigint' ? Number(rawVal) : 0);
       }
 
-      // Значения из других метрик (metricDependencies)
       for (const dep of meta.metricDependencies) {
         const depValue = findMetricValue(results, dep.metricId, meta.groupId);
         scope[dep.alias] = depValue ?? 0;
@@ -74,7 +76,6 @@ function processRow(
       const compiled = compiledFormulas.get(baseAlias);
       if (compiled) {
         const value = compiled.evaluate(scope);
-        // Защита от NaN, Infinity и нечисловых результатов деления
         results[baseAlias.replace('base_', '')] = typeof value === 'number' && isFinite(value) ? value : null;
       } else {
         results[baseAlias.replace('base_', '')] = null;
@@ -88,16 +89,13 @@ function processRow(
   return results;
 }
 
-/**
- * Топологическая сортировка calculated метрик по их metric-зависимостям
- */
 function topologicalSort(formulas: CompiledQuery['formulas']): string[] {
   const calculatedAliases = Array.from(formulas.keys());
   const result: string[] = [];
   const visited = new Set<string>();
   const visiting = new Set<string>();
-
   const metricIdToAlias = new Map<string, string>();
+
   for (const [baseAlias, meta] of formulas.entries()) {
     metricIdToAlias.set(meta.metricId, baseAlias);
   }
@@ -108,8 +106,8 @@ function topologicalSort(formulas: CompiledQuery['formulas']): string[] {
       console.warn(`[post-process] Circular dependency detected at ${baseAlias}`);
       return;
     }
-
     visiting.add(baseAlias);
+
     const meta = formulas.get(baseAlias);
     if (meta) {
       for (const dep of meta.metricDependencies) {
@@ -119,6 +117,7 @@ function topologicalSort(formulas: CompiledQuery['formulas']): string[] {
         }
       }
     }
+
     visiting.delete(baseAlias);
     visited.add(baseAlias);
     result.push(baseAlias);
@@ -131,9 +130,6 @@ function topologicalSort(formulas: CompiledQuery['formulas']): string[] {
   return result;
 }
 
-/**
- * Ищет значение метрики по её ID в уже вычисленных результатах
- */
 function findMetricValue(
   results: Record<string, number | null>,
   metricId: string,
@@ -145,6 +141,54 @@ function findMetricValue(
   for (const [key, val] of Object.entries(results)) {
     if (key.endsWith(`__${metricId}`)) return val;
   }
-
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// пересчёт calculated метрик на уже агрегированных значениях
+// ═══════════════════════════════════════════════════════════
+export function recalculateFormulasOnAggregated(
+  aggregatedRow: Record<string, number | null>,
+  formulas: CompiledQuery['formulas']
+): Record<string, number | null> {
+  const sortedCalculated = topologicalSort(formulas);
+  const result = { ...aggregatedRow };
+
+  const compiledFormulas = new Map<string, CompiledFormula>();
+  for (const [baseAlias, meta] of formulas.entries()) {
+    try {
+      compiledFormulas.set(baseAlias, safeMath.compile(meta.formula) as CompiledFormula);
+    } catch {
+      // skip
+    }
+  }
+
+  for (const baseAlias of sortedCalculated) {
+    const meta = formulas.get(baseAlias);
+    if (!meta) continue;
+
+    try {
+      const scope: Record<string, number> = {};
+
+      for (const dep of meta.fieldDependencies) {
+        const depAlias = `${baseAlias}__${dep.alias}`;
+        scope[dep.alias] = result[depAlias] ?? 0;
+      }
+
+      for (const dep of meta.metricDependencies) {
+        const depValue = findMetricValue(result, dep.metricId, meta.groupId);
+        scope[dep.alias] = depValue ?? 0;
+      }
+
+      const compiled = compiledFormulas.get(baseAlias);
+      if (compiled) {
+        const value = compiled.evaluate(scope);
+        result[baseAlias.replace('base_', '')] = typeof value === 'number' && isFinite(value) ? value : null;
+      }
+    } catch {
+      result[baseAlias.replace('base_', '')] = null;
+    }
+  }
+
+  return result;
 }

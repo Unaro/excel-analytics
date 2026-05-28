@@ -1,4 +1,4 @@
-import type { ComputeDialect, CompiledQuery, QueryParam, ClientComputeParams } from './types';
+import type { ComputeDialect, CompiledQuery, QueryParam, ClientComputeParams, MetricAggregationMeta } from './types';
 
 const quote = (id: string) => `"${id.replace(/"/g, '""')}"`;
 
@@ -9,18 +9,11 @@ function escapeDuckDBValue(val: QueryParam): string {
   return `'${String(val).replace(/'/g, "''")}'`;
 }
 
-/**
- * Приведение к числовому типу для агрегаций.
- * COUNT/COUNT_DISTINCT работают с любыми типами, остальные требуют число.
- */
 function castToNumeric(expr: string, dialect: ComputeDialect): string {
   if (dialect === 'duckdb') return `TRY_CAST(${expr} AS DOUBLE)`;
   return `NULLIF(${expr}, '')::DOUBLE PRECISION`;
 }
 
-/**
- * Оборачивает колонку в агрегатную функцию с учётом диалекта и типа.
- */
 function buildAggregateExpr(
   columnName: string,
   aggregateFn: string,
@@ -28,27 +21,27 @@ function buildAggregateExpr(
 ): string {
   const col = quote(columnName);
   const fn = aggregateFn.toUpperCase();
-  
-  // COUNT и COUNT_DISTINCT работают с любыми типами
+
   if (fn === 'COUNT') return `COUNT(${col})`;
   if (fn === 'COUNT_DISTINCT') return `COUNT(DISTINCT ${col})`;
-  
-  // Остальные требуют числового приведения
+
   const castedCol = castToNumeric(col, dialect);
-  
+
   if (fn === 'MEDIAN') {
-    return dialect === 'duckdb' 
-      ? `MEDIAN(${castedCol})` 
+    return dialect === 'duckdb'
+      ? `MEDIAN(${castedCol})`
       : `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${castedCol})`;
   }
-  
+
   return `${fn}(${castedCol})`;
 }
 
 export function compileQuery(params: ClientComputeParams, dialect: ComputeDialect): CompiledQuery {
   const { filters, groups, dashboardGroupsConfig, metricTemplates, tableName, groupByColumn } = params;
-  
+
   const formulas: CompiledQuery['formulas'] = new Map();
+  const aggregateMetadata = new Map<string, MetricAggregationMeta>();
+
   const selectParts: string[] = [];
   const pgParams: QueryParam[] = [];
   const whereConditions: string[] = [];
@@ -56,7 +49,6 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
   if (groupByColumn) {
     selectParts.push(`${quote(groupByColumn)} AS "_group_label"`);
   }
-
   selectParts.push(`COUNT(*) AS "_record_count"`);
 
   // 1. WHERE Clause
@@ -82,18 +74,22 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
       }
     });
   }
+
   const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
   // 2. SELECT Clause
   for (const cfg of dashboardGroupsConfig) {
     if (!cfg.enabled) continue;
+
     const groupDef = groups.find(g => g.id === cfg.groupId);
     if (!groupDef) continue;
 
     for (const metric of groupDef.metrics) {
       if (!metric.enabled) continue;
+
       const tpl = metricTemplates.find(t => t.id === metric.templateId);
       if (!tpl) continue;
+
       const alias = `${cfg.groupId}__${metric.id}`;
 
       // ═══════════════════════════════════════════════════════════
@@ -102,16 +98,27 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
       if (tpl.type === 'aggregate' && tpl.aggregateFunction && tpl.aggregateField) {
         const binding = metric.fieldBindings.find(b => b.fieldAlias === tpl.aggregateField);
         if (!binding) continue;
-        
-        const expr = buildAggregateExpr(binding.columnName, tpl.aggregateFunction, dialect);
+
+        const fn = tpl.aggregateFunction.toUpperCase();
+        const expr = buildAggregateExpr(binding.columnName, fn, dialect);
         selectParts.push(`${expr} AS ${quote(alias)}`);
+
+        // Сохраняем метаданные агрегации
+        aggregateMetadata.set(alias, { aggregateFunction: tpl.aggregateFunction });
+
+        if (fn === 'AVG') {
+          const castedCol = castToNumeric(quote(binding.columnName), dialect);
+          selectParts.push(`SUM(${castedCol}) AS ${quote(`__agg_sum__${alias}`)}`);
+          selectParts.push(`COUNT(${quote(binding.columnName)}) AS ${quote(`__agg_count__${alias}`)}`);
+        }
       }
+
       // ═══════════════════════════════════════════════════════════
       // CALCULATED: fieldBindings → SQL, metricBindings → post-process
       // ═══════════════════════════════════════════════════════════
       else if (tpl.type === 'calculated' && tpl.formula) {
         const baseAlias = `base_${alias}`;
-        
+
         const fieldDependencies = metric.fieldBindings.map(fb => {
           const aggregateFn = 'SUM';
           const depAlias = `${baseAlias}__${fb.fieldAlias}`;
@@ -123,12 +130,12 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
             aggregateFn,
           };
         });
-        
+
         const metricDependencies = metric.metricBindings.map(mb => ({
           alias: mb.metricAlias,
           metricId: mb.metricId,
         }));
-        
+
         formulas.set(baseAlias, {
           groupId: cfg.groupId,
           metricId: metric.id,
@@ -144,7 +151,7 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
   let groupByClause = '';
   let orderByClause = '';
   let limitClause = '';
-  
+
   if (groupByColumn) {
     groupByClause = `GROUP BY ${quote(groupByColumn)}`;
     const firstMetricAlias = selectParts.find(p => p.includes('__') && !p.includes('_record_count'));
@@ -169,6 +176,7 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
   return {
     sql: parts.join(' '),
     params: dialect === 'postgres' ? pgParams : undefined,
-    formulas
+    formulas,
+    aggregateMetadata,
   };
 }

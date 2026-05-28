@@ -1,11 +1,11 @@
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { tableFromIPC, tableFromJSON } from 'apache-arrow';
 import { compileQuery } from '../query-compiler';
-import { postProcessAggregates } from '../post-process';
+import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
 import { getActiveFilter, formatValue } from '../utils';
 import { transliterate } from '@/shared/lib/utils/translit';
 
-import { ClientComputeParams } from '../types';
+import { ClientComputeParams, CompiledQuery, MetricAggregationMeta } from '../types';
 import { parseExcelInWorker } from './excel-parser';
 import { buildTableName } from './table-name';
 
@@ -115,24 +115,138 @@ async function initDB() {
 
 
 /**
- * Агрегирует массив обработанных строк в одну сводную строку
- * (суммирует все числовые значения)
+ * Строит маппинг alias → тип агрегации из params.
  */
-function aggregateProcessedRows(processedRows: Record<string, number | null>[]): Record<string, number | null> {
-  if (processedRows.length === 0) return {};
-  
-  const summary: Record<string, number | null> = {};
-  const keys = Object.keys(processedRows[0]);
-  
-  for (const key of keys) {
-    const values = processedRows.map(row => row[key]).filter(v => v !== null && v !== undefined) as number[];
-    if (values.length > 0) {
-      summary[key] = values.reduce((a, b) => a + b, 0);
-    } else {
-      summary[key] = null;
+function buildAggregateMetadataMap(
+  params: ClientComputeParams
+): Map<string, MetricAggregationMeta> {
+  const metadata = new Map<string, MetricAggregationMeta>();
+
+  for (const cfg of params.dashboardGroupsConfig) {
+    if (!cfg.enabled) continue;
+    const groupDef = params.groups.find(g => g.id === cfg.groupId);
+    if (!groupDef) continue;
+
+    for (const metric of groupDef.metrics) {
+      if (!metric.enabled) continue;
+      const tpl = params.metricTemplates.find(t => t.id === metric.templateId);
+      if (tpl?.type === 'aggregate' && tpl.aggregateFunction) {
+        const alias = `${cfg.groupId}__${metric.id}`;
+        metadata.set(alias, { aggregateFunction: tpl.aggregateFunction });
+      }
     }
   }
-  
+
+  return metadata;
+}
+
+/**
+ * Умная агрегация строк breakdown в одну сводную строку.
+ *
+ * Для каждого типа агрегации применяет правильную математику:
+ *  - SUM, COUNT, COUNT_DISTINCT → сумма значений
+ *  - AVG → взвешенное среднее через SUM/COUNT
+ *  - MAX → глобальный максимум
+ *  - MIN → глобальный минимум
+ *  - MEDIAN, PERCENTILE → приближённая медиана (из агрегатов)
+ *
+ * Затем пересчитывает calculated-метрики (формулы) на агрегированных значениях.
+ */
+function aggregateProcessedRows(
+  processedRows: Record<string, number | null>[],
+  aggregateMetadata: Map<string, MetricAggregationMeta>,
+  formulas: CompiledQuery['formulas']
+): Record<string, number | null> {
+  if (processedRows.length === 0) return {};
+
+  const summary: Record<string, number | null> = {};
+  const keys = Object.keys(processedRows[0]);
+
+  // ─────────────────────────────────────────────────────────
+  // Этап 1: Агрегируем aggregate-метрики по их типу
+  // ─────────────────────────────────────────────────────────
+  for (const key of keys) {
+    // Пропускаем служебные колонки (они нужны только для AVG)
+    if (key.startsWith('__agg_sum__') || key.startsWith('__agg_count__')) {
+      summary[key] = null;
+      continue;
+    }
+    if (key === '_group_label' || key === '_record_count') continue;
+
+    const meta = aggregateMetadata.get(key);
+    const values = processedRows
+      .map(row => row[key])
+      .filter((v): v is number => typeof v === 'number' && isFinite(v));
+
+    if (values.length === 0) {
+      summary[key] = null;
+      continue;
+    }
+
+    switch (meta?.aggregateFunction) {
+      case 'SUM':
+      case 'COUNT':
+      case 'COUNT_DISTINCT':
+        summary[key] = values.reduce((a, b) => a + b, 0);
+        break;
+
+      case 'AVG': {
+        const sumKey = `__agg_sum__${key}`;
+        const countKey = `__agg_count__${key}`;
+
+        let totalSum = 0;
+        let totalCount = 0;
+
+        for (const row of processedRows) {
+          const s = typeof row[sumKey] === 'number' ? row[sumKey] : 0;
+          const c = typeof row[countKey] === 'number' ? row[countKey] : 0;
+          totalSum += s;
+          totalCount += c;
+        }
+
+        summary[key] = totalCount > 0 ? totalSum / totalCount : null;
+        break;
+      }
+
+      case 'MAX':
+        summary[key] = Math.max(...values);
+        break;
+
+      case 'MIN':
+        summary[key] = Math.min(...values);
+        break;
+
+      case 'MEDIAN':
+      case 'PERCENTILE': {
+        // Приближённое значение: медиана из агрегатов
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        summary[key] = sorted.length % 2 === 0
+          ? (sorted[mid - 1] + sorted[mid]) / 2
+          : sorted[mid];
+        break;
+      }
+
+      default:
+        summary[key] = values.reduce((a, b) => a + b, 0);
+        break;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // Этап 2: Пересчитываем calculated метрики (формулы)
+  //         на агрегированных значениях
+  // ─────────────────────────────────────────────────────────
+  if (formulas.size > 0) {
+    const recalculated = recalculateFormulasOnAggregated(summary, formulas);
+    // Обновляем summary значениями calculated метрик
+    for (const [key, val] of Object.entries(recalculated)) {
+      if (!key.startsWith('__agg_') && !key.startsWith('base_')) {
+        summary[key] = val;
+      }
+    }
+  }
+
   return summary;
 }
 
@@ -157,43 +271,67 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     if (type === 'COMPUTE') {
       const { params } = payload;
       const { dashboardId, dashboardGroupsConfig, virtualMetrics, filters, groupByColumn } = params;
-      const { sql, formulas } = compileQuery(params, 'duckdb');
 
+      const { sql, formulas, aggregateMetadata } = compileQuery(params, 'duckdb');
       const table = await conn!.query(sql);
       const rows = table.toArray() as Record<string, unknown>[];
-      
-      // Извлекаем общее количество обработанных записей (из первой строки)
+
       const firstRow = rows[0] || {};
-      const totalRecords = typeof firstRow['_record_count'] === 'number' 
+      const totalRecords = typeof firstRow['_record_count'] === 'number'
         ? firstRow['_record_count']
         : typeof firstRow['_record_count'] === 'bigint'
-        ? Number(firstRow['_record_count'])
-        : rows.length;
-      
-      // Обрабатываем ВСЕ строки (postProcessAggregates теперь возвращает массив)
+          ? Number(firstRow['_record_count'])
+          : rows.length;
+
       const processedRows = postProcessAggregates(rows, formulas);
 
       const groups = dashboardGroupsConfig
         .filter(cfg => cfg.enabled)
         .map(cfg => {
-      const groupDef = params.groups.find(g => g.id === cfg.groupId);
-          
-      const breakdownItems = groupByColumn ? processedRows
-        .map((processed, idx) => {
-          const rawLabel = rows[idx]['_group_label'];
-          const label = rawLabel === null || rawLabel === undefined
-            ? ''
-            : String(rawLabel).trim();
+          const groupDef = params.groups.find(g => g.id === cfg.groupId);
 
-          const recordCount = typeof rows[idx]['_record_count'] === 'number'
-            ? rows[idx]['_record_count']
-            : Number(rows[idx]['_record_count'] ?? 0);
+          const breakdownItems = groupByColumn ? processedRows
+            .map((processed, idx) => {
+              const rawLabel = rows[idx]['_group_label'];
+              const label = rawLabel === null || rawLabel === undefined
+                ? ''
+                : String(rawLabel).trim();
+              const recordCount = typeof rows[idx]['_record_count'] === 'number'
+                ? rows[idx]['_record_count']
+                : Number(rows[idx]['_record_count'] ?? 0);
+
+              const groupVirtualMetrics = virtualMetrics.map(vm => {
+                const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
+                if (!binding) return { virtualMetricId: vm.id, virtualMetricName: vm.name, value: null, formattedValue: '—', sourceMetricId: '' };
+
+                const alias = `${cfg.groupId}__${binding.metricId}`;
+                const numericValue = typeof processed[alias] === 'number' ? processed[alias] : null;
+
+                return {
+                  virtualMetricId: vm.id,
+                  virtualMetricName: vm.name,
+                  value: numericValue,
+                  formattedValue: formatValue(numericValue, vm.displayFormat, vm.decimalPlaces, vm.unit),
+                  sourceMetricId: binding.metricId
+                };
+              });
+
+              return { label, recordCount, virtualMetrics: groupVirtualMetrics };
+            })
+            .filter(item => item.label !== '')
+            : undefined;
+
+          const summaryProcessed = groupByColumn
+            ? aggregateProcessedRows(processedRows, aggregateMetadata, formulas)
+            : processedRows[0] || {};
 
           const groupVirtualMetrics = virtualMetrics.map(vm => {
             const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
             if (!binding) return { virtualMetricId: vm.id, virtualMetricName: vm.name, value: null, formattedValue: '—', sourceMetricId: '' };
+
             const alias = `${cfg.groupId}__${binding.metricId}`;
-            const numericValue = typeof processed[alias] === 'number' ? processed[alias] : null;
+            const numericValue = typeof summaryProcessed[alias] === 'number' ? summaryProcessed[alias] : null;
+
             return {
               virtualMetricId: vm.id,
               virtualMetricName: vm.name,
@@ -203,41 +341,15 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
             };
           });
 
-          return { label, recordCount, virtualMetrics: groupVirtualMetrics };
-        })
-        .filter(item => item.label !== '')
-        : undefined;
-          
-        // ═══════════════════════════════════════════════════════════
-        // Сводные значения (сумма по всем строкам)
-        // ═══════════════════════════════════════════════════════════
-        const summaryProcessed = groupByColumn 
-          ? aggregateProcessedRows(processedRows) 
-          : processedRows[0] || {};
-        
-        const groupVirtualMetrics = virtualMetrics.map(vm => {
-          const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
-          if (!binding) return { virtualMetricId: vm.id, virtualMetricName: vm.name, value: null, formattedValue: '—', sourceMetricId: '' };
-          const alias = `${cfg.groupId}__${binding.metricId}`;
-          const numericValue = typeof summaryProcessed[alias] === 'number' ? summaryProcessed[alias] : null;
           return {
-            virtualMetricId: vm.id,
-            virtualMetricName: vm.name,
-            value: numericValue,
-            formattedValue: formatValue(numericValue, vm.displayFormat, vm.decimalPlaces, vm.unit),
-            sourceMetricId: binding.metricId
+            groupId: cfg.groupId,
+            groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
+            virtualMetrics: groupVirtualMetrics,
+            breakdown: breakdownItems,
+            recordCount: totalRecords,
+            computedAt: Date.now()
           };
         });
-        
-        return {
-          groupId: cfg.groupId,
-          groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
-          virtualMetrics: groupVirtualMetrics,
-          breakdown: breakdownItems,
-          recordCount: totalRecords,
-          computedAt: Date.now()
-        };
-      });
 
       const result = {
         dashboardId,
@@ -248,6 +360,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         totalRecords,
         computedAt: Date.now()
       };
+
       self.postMessage({ id, success: true, result });
     }
     

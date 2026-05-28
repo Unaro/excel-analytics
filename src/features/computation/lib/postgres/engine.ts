@@ -1,9 +1,9 @@
 // features/computation/lib/postgres/engine.ts
-import type { ClientComputeParams, IComputeEngine } from '../types';
+import type { ClientComputeParams, CompiledQuery, IComputeEngine, MetricAggregationMeta } from '../types';
 import { computePgMetrics } from '@/app/actions/pg-compute';
 import { compileQuery } from '../query-compiler';
 import { getActiveFilter, formatValue } from '../utils';
-import { postProcessAggregates } from '../post-process';
+import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
 import { useDatasetStore } from '@/entities/dataset';
 import { decryptConfig } from '@/shared/lib/utils/crypto';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
@@ -17,30 +17,100 @@ function quoteIdent(id: string): string {
   return `"${id.replace(/"/g, '""')}"`;
 }
 
-/**
- * Агрегирует массив обработанных строк (breakdown) в одну сводную строку.
- * Используется для показа сводных значений в KPI карточках при drill-down.
- * 
- * Принцип: сумма всех числовых значений из каждой строки breakdown.
- */
+function buildAggregateMetadataMap(
+  params: ClientComputeParams
+): Map<string, MetricAggregationMeta> {
+  const metadata = new Map<string, MetricAggregationMeta>();
+  for (const cfg of params.dashboardGroupsConfig) {
+    if (!cfg.enabled) continue;
+    const groupDef = params.groups.find(g => g.id === cfg.groupId);
+    if (!groupDef) continue;
+    for (const metric of groupDef.metrics) {
+      if (!metric.enabled) continue;
+      const tpl = params.metricTemplates.find(t => t.id === metric.templateId);
+      if (tpl?.type === 'aggregate' && tpl.aggregateFunction) {
+        const alias = `${cfg.groupId}__${metric.id}`;
+        metadata.set(alias, { aggregateFunction: tpl.aggregateFunction });
+      }
+    }
+  }
+  return metadata;
+}
+
 function aggregateProcessedRows(
-  processedRows: Record<string, number | null>[]
+  processedRows: Record<string, number | null>[],
+  aggregateMetadata: Map<string, MetricAggregationMeta>,
+  formulas: CompiledQuery['formulas']
 ): Record<string, number | null> {
+  // ... тот же код что и в worker.ts ...
   if (processedRows.length === 0) return {};
 
   const summary: Record<string, number | null> = {};
   const keys = Object.keys(processedRows[0]);
 
   for (const key of keys) {
+    if (key.startsWith('__agg_sum__') || key.startsWith('__agg_count__')) {
+      summary[key] = null;
+      continue;
+    }
+    if (key === '_group_label' || key === '_record_count') continue;
+
+    const meta = aggregateMetadata.get(key);
     const values = processedRows
       .map(row => row[key])
       .filter((v): v is number => typeof v === 'number' && isFinite(v));
 
-    summary[key] = values.length > 0 ? values.reduce((a, b) => a + b, 0) : null;
+    if (values.length === 0) { summary[key] = null; continue; }
+
+    switch (meta?.aggregateFunction) {
+      case 'SUM':
+      case 'COUNT':
+      case 'COUNT_DISTINCT':
+        summary[key] = values.reduce((a, b) => a + b, 0);
+        break;
+      case 'AVG': {
+        const sumKey = `__agg_sum__${key}`;
+        const countKey = `__agg_count__${key}`;
+        let totalSum = 0, totalCount = 0;
+        for (const row of processedRows) {
+          totalSum += (typeof row[sumKey] === 'number' ? row[sumKey] : 0);
+          totalCount += (typeof row[countKey] === 'number' ? row[countKey] : 0);
+        }
+        summary[key] = totalCount > 0 ? totalSum / totalCount : null;
+        break;
+      }
+      case 'MAX':
+        summary[key] = Math.max(...values);
+        break;
+      case 'MIN':
+        summary[key] = Math.min(...values);
+        break;
+      case 'MEDIAN':
+      case 'PERCENTILE': {
+        const sorted = [...values].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        summary[key] = sorted.length % 2 === 0
+          ? (sorted[mid - 1] + sorted[mid]) / 2
+          : sorted[mid];
+        break;
+      }
+      default:
+        summary[key] = values.reduce((a, b) => a + b, 0);
+    }
+  }
+
+  if (formulas.size > 0) {
+    const recalculated = recalculateFormulasOnAggregated(summary, formulas);
+    for (const [key, val] of Object.entries(recalculated)) {
+      if (!key.startsWith('__agg_') && !key.startsWith('base_')) {
+        summary[key] = val;
+      }
+    }
   }
 
   return summary;
 }
+
 
 /**
  * PostgreSQL Compute Engine.
@@ -109,10 +179,8 @@ export class PgEngine implements IComputeEngine {
 
     // ─────────────────────────────────────────────────────────────
     // 5. Post-process: считаем calculated метрики
-    //    ВАЖНО: postProcessAggregates возвращает МАССИВ строк
-    //    (для GROUP BY запросов — по строке на каждую группу)
     // ─────────────────────────────────────────────────────────────
-    const { formulas } = compileQuery(pgParams, 'postgres');
+    const { formulas, aggregateMetadata } = compileQuery(pgParams, 'postgres');
     const processedRows = postProcessAggregates(rows, formulas);
 
     // ─────────────────────────────────────────────────────────────
@@ -180,7 +248,6 @@ export class PgEngine implements IComputeEngine {
                   virtualMetrics: buildVirtualMetrics(processed),
                 };
               })
-              // ✅ Фильтруем пустые label (фантомные строки Excel)
               .filter(item => item.label !== '')
           : undefined;
 
@@ -188,14 +255,14 @@ export class PgEngine implements IComputeEngine {
         // SUMMARY: сводные значения (сумма по всем строкам breakdown)
         // ─────────────────────────────────────────────────────────
         const summaryProcessed = groupByColumn
-          ? aggregateProcessedRows(processedRows)
+          ? aggregateProcessedRows(processedRows, aggregateMetadata, formulas)
           : (processedRows[0] || {});
 
         return {
           groupId: cfg.groupId,
           groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
           virtualMetrics: buildVirtualMetrics(summaryProcessed),
-          breakdown,  // ← ключевое поле для drill-down
+          breakdown,
           recordCount: totalRecords,
           computedAt: Date.now()
         };

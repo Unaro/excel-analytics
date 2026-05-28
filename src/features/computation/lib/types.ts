@@ -4,17 +4,21 @@ import { HierarchyFilterValue, IndicatorGroup, IndicatorGroupInDashboard, Metric
 export type ComputeDialect = 'duckdb' | 'postgres';
 export type QueryParam = string | number | boolean | null;
 
+export interface MetricAggregationMeta {
+  aggregateFunction: 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT' | 'COUNT_DISTINCT' | 'MEDIAN' | 'PERCENTILE';
+}
+
 export interface ClientComputeParams {
   datasetId: string;
   dashboardId: string;
   encryptedConfig?: string;
   filters: HierarchyFilterValue[];
-  groups: IndicatorGroup[]; 
+  groups: IndicatorGroup[];
   tableName: string;
   dashboardGroupsConfig: IndicatorGroupInDashboard[];
   metricTemplates: MetricTemplate[];
   virtualMetrics: VirtualMetric[];
-  groupByColumn?: string; 
+  groupByColumn?: string;
 }
 
 export interface CompiledQuery {
@@ -28,14 +32,16 @@ export interface CompiledQuery {
     fieldDependencies: {
       alias: string;
       columnName: string;
-      aggregateFn: string;     // SUM, AVG, COUNT, MIN, MAX, COUNT_DISTINCT
+      aggregateFn: string;
     }[];
     metricDependencies: {
       alias: string;
       metricId: string;
     }[];
   }>;
+  aggregateMetadata: Map<string, MetricAggregationMeta>;
 }
+
 export interface IComputeEngine {
   initialize(datasetId: string): Promise<void>;
   compute(params: ClientComputeParams): Promise<DashboardComputationResult>;
