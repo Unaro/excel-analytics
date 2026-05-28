@@ -81,7 +81,7 @@ export function useGroupBreakdown(
       const decimalPlaces = tpl?.decimalPlaces || 2;
       const unit = tpl?.suffix || tpl?.prefix;
       return {
-        id: buildVmIdFromFields(name, displayFormat, decimalPlaces, unit),
+        id: buildVmIdFromFields(group.id, m.id, name, displayFormat, decimalPlaces, unit),
         name,
         displayFormat,
         decimalPlaces,
@@ -99,12 +99,12 @@ export function useGroupBreakdown(
       order: 0,
       virtualMetricBindings: group.metrics.map(m => {
         const tpl = templates.find(t => t.id === m.templateId);
-        const name = m.customName || tpl?.name || 'Metric';
+        const name = m.customName && `${m.customName}(${tpl?.name})` || m.customName || tpl?.name || 'Metric';
         const displayFormat = tpl?.displayFormat || 'number';
         const decimalPlaces = tpl?.decimalPlaces || 2;
         const unit = tpl?.suffix || tpl?.prefix;
         return {
-          virtualMetricId: buildVmIdFromFields(name, displayFormat, decimalPlaces, unit),
+          virtualMetricId: buildVmIdFromFields(group.id, m.id, name, displayFormat, decimalPlaces, unit),
           metricId: m.id,
         };
       }),

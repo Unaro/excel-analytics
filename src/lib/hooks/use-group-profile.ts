@@ -28,7 +28,7 @@ export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]
       const decimalPlaces = tpl?.decimalPlaces || 2;
       const unit = tpl?.suffix || tpl?.prefix;
       return {
-        id: buildVmIdFromFields(name, displayFormat, decimalPlaces, unit),
+        id: buildVmIdFromFields(group.id, m.id, name, displayFormat, decimalPlaces, unit),
         name,
         displayFormat,
         decimalPlaces,
@@ -48,7 +48,7 @@ export function useGroupProfile(groupId: string, filters: HierarchyFilterValue[]
         const decimalPlaces = tpl?.decimalPlaces || 2;
         const unit = tpl?.suffix || tpl?.prefix;
         return {
-          virtualMetricId: buildVmIdFromFields(name, displayFormat, decimalPlaces, unit),
+          virtualMetricId: buildVmIdFromFields(group.id, m.id, name, displayFormat, decimalPlaces, unit),
           metricId: m.id,
         };
       }),

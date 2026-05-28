@@ -174,11 +174,11 @@ export function useConfigPersistence() {
               metric.customDecimalPlaces ?? template?.decimalPlaces ?? 2;
             const unit = metric.unit || template?.suffix || template?.prefix;
 
-            const key = vmDedupeKey(name, displayFormat, decimalPlaces, unit);
+            const semanticKey = `${name}::${displayFormat}::${decimalPlaces}::${unit ?? ''}`;
 
-            if (!vmByKey.has(key)) {
-              vmByKey.set(key, {
-                id: buildDeterministicVmId(key),
+            if (!vmByKey.has(semanticKey)) {
+              vmByKey.set(semanticKey, {
+                id: buildDeterministicVmId(semanticKey),
                 name,
                 displayFormat,
                 decimalPlaces,
@@ -187,7 +187,8 @@ export function useConfigPersistence() {
               });
             }
 
-            const vm = vmByKey.get(key)!;
+            const vm = vmByKey.get(semanticKey)!;
+
             newBindings.push({
               virtualMetricId: vm.id,
               metricId: metric.id,
