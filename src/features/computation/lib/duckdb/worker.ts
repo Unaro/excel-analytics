@@ -112,6 +112,30 @@ async function initDB() {
     }
   }
 }
+
+
+/**
+ * Агрегирует массив обработанных строк в одну сводную строку
+ * (суммирует все числовые значения)
+ */
+function aggregateProcessedRows(processedRows: Record<string, number | null>[]): Record<string, number | null> {
+  if (processedRows.length === 0) return {};
+  
+  const summary: Record<string, number | null> = {};
+  const keys = Object.keys(processedRows[0]);
+  
+  for (const key of keys) {
+    const values = processedRows.map(row => row[key]).filter(v => v !== null && v !== undefined) as number[];
+    if (values.length > 0) {
+      summary[key] = values.reduce((a, b) => a + b, 0);
+    } else {
+      summary[key] = null;
+    }
+  }
+  
+  return summary;
+}
+
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   const { type, payload, id } = e.data;
 
@@ -226,28 +250,6 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       };
       self.postMessage({ id, success: true, result });
     }
-
-    /**
-     * Агрегирует массив обработанных строк в одну сводную строку
-     * (суммирует все числовые значения)
-     */
-    function aggregateProcessedRows(processedRows: Record<string, number | null>[]): Record<string, number | null> {
-      if (processedRows.length === 0) return {};
-      
-      const summary: Record<string, number | null> = {};
-      const keys = Object.keys(processedRows[0]);
-      
-      for (const key of keys) {
-        const values = processedRows.map(row => row[key]).filter(v => v !== null && v !== undefined) as number[];
-        if (values.length > 0) {
-          summary[key] = values.reduce((a, b) => a + b, 0);
-        } else {
-          summary[key] = null;
-        }
-      }
-      
-      return summary;
-    }
     
     if (type === 'IMPORT_EXCEL') {
       const { datasetId, fileName, buffer } = payload;
@@ -326,13 +328,13 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           FROM information_schema.tables 
           WHERE table_name = '${tableName}'
         `);
-        const tableExists = (checkTable.toArray()[0] as any)?.cnt > 0;
+        const tableExists = (checkTable.toArray()[0])?.cnt > 0;
         
         if (!tableExists) {
           self.postMessage({ 
             id, 
             success: true, 
-            result: [] // Пустой массив, не ошибка — UI покажет "нет данных"
+            result: []
           });
           return;
         }
@@ -381,7 +383,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           FROM information_schema.tables 
           WHERE table_name = '${tableName}'
         `);
-        const tableExists = (checkTable.toArray()[0] as any)?.cnt > 0;
+        const tableExists = (checkTable.toArray()[0])?.cnt > 0;
         
         if (!tableExists) {
           throw new Error(`Table ${tableName} does not exist`);
@@ -406,7 +408,6 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       }
     }
 
-    // === DROP_TABLE: удаляет таблицу из DuckDB ===
     if (type === 'DROP_TABLE') {
       const { datasetId } = payload;
       const tableName = buildTableName(datasetId);

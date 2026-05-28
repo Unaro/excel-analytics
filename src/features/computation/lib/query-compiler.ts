@@ -154,7 +154,7 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
         orderByClause = `ORDER BY ${quote(match[1])} DESC`;
       }
     }
-    limitClause = 'LIMIT 100';
+    limitClause = 'LIMIT 1000';
   }
 
   const parts = [

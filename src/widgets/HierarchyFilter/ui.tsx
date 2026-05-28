@@ -2,15 +2,15 @@
 import { memo, useState, useMemo, useCallback, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Check, Filter, X } from 'lucide-react';
 import { HierarchyLevel, HierarchyNode, useHierarchyStore } from '@/entities/hierarchy';
-import { DatasetRow, useDatasetStore } from '@/entities/dataset';
+import { useDatasetStore } from '@/entities/dataset';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useDashboardStore } from '@/entities/dashboard';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
 import { useShallow } from 'zustand/react/shallow';
 import { useFilterActions } from '@/features/hierarchy-filters/model/use-filter-actions';
-import { getHierarchyNodesLocal } from '@/entities/hierarchy/lib/hierarchy-client';
 import { HierarchyFilterValue } from '@/shared/lib/validators';
+import { useHierarchyLevelNodes } from '@/lib/hooks/use-hierarchy-level-nodes';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ROOT COMPONENT
@@ -25,6 +25,7 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const levels = useHierarchyStore(useShallow(s => activeDatasetId ? s.getLevels(activeDatasetId) : []));
   const { resetAll } = useFilterActions(dashboardId || 'profile_mode');
+  const hasData = useDatasetStore(s => s.hasData());
   
   const structureKey = useMemo(() => levels.map((l: HierarchyLevel) => l.id).join('-'), [levels]);
 
@@ -40,8 +41,6 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
     }
   }, [currentFilters, levels, handleReset]);
 
-  const rawData = useDatasetStore(s => s.getAllData());
-
   if (levels.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center p-6 text-center border-2 border-dashed rounded-xl border-slate-200 dark:border-slate-800 text-slate-400">
@@ -51,7 +50,7 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
     );
   }
 
-  if (rawData.length === 0) {
+  if (!hasData) {
     return <div className="p-4 text-center text-xs text-slate-400">Нет данных</div>;
   }
 
@@ -72,7 +71,6 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
           levelIndex={0}
           parentPath={[]}
           levels={levels}
-          allData={rawData}
           activeFilters={currentFilters}
           customSelectHandler={onFilterChange}
         />
@@ -89,7 +87,6 @@ interface TreeNodeProps {
   levelIndex: number;
   parentPath: HierarchyFilterValue[];
   levels: HierarchyLevel[];
-  allData: DatasetRow[];
   activeFilters: HierarchyFilterValue[];
   customSelectHandler?: (filters: HierarchyFilterValue[]) => void;
 }
@@ -99,14 +96,13 @@ const TreeNode = memo(function TreeNode({
   levelIndex,
   parentPath,
   levels,
-  allData,
   activeFilters,
   customSelectHandler,
 }: TreeNodeProps) {
   const currentLevel = levels[levelIndex];
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const setHierarchyFilters = useDashboardStore(s => s.setHierarchyFilters);
-
+  
   const columnClassification = useColumnConfigStore(s => {
     if (!activeDatasetId || !currentLevel) return 'categorical';
     const cfg = s.getConfigs(activeDatasetId).find(c => c.columnName === currentLevel.columnName);
@@ -114,11 +110,8 @@ const TreeNode = memo(function TreeNode({
   });
 
   const hasNextLevel = levelIndex + 1 < levels.length;
-
-  const nodes = useMemo(() => {
-    if (!currentLevel) return [];
-    return getHierarchyNodesLocal(allData, currentLevel, parentPath, hasNextLevel);
-  }, [allData, currentLevel, parentPath, hasNextLevel]);
+  
+  const { nodes, isLoading } = useHierarchyLevelNodes(currentLevel ?? null, parentPath, hasNextLevel);
 
   const activeFilterAtThisLevel = activeFilters.find(f => f.levelId === currentLevel?.id);
   const activeValueString = activeFilterAtThisLevel ? String(activeFilterAtThisLevel.value) : null;
@@ -136,19 +129,29 @@ const TreeNode = memo(function TreeNode({
       ? { ...baseFilter, operator: 'between', value2: String(node.value) }
       : baseFilter;
 
-    // Полный путь от корня до кликнутого узла
     const newPath = [...parentPath, newFilter];
 
     if (customSelectHandler) {
       customSelectHandler(newPath);
     } else {
-      // Атомарная замена всего пути. Исключает скрещивание веток.
       setHierarchyFilters(dashboardId || 'profile_mode', newPath);
     }
   }, [parentPath, columnClassification, customSelectHandler, setHierarchyFilters, dashboardId]);
 
   if (!currentLevel) return null;
-  if (nodes.length === 0) return <div className="py-2 text-xs text-slate-400 text-center">Нет данных на этом уровне</div>;
+
+  if (isLoading) {
+    return (
+      <div className="py-2 text-xs text-slate-400 text-center flex items-center justify-center gap-2">
+        <div className="inline-block animate-spin rounded-full h-3 w-3 border-2 border-slate-400 border-t-transparent" />
+        <span>Загрузка...</span>
+      </div>
+    );
+  }
+
+  if (nodes.length === 0) {
+    return <div className="py-2 text-xs text-slate-400 text-center">Нет данных на этом уровне</div>;
+  }
 
   return (
     <ul className="space-y-0.5 animate-in fade-in slide-in-from-left-1 duration-200">
@@ -162,7 +165,6 @@ const TreeNode = memo(function TreeNode({
           levelIndex={levelIndex}
           parentPath={parentPath}
           levels={levels}
-          allData={allData}
           activeFilters={activeFilters}
           customSelectHandler={customSelectHandler}
           dashboardId={dashboardId}
@@ -183,7 +185,6 @@ interface NodeItemProps {
   levelIndex: number;
   parentPath: HierarchyFilterValue[];
   levels: HierarchyLevel[];
-  allData: DatasetRow[];
   activeFilters: HierarchyFilterValue[];
   customSelectHandler?: (filters: HierarchyFilterValue[]) => void;
   dashboardId?: string;
@@ -197,7 +198,6 @@ const NodeItem = memo(function NodeItem({
   levelIndex,
   parentPath,
   levels,
-  allData,
   activeFilters,
   customSelectHandler,
   dashboardId
@@ -254,7 +254,6 @@ const NodeItem = memo(function NodeItem({
         )}
         {isSelected && <Check size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
       </div>
-      
       {showChevron && isExpanded && (
         <div className="pl-4 ml-2.5 border-l border-slate-100 dark:border-slate-800 my-1">
           <TreeNode
@@ -262,7 +261,6 @@ const NodeItem = memo(function NodeItem({
             levelIndex={levelIndex + 1}
             parentPath={childPath}
             levels={levels}
-            allData={allData}
             activeFilters={activeFilters}
             customSelectHandler={customSelectHandler}
           />
