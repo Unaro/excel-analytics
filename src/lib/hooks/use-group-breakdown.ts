@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { HierarchyLevel, useHierarchyStore } from '@/entities/hierarchy';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
@@ -8,6 +8,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { createComputeEngine } from '@/features/computation/lib/engine-factory';
 import { createComputationCache } from '@/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
+import { buildVmIdFromFields } from '@/shared/lib/utils/metric-ids';
 import type { ClientComputeParams } from '@/features/computation/lib/types';
 import { HierarchyFilterValue, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
 
@@ -35,19 +36,13 @@ export interface GroupBreakdownResult {
 
 /**
  * Хук для страницы группы показателей с поддержкой drill-down по иерархии.
- *
- * Архитектура:
- *  1. Берём текущий путь (filters из URL)
- *  2. Определяем следующий уровень иерархии
- *  3. Запускаем engine.compute() с groupByColumn = следующий уровень
- *  4. Возвращаем summary (сводка) + breakdown (разбивка по дочерним)
  */
 export function useGroupBreakdown(
   groupId: string,
   initialPath: HierarchyFilterValue[] = []
 ): GroupBreakdownResult {
   // ─────────────────────────────────────────────────────────────
-  // 1. СОСТОЯНИЕ ПУТИ (локальное, синхронизируется с URL извне)
+  // 1. СОСТОЯНИЕ ПУТИ
   // ─────────────────────────────────────────────────────────────
   const [currentPath, setCurrentPath] = useState<HierarchyFilterValue[]>(initialPath);
 
@@ -55,20 +50,15 @@ export function useGroupBreakdown(
   // 2. СЕЛЕКТОРЫ СТОРОВ
   // ─────────────────────────────────────────────────────────────
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
-
-  // Извлекаем только нужные примитивы, избегая создания новых объектов
   const sourceType = useDatasetStore(s => {
-  const dataset = s.activeDatasetId ? s.datasets[s.activeDatasetId] : undefined;
+    const dataset = s.activeDatasetId ? s.datasets[s.activeDatasetId] : undefined;
     return dataset?.sourceType ?? 'file';
   });
-
   const encryptedConnection = useDatasetStore(s => {
-  const dataset = s.activeDatasetId ? s.datasets[s.activeDatasetId] : undefined;
+    const dataset = s.activeDatasetId ? s.datasets[s.activeDatasetId] : undefined;
     return dataset?.pgConfig?.encryptedConnection;
   });
-
-    const isSyncing = useDatasetStore(s => s.isSyncing);
-
+  const isSyncing = useDatasetStore(s => s.isSyncing);
   const group = useIndicatorGroupStore(s => s.getGroup(groupId));
   const templates = useMetricTemplateStore(useShallow(s => s.templates));
   const levels = useHierarchyStore(useShallow(s =>
@@ -76,7 +66,7 @@ export function useGroupBreakdown(
   ));
 
   // ─────────────────────────────────────────────────────────────
-  // 3. ОПРЕДЕЛЕНИЕ СЛЕДУЮЩЕГО УРОВНЯ И ВИРТУАЛЬНЫХ МЕТРИК
+  // 3. СЛЕДУЮЩИЙ УРОВЕНЬ И ВИРТУАЛЬНЫЕ МЕТРИКИ
   // ─────────────────────────────────────────────────────────────
   const nextLevel = useMemo<HierarchyLevel | null>(() => {
     return levels[currentPath.length] ?? null;
@@ -86,29 +76,40 @@ export function useGroupBreakdown(
     if (!group) return [];
     return group.metrics.map((m, idx) => {
       const tpl = templates.find(t => t.id === m.templateId);
+      const name = m.customName && `${m.customName}(${tpl?.name})` || m.customName || tpl?.name || 'Metric';
+      const displayFormat = tpl?.displayFormat || 'number';
+      const decimalPlaces = tpl?.decimalPlaces || 2;
+      const unit = tpl?.suffix || tpl?.prefix;
       return {
-        id: `vm-${m.id}`,
-        name: m.customName || tpl?.name || 'Metric',
-        displayFormat: tpl?.displayFormat || 'number',
-        decimalPlaces: tpl?.decimalPlaces || 2,
+        id: buildVmIdFromFields(name, displayFormat, decimalPlaces, unit),
+        name,
+        displayFormat,
+        decimalPlaces,
         order: m.order ?? idx,
-        unit: tpl?.suffix || tpl?.prefix,
+        unit,
       };
     });
   }, [group, templates]);
 
-    const dashboardGroupsConfig = useMemo<IndicatorGroupInDashboard[]>(() => {
+  const dashboardGroupsConfig = useMemo<IndicatorGroupInDashboard[]>(() => {
     if (!group) return [];
     return [{
-        groupId: group.id,
-        enabled: true,
-        order: 0,
-        virtualMetricBindings: group.metrics.map(m => ({
-        virtualMetricId: `vm-${m.id}`,
-        metricId: m.id,
-        })),
+      groupId: group.id,
+      enabled: true,
+      order: 0,
+      virtualMetricBindings: group.metrics.map(m => {
+        const tpl = templates.find(t => t.id === m.templateId);
+        const name = m.customName || tpl?.name || 'Metric';
+        const displayFormat = tpl?.displayFormat || 'number';
+        const decimalPlaces = tpl?.decimalPlaces || 2;
+        const unit = tpl?.suffix || tpl?.prefix;
+        return {
+          virtualMetricId: buildVmIdFromFields(name, displayFormat, decimalPlaces, unit),
+          metricId: m.id,
+        };
+      }),
     }];
-    }, [group]);
+  }, [group, templates]);
 
   // ─────────────────────────────────────────────────────────────
   // 4. СОСТОЯНИЕ ВЫЧИСЛЕНИЙ
@@ -117,11 +118,9 @@ export function useGroupBreakdown(
   const [breakdown, setBreakdown] = useState<GroupComputationResult['breakdown'] | undefined>(undefined);
   const [isComputing, setIsComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const engine = useMemo(() => createComputeEngine(sourceType), [sourceType]);
   const cache = useMemo(() => createComputationCache(sourceType), [sourceType]);
 
-  // Детерминированные хеши для кэша
   const filtersHash = useMemo(() => generateFiltersHash(currentPath), [currentPath]);
   const groupByColumn = nextLevel?.columnName;
   const configHash = useMemo(() => {
@@ -144,7 +143,6 @@ export function useGroupBreakdown(
     }
 
     let cancelled = false;
-
     const compute = async () => {
       setIsComputing(true);
       setError(null);
@@ -155,7 +153,6 @@ export function useGroupBreakdown(
         filtersHash: `${filtersHash}:${configHash}`,
       };
 
-      // Проверяем кэш
       const cached = await cache.get(cacheKey);
       if (cached && !cancelled) {
         const res = cached.result as DashboardComputationResult;
@@ -186,7 +183,6 @@ export function useGroupBreakdown(
 
         setSummary(result.groups[0] || null);
         setBreakdown(result.groups[0]?.breakdown);
-
         await cache.set(cacheKey, result);
       } catch (err) {
         if (!cancelled) {

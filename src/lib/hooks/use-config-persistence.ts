@@ -10,6 +10,7 @@ import { createComputationCache } from '@/lib/storage';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { DatasetConfigExport } from '@/entities/exportPackage/types';
+import { vmDedupeKey, buildDeterministicVmId } from '@/shared/lib/utils/metric-ids';
 import {
   HierarchyFilterValue,
   IndicatorGroup,
@@ -37,15 +38,12 @@ export function useConfigPersistence() {
 
     const dashboards = allDashboards
       .filter(d => belongsToDataset(d.datasetId))
-      .map(d => ({
-        ...d,
-        hierarchyFilters: [] as HierarchyFilterValue[],
-      }));
+      .map(d => ({ ...d, hierarchyFilters: [] as HierarchyFilterValue[] }));
 
     const indicatorGroups = allGroups.filter(g => belongsToDataset(g.datasetId));
 
     if (dashboards.length === 0 && indicatorGroups.length === 0) {
-      toast.warning('Нечего экспортировать: для этого датасета нет дашбордов или групп');
+      toast.warning('Нечего экспортировать');
       return;
     }
 
@@ -89,7 +87,6 @@ export function useConfigPersistence() {
       }
 
       const parsed = raw as Record<string, unknown>;
-
       if (parsed.exportType !== 'dataset_config') {
         throw new Error('Файл не является конфигом датасета');
       }
@@ -101,7 +98,7 @@ export function useConfigPersistence() {
       const { data } = config;
 
       // ───────────────────────────────────────────────────────
-      // 1. Metric templates (глобальные, merge по id)
+      // 1. Metric templates
       // ───────────────────────────────────────────────────────
       const currentTemplates = useMetricTemplateStore.getState().templates;
       const existingTemplateIds = new Set(currentTemplates.map(t => t.id));
@@ -113,27 +110,24 @@ export function useConfigPersistence() {
           templates: [...currentTemplates, ...newTemplates],
         });
       }
-
       const allTemplates = useMetricTemplateStore.getState().templates;
 
       // ───────────────────────────────────────────────────────
-      // 2. Hierarchy levels (replace для целевого датасета)
+      // 2. Hierarchy levels
       // ───────────────────────────────────────────────────────
       useHierarchyStore
         .getState()
         .setDatasetLevels(targetDatasetId, data.hierarchyLevels || []);
 
       // ───────────────────────────────────────────────────────
-      // 3. Column configs (replace для целевого датасета)
+      // 3. Column configs
       // ───────────────────────────────────────────────────────
       useColumnConfigStore
         .getState()
         .setDatasetConfigs(targetDatasetId, data.columnConfigs || []);
 
       // ───────────────────────────────────────────────────────
-      // 4. Indicator groups (replace для целевого датасета)
-      //    Чистим старые группы этого датасета, чтобы не было
-      //    "зомби"-групп, на которые никто не ссылается.
+      // 4. Indicator groups
       // ───────────────────────────────────────────────────────
       const currentGroups = useIndicatorGroupStore.getState().groups;
       const otherGroups = currentGroups.filter(g => g.datasetId !== targetDatasetId);
@@ -144,17 +138,12 @@ export function useConfigPersistence() {
       useIndicatorGroupStore.setState({
         groups: [...otherGroups, ...importedGroups],
       });
-
-      // Быстрый доступ к импортированным группам по id
       const groupMap = new Map<string, IndicatorGroup>(
         importedGroups.map(g => [g.id, g])
       );
 
       // ───────────────────────────────────────────────────────
-      // 5. Dashboards: перестраиваем virtualMetrics и bindings
-      //    Это ключевой шаг после рефакторинга расчёта групп:
-      //    мы гарантируем, что связи между GroupMetric и
-      //    VirtualMetric всегда согласованы.
+      // 5. Dashboards: ДЕДУПЛИКАЦИЯ виртуальных метрик по смыслу
       // ───────────────────────────────────────────────────────
       const currentDashboards = useDashboardStore.getState().dashboards;
       const otherDashboards = currentDashboards.filter(
@@ -162,16 +151,15 @@ export function useConfigPersistence() {
       );
 
       const importedDashboards = (data.dashboards || []).map(d => {
-        const rebuiltVirtualMetrics: VirtualMetric[] = [];
+        // Аккумулятор уникальных VM по ключу дедупликации
+        const vmByKey = new Map<string, VirtualMetric>();
         const rebuiltGroupConfigs: IndicatorGroupInDashboard[] = [];
 
         const dashboardGroupConfigs = d.indicatorGroups || [];
 
         for (const dgConfig of dashboardGroupConfigs) {
           const group = groupMap.get(dgConfig.groupId);
-          if (!group) {
-            continue;
-          }
+          if (!group) continue;
 
           const newBindings: VirtualMetricBindingInDashboard[] = [];
 
@@ -179,21 +167,29 @@ export function useConfigPersistence() {
             if (!metric.enabled) continue;
 
             const template = allTemplates.find(t => t.id === metric.templateId);
-            const vmId = `vm-${metric.id}`;
+            const name = metric.customName && `${metric.customName}(${template?.name})` || metric.customName || template?.name || 'Metric';
+            const displayFormat =
+              metric.customDisplayFormat || template?.displayFormat || 'number';
+            const decimalPlaces =
+              metric.customDecimalPlaces ?? template?.decimalPlaces ?? 2;
+            const unit = metric.unit || template?.suffix || template?.prefix;
 
-            rebuiltVirtualMetrics.push({
-              id: vmId,
-              name: metric.customName || template?.name || 'Metric',
-              displayFormat:
-                metric.customDisplayFormat || template?.displayFormat || 'number',
-              decimalPlaces:
-                metric.customDecimalPlaces ?? template?.decimalPlaces ?? 2,
-              order: metric.order,
-              unit: metric.unit || template?.suffix || template?.prefix,
-            });
+            const key = vmDedupeKey(name, displayFormat, decimalPlaces, unit);
 
+            if (!vmByKey.has(key)) {
+              vmByKey.set(key, {
+                id: buildDeterministicVmId(key),
+                name,
+                displayFormat,
+                decimalPlaces,
+                order: vmByKey.size,
+                unit,
+              });
+            }
+
+            const vm = vmByKey.get(key)!;
             newBindings.push({
-              virtualMetricId: vmId,
+              virtualMetricId: vm.id,
               metricId: metric.id,
             });
           }
@@ -205,6 +201,8 @@ export function useConfigPersistence() {
             virtualMetricBindings: newBindings,
           });
         }
+
+        const rebuiltVirtualMetrics = Array.from(vmByKey.values());
 
         return {
           ...d,
@@ -221,7 +219,6 @@ export function useConfigPersistence() {
 
       // ───────────────────────────────────────────────────────
       // 6. Инвалидация кэша вычислений
-      //    После импорта конфигурации старые результаты невалидны
       // ───────────────────────────────────────────────────────
       try {
         const fileCache = createComputationCache('file');
