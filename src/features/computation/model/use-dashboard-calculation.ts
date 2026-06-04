@@ -207,5 +207,51 @@ export function useDashboardCalculation(dashboardId: string) {
     await performCalculation(true);
   }, [cache, activeDatasetId, dashboardId, performCalculation]);
 
-  return { result, isComputing, error: computationError, recalculate };
+
+  // ═══════════════════════════════════════════════════════════
+  // 7. MERGE: Актуальная конфигурация + Кэшированные значения
+  // ═══════════════════════════════════════════════════════════
+  // Позволяет colorConfig, name, displayFormat обновляться МГНОВЕННО
+  // без пересчёта SQL (кэш остаётся валидным).
+  const mergedResult = useMemo<DashboardComputationResult | null>(() => {
+    if (!result) return null;
+
+    if (virtualMetrics.length === 0) return result;
+
+    const updatedVirtualMetrics = virtualMetrics;
+
+    const updatedGroups = result.groups.map(group => ({
+      ...group,
+      virtualMetrics: group.virtualMetrics.map(vm => {
+        const freshVm = virtualMetrics.find(f => f.id === vm.virtualMetricId);
+        if (!freshVm) return vm;
+
+        return {
+          ...vm,
+          virtualMetricName: freshVm.name,
+        };
+      }),
+      breakdown: group.breakdown?.map(item => ({
+        ...item,
+        virtualMetrics: item.virtualMetrics.map(vm => {
+          const freshVm = virtualMetrics.find(f => f.id === vm.virtualMetricId);
+          if (!freshVm) return vm;
+          return { ...vm, virtualMetricName: freshVm.name };
+        }),
+      })),
+    }));
+
+    return {
+      ...result,
+      virtualMetrics: updatedVirtualMetrics,
+      groups: updatedGroups,
+    };
+  }, [result, virtualMetrics]);
+
+  return {
+    result: mergedResult,
+    isComputing,
+    error: computationError,
+    recalculate,
+  };
 }

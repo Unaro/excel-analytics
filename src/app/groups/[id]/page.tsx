@@ -8,7 +8,7 @@ import { Button } from '@/shared/ui/button';
 import Link from 'next/link';
 import { GroupPageHeader } from './components/GroupPageHeader';
 import { GroupKpiGrid } from './components/GroupKpiGrid';
-import { GroupBreakdownTable } from './components/GroupBreakdownTable';
+import { GroupBreakdownTable, sortBreakdownItems, SortConfig } from './components/GroupBreakdownTable';
 import { GroupChartsPanel } from './components/GroupChartsPanel';
 import { ChartTypeSelector, ChartType } from './components/ChartTypeSelector';
 
@@ -25,6 +25,14 @@ function GroupProfileContent({ params }: { params: Promise<{ id: string }> }) {
 
   const [activeMetricIds, setActiveMetricIds] = useState<string[]>([]);
   const [chartTypes, setChartTypes] = useState<ChartType[]>(['bar', 'radar']);
+
+  const [sortConfig, setSortConfig] = useState<SortConfig | null>(null);
+
+  useEffect(() => {
+    if (sortConfig === null && activeMetricIds.length > 0) {
+      setSortConfig({ key: activeMetricIds[0], direction: 'desc' });
+    }
+  }, [activeMetricIds, sortConfig]);
 
   useEffect(() => {
     const pathsEqual =
@@ -44,6 +52,11 @@ function GroupProfileContent({ params }: { params: Promise<{ id: string }> }) {
       setActiveMetricIds([virtualMetrics[0].id]);
     }
   }, [virtualMetrics]);
+
+  const chartBreakdown = useMemo(() => {
+    if (!breakdown || !sortConfig) return breakdown ?? [];
+    return sortBreakdownItems(breakdown, sortConfig.key, sortConfig.direction);
+  }, [breakdown, sortConfig]);
 
   const handleToggleMetric = useCallback((metricId: string) => {
     setActiveMetricIds(prev => {
@@ -121,6 +134,8 @@ function GroupProfileContent({ params }: { params: Promise<{ id: string }> }) {
       {!isComputing && breakdown && breakdown.length > 0 && (
         <GroupBreakdownTable
           breakdown={breakdown}
+          sortConfig={sortConfig}
+          onSortChange={setSortConfig}
           summary={summary}
           virtualMetrics={summaryVirtualMetrics}
           nextLevel={nextLevel}
@@ -130,9 +145,9 @@ function GroupProfileContent({ params }: { params: Promise<{ id: string }> }) {
       )}
 
       {/* Панель графиков */}
-      {!isComputing && breakdown && breakdown.length > 0 && (
+      {!isComputing && chartBreakdown.length > 0 && (
         <GroupChartsPanel
-          breakdown={breakdown}
+          breakdown={chartBreakdown}
           virtualMetrics={summaryVirtualMetrics}
           activeMetricIds={activeMetricIds}
           chartTypes={chartTypes}

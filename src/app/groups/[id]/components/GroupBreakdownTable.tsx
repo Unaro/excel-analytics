@@ -8,6 +8,45 @@ import { BreakdownItem, VirtualMetricValue, GroupComputationResult } from '@/ent
 import { HierarchyLevel } from '@/entities/hierarchy';
 import { SortIcon } from './SortIcon';
 
+export interface SortConfig {
+  key: string;
+  direction: 'asc' | 'desc';
+}
+
+// ═══════════════════════════════════════════════════════════
+// УТИЛИТА: вынесена для переиспользования в родителе
+// ═══════════════════════════════════════════════════════════
+export function sortBreakdownItems(
+  items: BreakdownItem[],
+  sortKey: string,
+  direction: 'asc' | 'desc'
+): BreakdownItem[] {
+  return [...items].sort((a, b) => {
+    let aVal: number | string;
+    let bVal: number | string;
+    if (sortKey === 'label') {
+      aVal = a.label;
+      bVal = b.label;
+    } else if (sortKey === 'recordCount') {
+      aVal = a.recordCount;
+      bVal = b.recordCount;
+    } else {
+      const aMetric = a.virtualMetrics.find(m => m.virtualMetricId === sortKey);
+      const bMetric = b.virtualMetrics.find(m => m.virtualMetricId === sortKey);
+      aVal = aMetric?.value ?? -Infinity;
+      bVal = bMetric?.value ?? -Infinity;
+    }
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
+      return direction === 'asc'
+        ? aVal.localeCompare(bVal, undefined, { numeric: true })
+        : bVal.localeCompare(aVal, undefined, { numeric: true });
+    }
+    return direction === 'asc'
+      ? (aVal as number) - (bVal as number)
+      : (bVal as number) - (aVal as number);
+  });
+}
+
 interface GroupBreakdownTableProps {
   breakdown: BreakdownItem[];
   summary: GroupComputationResult | null;
@@ -15,6 +54,8 @@ interface GroupBreakdownTableProps {
   nextLevel: HierarchyLevel | null;
   onDrillDown: (label: string) => void;
   activeMetricIds: string[];
+  sortConfig: SortConfig | null;
+  onSortChange: (config: SortConfig) => void;
 }
 
 export const GroupBreakdownTable = memo(function GroupBreakdownTable({
@@ -24,58 +65,33 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
   nextLevel,
   onDrillDown,
   activeMetricIds,
+  sortConfig,
+  onSortChange,
 }: GroupBreakdownTableProps) {
-  const [sortConfig, setSortConfig] = useState<{
-    key: string;
-    direction: 'asc' | 'desc';
-  }>({ key: activeMetricIds[0] || 'label', direction: 'desc' });
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Фильтрация активных метрик для таблицы
   const visibleMetrics = useMemo(
     () => virtualMetrics.filter(vm => activeMetricIds.includes(vm.virtualMetricId)),
     [virtualMetrics, activeMetricIds]
   );
 
-  // Сортировка + фильтр (чистый useMemo)
   const sortedBreakdown = useMemo(() => {
     let items = [...breakdown];
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       items = items.filter(item => item.label.toLowerCase().includes(q));
     }
-    items.sort((a, b) => {
-      let aVal: number | string;
-      let bVal: number | string;
-      if (sortConfig.key === 'label') {
-        aVal = a.label;
-        bVal = b.label;
-      } else if (sortConfig.key === 'recordCount') {
-        aVal = a.recordCount;
-        bVal = b.recordCount;
-      } else {
-        const aMetric = a.virtualMetrics.find(m => m.virtualMetricId === sortConfig.key);
-        const bMetric = b.virtualMetrics.find(m => m.virtualMetricId === sortConfig.key);
-        aVal = aMetric?.value ?? -Infinity;
-        bVal = bMetric?.value ?? -Infinity;
-      }
-      if (typeof aVal === 'string' && typeof bVal === 'string') {
-        return sortConfig.direction === 'asc'
-          ? aVal.localeCompare(bVal, undefined, { numeric: true })
-          : bVal.localeCompare(aVal, undefined, { numeric: true });
-      }
-      return sortConfig.direction === 'asc'
-        ? (aVal as number) - (bVal as number)
-        : (bVal as number) - (aVal as number);
-    });
+    if (sortConfig) {
+      items = sortBreakdownItems(items, sortConfig.key, sortConfig.direction);
+    }
     return items;
   }, [breakdown, searchQuery, sortConfig]);
 
   const toggleSort = (key: string) => {
-    setSortConfig(prev => ({
+    onSortChange({
       key,
-      direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc',
-    }));
+      direction: sortConfig?.key === key && sortConfig?.direction === 'desc' ? 'asc' : 'desc',
+    });
   };
 
   if (breakdown.length === 0) {
@@ -113,7 +129,6 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
           />
         </div>
       </div>
-
       <div className="overflow-x-auto custom-scrollbar">
         <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800">
           <thead className="bg-slate-50 dark:bg-slate-900/50">
@@ -125,7 +140,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
               >
                 <div className="flex items-center gap-1">
                   {nextLevel?.displayName || 'Элемент'}
-                  <SortIcon active={sortConfig.key === 'label'} direction={sortConfig.direction} />
+                  <SortIcon active={sortConfig?.key === 'label'} direction={sortConfig?.direction ?? 'desc'} />
                 </div>
               </th>
               {visibleMetrics.map(vm => (
@@ -139,7 +154,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                     <span className="truncate max-w-[150px]" title={vm.virtualMetricName}>
                       {vm.virtualMetricName}
                     </span>
-                    <SortIcon active={sortConfig.key === vm.virtualMetricId} direction={sortConfig.direction} />
+                    <SortIcon active={sortConfig?.key === vm.virtualMetricId} direction={sortConfig?.direction ?? 'desc'} />
                   </div>
                 </th>
               ))}
@@ -150,7 +165,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
               >
                 <div className="flex items-center justify-end gap-1">
                   Записей
-                  <SortIcon active={sortConfig.key === 'recordCount'} direction={sortConfig.direction} />
+                  <SortIcon active={sortConfig?.key === 'recordCount'} direction={sortConfig?.direction ?? 'desc'} />
                 </div>
               </th>
               {nextLevel && <th scope="col" className="w-10"></th>}

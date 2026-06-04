@@ -2,13 +2,17 @@
 import { useState, useMemo, memo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend
+  RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend,
+  ReferenceLine, Label, Rectangle
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
 import { BarChart3, Hexagon, Check } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { DashboardComputationResult } from '@/entities/metric';
+import { VirtualMetric } from '@/shared/lib/validators';
+import { checkRule } from '@/shared/lib/utils/metric-colors';
+import type { FormattingRule, ConditionOperator, MetricColor } from '@/entities/dashboard';
 
 interface ChartsSectionProps {
   result: DashboardComputationResult;
@@ -20,6 +24,101 @@ const CHART_COLORS = [
   '#6366f1', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#3b82f6',
 ];
 
+// ═══════════════════════════════════════════════════════════
+// МАППИНГИ И ХЕЛПЕРЫ ДЛЯ ПОРОГОВ
+// ═══════════════════════════════════════════════════════════
+const METRIC_COLOR_HEX: Record<MetricColor, string> = {
+  emerald: '#10b981',
+  rose:    '#f43f5e',
+  amber:   '#f59e0b',
+  blue:    '#3b82f6',
+  indigo:  '#6366f1',
+  slate:   '#94a3b8',
+};
+
+function getOperatorLabel(op: ConditionOperator): string {
+  switch (op) {
+    case '>': return '>';
+    case '>=': return '≥';
+    case '<': return '<';
+    case '<=': return '≤';
+    case '==': return '=';
+    case '!=': return '≠';
+    case 'between': return '↔';
+    default: return op;
+  }
+}
+
+/**
+ * Возвращает HEX-цвет правила, под которое попадает значение, или null.
+ */
+function getColorForValue(
+  value: number | null | undefined,
+  rules: FormattingRule[] | undefined
+): string | null {
+  if (value == null || !rules || rules.length === 0) return null;
+  for (const rule of rules) {
+    if (checkRule(value, rule.operator, rule.value, rule.value2)) {
+      return METRIC_COLOR_HEX[rule.color] || null;
+    }
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// ЛЕГЕНДА ПОРОГОВЫХ ЗНАЧЕНИЙ
+// ═══════════════════════════════════════════════════════════
+function ThresholdLegend({
+  virtualMetrics,
+  activeMetricIds,
+}: {
+  virtualMetrics: VirtualMetric[];
+  activeMetricIds: string[];
+}) {
+  const activeRules = useMemo(() => {
+    return activeMetricIds.flatMap(metricId => {
+      const vm = virtualMetrics.find(v => v.id === metricId);
+      if (!vm?.colorConfig?.rules || vm.colorConfig.rules.length === 0) return [];
+      return vm.colorConfig.rules.map(rule => ({
+        metricName: vm.name,
+        rule,
+      }));
+    });
+  }, [virtualMetrics, activeMetricIds]);
+
+  if (activeRules.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5 px-1 py-1 mb-1">
+      {activeRules.map(({ metricName, rule }, i) => {
+        const color = METRIC_COLOR_HEX[rule.color];
+        const opLabel = getOperatorLabel(rule.operator);
+        const text = rule.operator === 'between' && rule.value2 != null
+          ? `${rule.value} – ${rule.value2}`
+          : `${opLabel} ${rule.value}`;
+        return (
+          <div
+            key={`${metricName}-${i}`}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border"
+            style={{
+              borderColor: `${color}60`,
+              color,
+              backgroundColor: `${color}12`,
+            }}
+          >
+            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+            <span className="font-semibold truncate max-w-[80px]">{metricName}:</span>
+            <span className="font-medium">{text}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════
+// ТИПЫ
+// ═══════════════════════════════════════════════════════════
 interface ChartDataItem {
   name: string;
   [key: string]: string | number;
@@ -69,19 +168,27 @@ function CustomTooltip({ active, payload, label, metricNames }: CustomTooltipPro
   return null;
 }
 
+// ═══════════════════════════════════════════════════════════
+// ПРОПСЫ ЧАРТОВ: добавлены virtualMetrics
+// ═══════════════════════════════════════════════════════════
 interface ChartComponentProps {
   data: ChartDataItem[];
   activeMetricIds: string[];
   metricNames: Record<string, string>;
   axisColor: string;
+  virtualMetrics: VirtualMetric[];
   isTimeSeries?: boolean;
 }
 
+// ═══════════════════════════════════════════════════════════
+// BAR CHART: ReferenceLine + условное окрашивание баров
+// ═══════════════════════════════════════════════════════════
 const MemoizedBarChart = memo(function BarChartComp({
   data,
   activeMetricIds,
   metricNames,
   axisColor,
+  virtualMetrics,
   isTimeSeries
 }: ChartComponentProps) {
   return (
@@ -93,7 +200,7 @@ const MemoizedBarChart = memo(function BarChartComp({
           tick={{ fontSize: 10, fill: axisColor }}
           axisLine={false}
           tickLine={false}
-          angle={isTimeSeries ? 0 : -13} 
+          angle={isTimeSeries ? 0 : -13}
           textAnchor="middle"
           interval={0}
           height={60}
@@ -116,27 +223,129 @@ const MemoizedBarChart = memo(function BarChartComp({
           content={<CustomTooltip metricNames={metricNames} />}
           cursor={{ fill: 'var(--tooltip-cursor)', opacity: 0.1 }}
         />
-        {activeMetricIds.map((metricId, index) => (
-          <Bar
-            key={metricId}
-            dataKey={metricId}
-            name={metricNames[metricId]}
-            fill={CHART_COLORS[index % CHART_COLORS.length]}
-            radius={[4, 4, 0, 0]}
-            isAnimationActive={true}
-            animationDuration={800}
-          />
-        ))}
+
+        {/* ─────────────────────────────────────────────────────
+            ПОРОГОВЫЕ ЛИНИИ (ReferenceLine)
+            Рисуем перед барами, чтобы бары были поверх линий
+            ───────────────────────────────────────────────────── */}
+        {activeMetricIds.flatMap((metricId) => {
+          const vm = virtualMetrics.find(v => v.id === metricId);
+          const rules = vm?.colorConfig?.rules;
+          if (!rules || rules.length === 0) return [];
+
+          return rules.flatMap((rule, ri) => {
+            const color = METRIC_COLOR_HEX[rule.color] || '#94a3b8';
+            const opLabel = getOperatorLabel(rule.operator);
+            const lines: React.ReactElement[] = [];
+
+            if (rule.operator === 'between' && rule.value2 != null) {
+              lines.push(
+                <ReferenceLine
+                  key={`${metricId}-${ri}-min`}
+                  y={rule.value}
+                  stroke={color}
+                  strokeDasharray="6 3"
+                  strokeWidth={1.5}
+                  opacity={0.6}
+                >
+                  <Label
+                    value={`${vm.name}: ${rule.value} – ${rule.value2}`}
+                    position="insideTopRight"
+                    fill={color}
+                    fontSize={9}
+                    fontWeight={600}
+                  />
+                </ReferenceLine>
+              );
+              lines.push(
+                <ReferenceLine
+                  key={`${metricId}-${ri}-max`}
+                  y={rule.value2}
+                  stroke={color}
+                  strokeDasharray="6 3"
+                  strokeWidth={1.5}
+                  opacity={0.6}
+                />
+              );
+            } else {
+              lines.push(
+                <ReferenceLine
+                  key={`${metricId}-${ri}`}
+                  y={rule.value}
+                  stroke={color}
+                  strokeDasharray="6 3"
+                  strokeWidth={1.5}
+                  opacity={0.6}
+                >
+                  <Label
+                    value={`${vm.name}: ${opLabel} ${rule.value}`}
+                    position="insideTopRight"
+                    fill={color}
+                    fontSize={9}
+                    fontWeight={600}
+                  />
+                </ReferenceLine>
+              );
+            }
+            return lines;
+          });
+        })}
+
+        {/* ─────────────────────────────────────────────────────
+            БАРЫ С УСЛОВНЫМ ОКРАШИВАНИЕМ
+            Если значение попадает под правило → цвет правила
+            Иначе → стандартный цвет метрики (CHART_COLORS)
+            ───────────────────────────────────────────────────── */}
+        {activeMetricIds.map((metricId, index) => {
+          const vm = virtualMetrics.find(v => v.id === metricId);
+          const rules = vm?.colorConfig?.rules;
+          const defaultColor = CHART_COLORS[index % CHART_COLORS.length];
+
+          return (
+            <Bar
+              key={metricId}
+              dataKey={metricId}
+              name={metricNames[metricId]}
+              fill={defaultColor}
+              radius={[4, 4, 0, 0]}
+              isAnimationActive={true}
+              animationDuration={800}
+              shape={(props: any) => {
+                const { x, y, width, height, value, fill } = props;
+                // Проверяем, попадает ли значение под какое-либо правило
+                const conditionalColor = getColorForValue(
+                  typeof value === 'number' ? value : null,
+                  rules
+                );
+                const finalFill = conditionalColor || fill || defaultColor;
+                return (
+                  <Rectangle
+                    x={x}
+                    y={y}
+                    width={width}
+                    height={height}
+                    fill={finalFill}
+                    radius={[4, 4, 0, 0]}
+                  />
+                );
+              }}
+            />
+          );
+        })}
       </BarChart>
     </ResponsiveContainer>
   );
 });
 
+// ═══════════════════════════════════════════════════════════
+// RADAR CHART: условное окрашивание точек (dot)
+// ═══════════════════════════════════════════════════════════
 const MemoizedRadarChart = memo(function RadarChartComp({
   data,
   activeMetricIds,
   metricNames,
-  axisColor
+  axisColor,
+  virtualMetrics,
 }: ChartComponentProps) {
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -148,6 +357,8 @@ const MemoizedRadarChart = memo(function RadarChartComp({
         />
         <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={false} axisLine={false} />
         {activeMetricIds.map((metricId, index) => {
+          const vm = virtualMetrics.find(v => v.id === metricId);
+          const rules = vm?.colorConfig?.rules;
           const color = CHART_COLORS[index % CHART_COLORS.length];
           return (
             <Radar
@@ -158,6 +369,33 @@ const MemoizedRadarChart = memo(function RadarChartComp({
               fill={color}
               fillOpacity={0.3}
               isAnimationActive={true}
+              dot={(props: any) => {
+                const { cx, cy, payload } = props;
+                const value = payload?.[metricId];
+                const conditionalColor = getColorForValue(
+                  typeof value === 'number' ? value : null,
+                  rules
+                );
+                const isHighlighted = !!conditionalColor;
+                return (
+                  <circle
+                    key={`dot-${metricId}-${cx}-${cy}`}
+                    cx={cx}
+                    cy={cy}
+                    r={isHighlighted ? 6 : 3}
+                    fill={conditionalColor || color}
+                    stroke="#fff"
+                    strokeWidth={isHighlighted ? 2 : 1}
+                  >
+                    {/* Нативный SVG tooltip при наведении */}
+                    {isHighlighted && (
+                      <title>
+                        {`${metricNames[metricId]}: ${typeof value === 'number' ? value.toLocaleString('ru-RU') : '—'}`}
+                      </title>
+                    )}
+                  </circle>
+                );
+              }}
             />
           );
         })}
@@ -168,6 +406,9 @@ const MemoizedRadarChart = memo(function RadarChartComp({
   );
 });
 
+// ═══════════════════════════════════════════════════════════
+// ROOT COMPONENT
+// ═══════════════════════════════════════════════════════════
 export function ChartsSection({ result }: ChartsSectionProps) {
   const [activeMetricIds, setActiveMetricIds] = useState<string[]>(
     result.virtualMetrics.length > 0 ? [result.virtualMetrics[0].id] : []
@@ -208,11 +449,11 @@ export function ChartsSection({ result }: ChartsSectionProps) {
   }, [result, activeMetricIds]);
 
   if (!result || result.groups.length === 0) return null;
-
   const axisColor = "#94a3b8";
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:h-[500px]">
+      {/* Левая колонка: выбор метрик */}
       <Card className="p-5 lg:col-span-1 flex flex-col gap-4 lg:h-full order-2 lg:order-1">
         <div className="flex justify-between items-center lg:block">
           <div>
@@ -247,6 +488,7 @@ export function ChartsSection({ result }: ChartsSectionProps) {
             const isSelected = activeMetricIds.includes(vm.id);
             const colorIndex = activeMetricIds.indexOf(vm.id);
             const color = colorIndex >= 0 ? CHART_COLORS[colorIndex % CHART_COLORS.length] : undefined;
+            const hasRules = (vm.colorConfig?.rules?.length ?? 0) > 0;
             return (
               <button
                 key={vm.id}
@@ -264,6 +506,12 @@ export function ChartsSection({ result }: ChartsSectionProps) {
                     style={{ backgroundColor: color }}
                   />
                   <span>{vm.name}</span>
+                  {/* Индикатор наличия пороговых правил */}
+                  {hasRules && (
+                    <span className="text-[8px] px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-bold uppercase">
+                      Пороги
+                    </span>
+                  )}
                 </div>
                 {isSelected && <Check size={14} className="text-slate-400" />}
               </button>
@@ -272,14 +520,21 @@ export function ChartsSection({ result }: ChartsSectionProps) {
         </div>
       </Card>
 
-      <Card className="p-4 lg:p-6 lg:col-span-2 h-[350px] lg:h-full flex flex-col justify-center items-center relative bg-white dark:bg-slate-900 overflow-hidden order-1 lg:order-2">
-        <div className="w-full h-full pt-2">
+      {/* Правая колонка: чарт */}
+      <Card className="p-4 lg:p-6 lg:col-span-2 h-[350px] lg:h-full flex flex-col bg-white dark:bg-slate-900 overflow-hidden order-1 lg:order-2">
+        {/* Легенда пороговых значений */}
+        <ThresholdLegend
+          virtualMetrics={result.virtualMetrics}
+          activeMetricIds={activeMetricIds}
+        />
+        <div className="w-full h-full pt-2 flex-1">
           {chartType === 'bar' ? (
             <MemoizedBarChart
               data={chartData}
               activeMetricIds={activeMetricIds}
               metricNames={metricNames}
               axisColor={axisColor}
+              virtualMetrics={result.virtualMetrics}
             />
           ) : (
             <MemoizedRadarChart
@@ -287,6 +542,7 @@ export function ChartsSection({ result }: ChartsSectionProps) {
               activeMetricIds={activeMetricIds}
               metricNames={metricNames}
               axisColor={axisColor}
+              virtualMetrics={result.virtualMetrics}
             />
           )}
         </div>
