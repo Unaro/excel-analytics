@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo, memo } from 'react';
+import { useState, useMemo, memo, useRef, useCallback } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend,
@@ -13,6 +13,9 @@ import { DashboardComputationResult } from '@/entities/metric';
 import { VirtualMetric } from '@/shared/lib/validators';
 import { checkRule } from '@/shared/lib/utils/metric-colors';
 import type { FormattingRule, ConditionOperator, MetricColor } from '@/entities/dashboard';
+import { GroupedThreshold, groupThresholdsByValue } from '@/features/computation/lib/threshold-utils';
+import { useHoverPopup } from './useHoverPopup';
+import { ThresholdPopup, ThresholdRuleEntry } from './ThresholdPopup';
 
 interface ChartsSectionProps {
   result: DashboardComputationResult;
@@ -65,53 +68,151 @@ function getColorForValue(
   return null;
 }
 
+
+// ═══════════════════════════════════════════════════════════
+// КАСТОМНЫЙ LABEL: компактный маркер + hover-popup
+// ═══════════════════════════════════════════════════════════
+function ThresholdLabel({
+  viewBox, value, group,
+}: {
+  viewBox?: { x: number; y: number; width: number; height: number };
+  value: number;
+  group: GroupedThreshold;
+}) {
+  const { isOpen, show, hide } = useHoverPopup();
+  const markerRef = useRef<SVGGElement>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  const handleEnter = useCallback(() => {
+    if (markerRef.current) {
+      setAnchorRect(markerRef.current.getBoundingClientRect());
+    }
+    show();
+  }, [show]);
+
+  if (!viewBox) return null;
+
+  const x = viewBox.x + viewBox.width - 8;
+  const y = viewBox.y;
+  const formattedValue = value.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+
+  return (
+    <>
+      <g
+        ref={markerRef}
+        onMouseEnter={handleEnter}
+        onMouseLeave={hide}
+        style={{ cursor: 'pointer' }}
+      >
+        <g transform={`translate(${x}, ${y})`}>
+          <circle cx={-4} cy={-4} r={group.isOverlap ? 5 : 3.5}
+                  fill={group.primaryColor} stroke="#fff" strokeWidth={1.5} />
+          <text x={-12} y={0} textAnchor="end" fontSize={9} fontWeight={600}
+                fill={group.primaryColor} style={{ fontFamily: 'ui-monospace, monospace' }}>
+            {formattedValue}
+          </text>
+          {group.isOverlap && (
+            <>
+              <rect x={2} y={-11} width={18} height={14} rx={7} fill={group.primaryColor} />
+              <text x={11} y={-1} textAnchor="middle" fontSize={8} fontWeight={700} fill="#fff">
+                +{group.rules.length - 1}
+              </text>
+            </>
+          )}
+        </g>
+      </g>
+
+      {/* ПОРТАЛ: рендерится в body, игнорирует overflow SVG и Card */}
+      <ThresholdPopup
+        anchorRect={anchorRect}
+        thresholdValue={value}
+        rules={group.rules as ThresholdRuleEntry[]}
+        open={isOpen}
+        placement="left"
+        onMouseEnter={show}
+        onMouseLeave={hide}
+      />
+    </>
+  );
+}
 // ═══════════════════════════════════════════════════════════
 // ЛЕГЕНДА ПОРОГОВЫХ ЗНАЧЕНИЙ
 // ═══════════════════════════════════════════════════════════
+function LegendItem({ group }: { group: GroupedThreshold }) {
+  const { isOpen, show, hide } = useHoverPopup();
+  const itemRef = useRef<HTMLDivElement>(null);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  const handleEnter = () => {
+    if (itemRef.current) setAnchorRect(itemRef.current.getBoundingClientRect());
+    show();
+  };
+
+  const color = group.primaryColor;
+  const firstRule = group.rules[0];
+  const opLabel = getOperatorLabel(firstRule.rule.operator);
+  const text = firstRule.rule.operator === 'between' && firstRule.rule.value2 != null
+    ? `${firstRule.rule.value} – ${firstRule.rule.value2}`
+    : `${opLabel} ${firstRule.rule.value}`;
+
+  return (
+    <>
+      <div
+        ref={itemRef}
+        onMouseEnter={handleEnter}
+        onMouseLeave={hide}
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border cursor-pointer transition-all hover:scale-105 hover:shadow-sm"
+        style={{
+          borderColor: `${color}60`,
+          color,
+          backgroundColor: `${color}12`,
+        }}
+      >
+        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+        <span className="font-semibold truncate max-w-[100px]">{firstRule.metricName}:</span>
+        <span className="font-medium">{text}</span>
+        {group.isOverlap && (
+          <span className="ml-1 px-1 py-0.5 rounded-full text-[8px] font-bold text-white"
+                style={{ backgroundColor: color }}
+                title={`+${group.rules.length - 1} правил`}>
+            +{group.rules.length - 1}
+          </span>
+        )}
+      </div>
+
+      {group.isOverlap && (
+        <ThresholdPopup
+          anchorRect={anchorRect}
+          thresholdValue={group.y}
+          rules={group.rules as ThresholdRuleEntry[]}
+          open={isOpen}
+          placement="top"
+          onMouseEnter={show}
+          onMouseLeave={hide}
+        />
+      )}
+    </>
+  );
+}
+
 function ThresholdLegend({
-  virtualMetrics,
-  activeMetricIds,
+  virtualMetrics, activeMetricIds,
 }: {
   virtualMetrics: VirtualMetric[];
   activeMetricIds: string[];
 }) {
-  const activeRules = useMemo(() => {
-    return activeMetricIds.flatMap(metricId => {
-      const vm = virtualMetrics.find(v => v.id === metricId);
-      if (!vm?.colorConfig?.rules || vm.colorConfig.rules.length === 0) return [];
-      return vm.colorConfig.rules.map(rule => ({
-        metricName: vm.name,
-        rule,
-      }));
-    });
-  }, [virtualMetrics, activeMetricIds]);
+  const groupedThresholds = useMemo(
+    () => groupThresholdsByValue(virtualMetrics, activeMetricIds),
+    [virtualMetrics, activeMetricIds]
+  );
 
-  if (activeRules.length === 0) return null;
+  if (groupedThresholds.length === 0) return null;
 
   return (
     <div className="flex flex-wrap gap-1.5 px-1 py-1 mb-1">
-      {activeRules.map(({ metricName, rule }, i) => {
-        const color = METRIC_COLOR_HEX[rule.color];
-        const opLabel = getOperatorLabel(rule.operator);
-        const text = rule.operator === 'between' && rule.value2 != null
-          ? `${rule.value} – ${rule.value2}`
-          : `${opLabel} ${rule.value}`;
-        return (
-          <div
-            key={`${metricName}-${i}`}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-mono border"
-            style={{
-              borderColor: `${color}60`,
-              color,
-              backgroundColor: `${color}12`,
-            }}
-          >
-            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
-            <span className="font-semibold truncate max-w-[80px]">{metricName}:</span>
-            <span className="font-medium">{text}</span>
-          </div>
-        );
-      })}
+      {groupedThresholds.map((group, i) => (
+        <LegendItem key={`legend-${i}`} group={group} />
+      ))}
     </div>
   );
 }
@@ -181,7 +282,7 @@ interface ChartComponentProps {
 }
 
 // ═══════════════════════════════════════════════════════════
-// BAR CHART: ReferenceLine + условное окрашивание баров
+// BAR CHART: использует сгруппированные пороги
 // ═══════════════════════════════════════════════════════════
 const MemoizedBarChart = memo(function BarChartComp({
   data,
@@ -191,10 +292,17 @@ const MemoizedBarChart = memo(function BarChartComp({
   virtualMetrics,
   isTimeSeries
 }: ChartComponentProps) {
+  // Группируем пороги один раз при изменении данных
+  const groupedThresholds = useMemo(
+    () => groupThresholdsByValue(virtualMetrics, activeMetricIds),
+    [virtualMetrics, activeMetricIds]
+  );
+
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} margin={{ top: 20, right: 20, left: 20, bottom: 70 }}>
+      <BarChart data={data} margin={{ top: 20, right: 60, left: 20, bottom: 70 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={axisColor} strokeOpacity={0.2} />
+        {/* ... XAxis, YAxis, Tooltip без изменений ... */}
         <XAxis
           dataKey="name"
           tick={{ fontSize: 10, fill: axisColor }}
@@ -204,7 +312,7 @@ const MemoizedBarChart = memo(function BarChartComp({
           textAnchor="middle"
           interval={0}
           height={60}
-          padding={{ left: 10, right: 10}}
+          padding={{ left: 10, right: 10 }}
           tickMargin={24}
           type={isTimeSeries ? 'number' : 'category'}
           domain={isTimeSeries ? ['auto', 'auto'] : undefined}
@@ -225,77 +333,32 @@ const MemoizedBarChart = memo(function BarChartComp({
         />
 
         {/* ─────────────────────────────────────────────────────
-            ПОРОГОВЫЕ ЛИНИИ (ReferenceLine)
-            Рисуем перед барами, чтобы бары были поверх линий
+            СГРУППИРОВАННЫЕ ПОРОГОВЫЕ ЛИНИИ
+            Каждая линия = группа близких правил
             ───────────────────────────────────────────────────── */}
-        {activeMetricIds.flatMap((metricId) => {
-          const vm = virtualMetrics.find(v => v.id === metricId);
-          const rules = vm?.colorConfig?.rules;
-          if (!rules || rules.length === 0) return [];
-
-          return rules.flatMap((rule, ri) => {
-            const color = METRIC_COLOR_HEX[rule.color] || '#94a3b8';
-            const opLabel = getOperatorLabel(rule.operator);
-            const lines: React.ReactElement[] = [];
-
-            if (rule.operator === 'between' && rule.value2 != null) {
-              lines.push(
-                <ReferenceLine
-                  key={`${metricId}-${ri}-min`}
-                  y={rule.value}
-                  stroke={color}
-                  strokeDasharray="6 3"
-                  strokeWidth={1.5}
-                  opacity={0.6}
-                >
-                  <Label
-                    value={`${vm.name}: ${rule.value} – ${rule.value2}`}
-                    position="insideTopRight"
-                    fill={color}
-                    fontSize={9}
-                    fontWeight={600}
-                  />
-                </ReferenceLine>
-              );
-              lines.push(
-                <ReferenceLine
-                  key={`${metricId}-${ri}-max`}
-                  y={rule.value2}
-                  stroke={color}
-                  strokeDasharray="6 3"
-                  strokeWidth={1.5}
-                  opacity={0.6}
+        {groupedThresholds.map((group, gi) => (
+          <ReferenceLine
+            key={`threshold-${gi}`}
+            y={group.y}
+            stroke={group.primaryColor}
+            strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
+            strokeWidth={group.isOverlap ? 2 : 1.5}
+            opacity={0.7}
+            ifOverflow="extendDomain"
+          >
+            <Label
+              content={(props: any) => (
+                <ThresholdLabel
+                  viewBox={props.viewBox}
+                  value={group.y}
+                  group={group}
                 />
-              );
-            } else {
-              lines.push(
-                <ReferenceLine
-                  key={`${metricId}-${ri}`}
-                  y={rule.value}
-                  stroke={color}
-                  strokeDasharray="6 3"
-                  strokeWidth={1.5}
-                  opacity={0.6}
-                >
-                  <Label
-                    value={`${vm.name}: ${opLabel} ${rule.value}`}
-                    position="insideTopRight"
-                    fill={color}
-                    fontSize={9}
-                    fontWeight={600}
-                  />
-                </ReferenceLine>
-              );
-            }
-            return lines;
-          });
-        })}
+              )}
+            />
+          </ReferenceLine>
+        ))}
 
-        {/* ─────────────────────────────────────────────────────
-            БАРЫ С УСЛОВНЫМ ОКРАШИВАНИЕМ
-            Если значение попадает под правило → цвет правила
-            Иначе → стандартный цвет метрики (CHART_COLORS)
-            ───────────────────────────────────────────────────── */}
+        {/* Бары с условным окрашиванием — БЕЗ ИЗМЕНЕНИЙ */}
         {activeMetricIds.map((metricId, index) => {
           const vm = virtualMetrics.find(v => v.id === metricId);
           const rules = vm?.colorConfig?.rules;
@@ -312,7 +375,6 @@ const MemoizedBarChart = memo(function BarChartComp({
               animationDuration={800}
               shape={(props: any) => {
                 const { x, y, width, height, value, fill } = props;
-                // Проверяем, попадает ли значение под какое-либо правило
                 const conditionalColor = getColorForValue(
                   typeof value === 'number' ? value : null,
                   rules
