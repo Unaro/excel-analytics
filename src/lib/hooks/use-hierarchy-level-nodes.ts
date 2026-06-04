@@ -7,6 +7,7 @@ import { generateFiltersHash } from '@/shared/lib/utils/hash';
 import type { ClientComputeParams } from '@/features/computation/lib/types';
 import { HierarchyFilterValue, IndicatorGroup, IndicatorGroupInDashboard, MetricTemplate, GroupMetric, VirtualMetric } from '@/shared/lib/validators';
 import { HierarchyNode, HierarchyLevel } from '@/entities/hierarchy/model/types';
+import { useColumnConfigStore } from '@/entities/columnConfig';
 
 const TPL_ID = '__hierarchy_count_tpl__';
 const METRIC_ID = '__hierarchy_count_m__';
@@ -80,6 +81,15 @@ export function useHierarchyLevelNodes(
   const engine = useMemo(() => createComputeEngine(sourceType), [sourceType]);
   const cache = useMemo(() => createComputationCache(sourceType), [sourceType]);
 
+  const columnConfigs = useColumnConfigStore(s => 
+    activeDatasetId ? s.configsByDataset[activeDatasetId] : []
+  );
+  const validColumns = useMemo(() => 
+    columnConfigs.filter(c => c.classification !== 'ignore').map(c => c.columnName),
+    [columnConfigs]
+  );
+
+
   const filtersHash = useMemo(() => generateFiltersHash(parentPath), [parentPath]);
   const columnName = level?.columnName ?? '';
 
@@ -123,7 +133,7 @@ export function useHierarchyLevelNodes(
         const params: ClientComputeParams = {
           datasetId: activeDatasetId,
           dashboardId: `hierarchy:${columnName}`,
-          tableName: 'placeholder', // Движок сам подставит реальное имя таблицы
+          tableName: 'placeholder',
           encryptedConfig: dataset?.pgConfig?.encryptedConnection,
           filters: parentPath,
           groups,
@@ -131,6 +141,7 @@ export function useHierarchyLevelNodes(
           metricTemplates,
           virtualMetrics,
           groupByColumn: columnName,
+          validColumns,
         };
 
         await engine.initialize(activeDatasetId);
@@ -160,7 +171,7 @@ export function useHierarchyLevelNodes(
 
     compute();
     return () => { cancelled = true; };
-  }, [activeDatasetId, level, columnName, isSyncing, filtersHash, parentPath, engine, cache, dataset, hasNextLevel]);
+  }, [activeDatasetId, level, columnName, isSyncing, filtersHash, parentPath, engine, cache, dataset, hasNextLevel, validColumns]);
 
   return { nodes, isLoading };
 }

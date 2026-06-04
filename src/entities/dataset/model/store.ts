@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { get, set, del } from 'idb-keyval';
-import type { DatasetRow, ColumnStatistics, DatasetEntry } from './types';
+import type { DatasetRow, ColumnStatistics, DatasetEntry, DatasetState } from './types';
 
 const EMPTY_ROWS: DatasetRow[] = [];
 const EMPTY_HEADERS: string[] = [];
@@ -12,26 +12,6 @@ const idbStorage: StateStorage = {
   setItem: async (name, value) => await set(name, value),
   removeItem: async (name) => await del(name),
 };
-
-interface DatasetState {
-  datasets: Record<string, DatasetEntry>;
-  activeDatasetId: string | null;
-  isSyncing: boolean;
-  addDataset: (id: string, entry: Omit<DatasetEntry, 'id' | 'rows' | 'lastAccessedAt'>) => void;
-  updateDataset: (id: string, updates: Partial<DatasetEntry>) => void;
-  setDatasetRows: (id: string, rows: DatasetRow[] | null) => void;
-  switchDataset: (id: string) => void;
-  unloadDataset: (id: string) => void;
-  removeDataset: (id: string) => void;
-  setSyncing: (isSyncing: boolean) => void;
-  clearAll: () => void;
-  getActiveDataset: () => DatasetEntry | null;
-  getAllData: () => DatasetRow[];
-  getHeaders: () => string[];
-  hasData: () => boolean;
-  getColumnStatistics: (columnName: string) => ColumnStatistics | null;
-  setPgStatus: (id: string, status: 'online' | 'offline' | 'checking' | 'unknown') => void;
-}
 
 export const useDatasetStore = create<DatasetState>()(
   persist(

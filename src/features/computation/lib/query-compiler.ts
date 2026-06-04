@@ -37,23 +37,34 @@ function buildAggregateExpr(
 }
 
 export function compileQuery(params: ClientComputeParams, dialect: ComputeDialect): CompiledQuery {
-  const { filters, groups, dashboardGroupsConfig, metricTemplates, tableName, groupByColumn } = params;
+  const { filters, groups, dashboardGroupsConfig, metricTemplates, tableName, groupByColumn, validColumns } = params;
+
+  const isColumnValid = (colName: string) => {
+    if (!validColumns) return true; // Fallback, если список не передан
+    return validColumns.includes(colName);
+  };
 
   const formulas: CompiledQuery['formulas'] = new Map();
   const aggregateMetadata = new Map<string, MetricAggregationMeta>();
-
   const selectParts: string[] = [];
   const pgParams: QueryParam[] = [];
   const whereConditions: string[] = [];
 
+  let safeGroupByColumn: string | undefined = undefined;
   if (groupByColumn) {
-    selectParts.push(`${quote(groupByColumn)} AS "_group_label"`);
+    if (isColumnValid(groupByColumn)) {
+      selectParts.push(`${quote(groupByColumn)} AS "_group_label"`);
+      safeGroupByColumn = groupByColumn;
+    } else {
+      selectParts.push(`NULL AS "_group_label"`);
+    }
   }
   selectParts.push(`COUNT(*) AS "_record_count"`);
 
   // 1. WHERE Clause
   if (filters.length > 0) {
     filters.forEach((f) => {
+      if (!isColumnValid(f.columnName)) return;
       const col = quote(f.columnName);
       if (dialect === 'postgres') {
         if (f.operator === 'between' && f.value2 != null) {
@@ -98,32 +109,45 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
       if (tpl.type === 'aggregate' && tpl.aggregateFunction && tpl.aggregateField) {
         const binding = metric.fieldBindings.find(b => b.fieldAlias === tpl.aggregateField);
         if (!binding) continue;
-
+        
         const fn = tpl.aggregateFunction.toUpperCase();
+        
+        // ЕСЛИ КОЛОНКА УДАЛЕНА ИЛИ СКРЫТА
+        if (!isColumnValid(binding.columnName)) {
+          selectParts.push(`NULL AS ${quote(alias)}`);
+          aggregateMetadata.set(alias, { aggregateFunction: tpl.aggregateFunction });
+          if (fn === 'AVG') {
+            selectParts.push(`NULL AS ${quote(`__agg_sum__${alias}`)}`);
+            selectParts.push(`NULL AS ${quote(`__agg_count__${alias}`)}`);
+          }
+          continue;
+        }
+
         const expr = buildAggregateExpr(binding.columnName, fn, dialect);
         selectParts.push(`${expr} AS ${quote(alias)}`);
-
-        // Сохраняем метаданные агрегации
         aggregateMetadata.set(alias, { aggregateFunction: tpl.aggregateFunction });
-
         if (fn === 'AVG') {
           const castedCol = castToNumeric(quote(binding.columnName), dialect);
           selectParts.push(`SUM(${castedCol}) AS ${quote(`__agg_sum__${alias}`)}`);
           selectParts.push(`COUNT(${quote(binding.columnName)}) AS ${quote(`__agg_count__${alias}`)}`);
         }
       }
-
       // ═══════════════════════════════════════════════════════════
-      // CALCULATED: fieldBindings → SQL, metricBindings → post-process
+      // CALCULATED
       // ═══════════════════════════════════════════════════════════
       else if (tpl.type === 'calculated' && tpl.formula) {
         const baseAlias = `base_${alias}`;
-
         const fieldDependencies = metric.fieldBindings.map(fb => {
-          const aggregateFn = 'SUM';
           const depAlias = `${baseAlias}__${fb.fieldAlias}`;
-          const expr = buildAggregateExpr(fb.columnName, aggregateFn, dialect);
-          selectParts.push(`${expr} AS ${quote(depAlias)}`);
+          const aggregateFn = 'SUM';
+          
+          if (!isColumnValid(fb.columnName)) {
+            selectParts.push(`NULL AS ${quote(depAlias)}`);
+          } else {
+            const expr = buildAggregateExpr(fb.columnName, aggregateFn, dialect);
+            selectParts.push(`${expr} AS ${quote(depAlias)}`);
+          }
+          
           return {
             alias: fb.fieldAlias,
             columnName: fb.columnName,
@@ -152,9 +176,9 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
   let orderByClause = '';
   let limitClause = '';
 
-  if (groupByColumn) {
-    groupByClause = `GROUP BY ${quote(groupByColumn)}`;
-    const firstMetricAlias = selectParts.find(p => p.includes('__') && !p.includes('_record_count'));
+  if (safeGroupByColumn) {
+    groupByClause = `GROUP BY ${quote(safeGroupByColumn)}`;
+    const firstMetricAlias = selectParts.find(p => p.includes('__') && !p.includes('_record_count') && !p.startsWith('NULL'));
     if (firstMetricAlias) {
       const match = firstMetricAlias.match(/AS "([^"]+)"/);
       if (match) {
@@ -163,7 +187,7 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
     }
     limitClause = 'LIMIT 1000';
   }
-
+  
   const parts = [
     `SELECT ${selectParts.join(', ')}`,
     `FROM ${tableName}`,

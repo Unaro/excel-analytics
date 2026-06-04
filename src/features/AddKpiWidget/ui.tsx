@@ -4,7 +4,7 @@ import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
 import { Plus, ArrowRight } from 'lucide-react';
-import { useDashboardStore } from '@/entities/dashboard';
+import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { SearchableSelect } from '@/shared/ui/searchable-select';
@@ -15,6 +15,8 @@ interface AddKPIDialogProps {
   dashboardId: string;
 }
 
+const EMPTY_KPI_WIDGETS: KPIWidget[] = [];
+
 export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
@@ -23,9 +25,9 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
   const [bindings, setBindings] = useState<Record<string, string>>({});
   const [customName, setCustomName] = useState('');
 
-  const templates = useMetricTemplateStore(s => s.templates);
+  const templates = useMetricTemplateStore(s => s.templates);``
   const addWidget = useDashboardStore(s => s.addKPIWidget);
-  const kpiWidgets = useDashboardStore(useShallow(s => s.getDashboard(dashboardId)?.kpiWidgets || []));
+  const kpiWidgets = useDashboardStore(useShallow(s => s.getDashboard(dashboardId)?.kpiWidgets ?? EMPTY_KPI_WIDGETS));
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const columnConfigs = useColumnConfigStore(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []);
 

@@ -101,3 +101,23 @@ export interface ReplaceFileResult {
   addedColumns?: string[];
   removedColumns?: string[];
 }
+
+export interface DatasetState {
+  datasets: Record<string, DatasetEntry>;
+  activeDatasetId: string | null;
+  isSyncing: boolean;
+  addDataset: (id: string, entry: Omit<DatasetEntry, 'id' | 'rows' | 'lastAccessedAt'>) => void;
+  updateDataset: (id: string, updates: Partial<DatasetEntry>) => void;
+  setDatasetRows: (id: string, rows: DatasetRow[] | null) => void;
+  switchDataset: (id: string) => void;
+  unloadDataset: (id: string) => void;
+  removeDataset: (id: string) => void;
+  setSyncing: (isSyncing: boolean) => void;
+  clearAll: () => void;
+  getActiveDataset: () => DatasetEntry | null;
+  getAllData: () => DatasetRow[];
+  getHeaders: () => string[];
+  hasData: () => boolean;
+  getColumnStatistics: (columnName: string) => ColumnStatistics | null;
+  setPgStatus: (id: string, status: 'online' | 'offline' | 'checking' | 'unknown') => void;
+}

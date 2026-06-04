@@ -7,6 +7,7 @@ import { MetricConfigPopover } from '@/features/ConfigureTableMetric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
 import { GroupComputationResult } from '@/entities/metric';
+import { VirtualMetric } from '@/shared/lib/validators';
 
 export interface DashboardMetricsTableProps {
   dashboardId: string;
@@ -17,6 +18,8 @@ export interface DashboardMetricsTableProps {
   getGroupHref?: (groupId: string) => string;
   className?: string;
 }
+
+const EMPTY_METRICS: VirtualMetric[] = [];
 
 export function DashboardMetricsTable({
   dashboardId,
@@ -30,7 +33,7 @@ export function DashboardMetricsTable({
   
   const metrics = useDashboardStore(useMemo(() => (state) => {
     const dashboard = state.dashboards.find(d => d.id === dashboardId);
-    return dashboard?.virtualMetrics || [];
+    return dashboard?.virtualMetrics || EMPTY_METRICS;
   }, [dashboardId]));
 
   const visibleMetrics = useMemo(

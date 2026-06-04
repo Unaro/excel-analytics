@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { useDatasetStore } from '@/entities/dataset';
+import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
 import { DashboardComputationResult, useMetricTemplateStore } from '@/entities/metric';
 import { createComputeEngine } from '@/features/computation/lib/engine-factory';
 import { compileKPIsToComputeParams, KPI_VIRTUAL_GROUP_ID } from '@/features/computation/lib/kpi-compiler';
@@ -9,6 +9,7 @@ import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash
 import type { ClientComputeParams } from '@/features/computation/lib/types';
 import { HierarchyFilterValue, MetricTemplate } from '@/shared/lib/validators';
 import { KPIWidget } from '@/entities/dashboard';
+import { useColumnConfigStore } from '@/entities/columnConfig';
 
 export interface KPIResult {
   widget: KPIWidget;
@@ -18,6 +19,8 @@ export interface KPIResult {
   error?: string;
 }
 
+const EMPTY_CONFIG: ColumnConfig[] = []
+const EMPTY_RESULT: KPIResult[] = []
 /**
  * Вычисляет KPI-виджеты через DuckDB (для файлов) или PostgreSQL.
  * 
@@ -33,7 +36,16 @@ export function useKPICalculation(
   const isSyncing = useDatasetStore(s => s.isSyncing);
   const templates = useMetricTemplateStore(s => s.templates);
 
-  const [results, setResults] = useState<KPIResult[]>([]);
+  const [results, setResults] = useState<KPIResult[]>(EMPTY_RESULT);
+
+  const columnConfigs = useColumnConfigStore(s => 
+    activeDatasetId ? s.configsByDataset[activeDatasetId] : EMPTY_CONFIG
+  );
+  const validColumns = useMemo(() => 
+    columnConfigs.filter(c => c.classification !== 'ignore').map(c => c.columnName),
+    [columnConfigs]
+  );
+
   const engine = useMemo(() => createComputeEngine(sourceType), [sourceType]);
   const cache = useMemo(() => createComputationCache(sourceType), [sourceType]);
 
@@ -85,7 +97,7 @@ export function useKPICalculation(
 
   useEffect(() => {
     if (!activeDatasetId || !dashboardId || widgets.length === 0 || isSyncing) {
-      setResults([]);
+      setResults(EMPTY_RESULT);
       return;
     }
 
@@ -95,7 +107,7 @@ export function useKPICalculation(
       try {
         const compiled = compileKPIsToComputeParams(widgets, templates);
         if (compiled.groups[0].metrics.length === 0) {
-          setResults([]);
+          setResults(EMPTY_RESULT);
           return;
         }
 
@@ -122,6 +134,7 @@ export function useKPICalculation(
           dashboardGroupsConfig: compiled.dashboardGroupsConfig,
           metricTemplates: templates,
           virtualMetrics: compiled.virtualMetrics,
+          validColumns
         };
 
         await engine.initialize(activeDatasetId);

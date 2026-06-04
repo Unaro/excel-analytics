@@ -11,6 +11,7 @@ import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash
 import { buildVmIdFromFields } from '@/shared/lib/utils/metric-ids';
 import type { ClientComputeParams } from '@/features/computation/lib/types';
 import { HierarchyFilterValue, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
+import { useColumnConfigStore } from '@/entities/columnConfig';
 
 export interface GroupBreakdownResult {
   group: IndicatorGroup | undefined;
@@ -33,6 +34,8 @@ export interface GroupBreakdownResult {
   /** Полный сброс */
   resetAll: () => void;
 }
+
+const EMPTY_LEVELS: HierarchyLevel[] = [];
 
 /**
  * Хук для страницы группы показателей с поддержкой drill-down по иерархии.
@@ -62,8 +65,16 @@ export function useGroupBreakdown(
   const group = useIndicatorGroupStore(s => s.getGroup(groupId));
   const templates = useMetricTemplateStore(useShallow(s => s.templates));
   const levels = useHierarchyStore(useShallow(s =>
-    activeDatasetId ? s.getLevels(activeDatasetId) : []
+    activeDatasetId ? s.getLevels(activeDatasetId) : EMPTY_LEVELS
   ));
+
+  const columnConfigs = useColumnConfigStore(s => 
+    activeDatasetId ? s.configsByDataset[activeDatasetId] : []
+  );
+  const validColumns = useMemo(() => 
+    columnConfigs.filter(c => c.classification !== 'ignore').map(c => c.columnName),
+    [columnConfigs]
+  );
 
   // ─────────────────────────────────────────────────────────────
   // 3. СЛЕДУЮЩИЙ УРОВЕНЬ И ВИРТУАЛЬНЫЕ МЕТРИКИ
@@ -174,6 +185,7 @@ export function useGroupBreakdown(
           metricTemplates: templates,
           virtualMetrics,
           groupByColumn: groupByColumn ?? undefined,
+          validColumns,
         };
 
         await engine.initialize(activeDatasetId);
@@ -199,7 +211,7 @@ export function useGroupBreakdown(
   }, [
     activeDatasetId, groupId, group, isSyncing, filtersHash, configHash,
     currentPath, dashboardGroupsConfig, templates, virtualMetrics, groupByColumn,
-    engine, cache, encryptedConnection,
+    engine, cache, encryptedConnection, validColumns
   ]);
 
   // ─────────────────────────────────────────────────────────────

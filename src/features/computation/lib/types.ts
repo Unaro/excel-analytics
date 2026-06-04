@@ -19,6 +19,7 @@ export interface ClientComputeParams {
   metricTemplates: MetricTemplate[];
   virtualMetrics: VirtualMetric[];
   groupByColumn?: string;
+  validColumns?: string[];
 }
 
 export interface CompiledQuery {
