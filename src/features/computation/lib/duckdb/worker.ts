@@ -84,33 +84,39 @@ async function loadWorkerScript(workerUrl: string): Promise<Worker> {
   return new Worker(blobUrl);
 }
 
-async function initDB() {
-  if (db) return;
-  
-  try {
-    const worker = await loadWorkerScript(EH_BUNDLE.mainWorker);
-    const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
-    db = new duckdb.AsyncDuckDB(logger, worker);
-    
+let initPromise: Promise<void> | null = null;
 
-    await db.instantiate(EH_BUNDLE.mainModule);
-    conn = await db.connect();
-    console.log('[DuckDB] ✅ Initialized with EH bundle');
-  } catch (ehError) {
-    console.warn('[DuckDB] EH bundle failed, falling back to MVP:', ehError);
-    
+async function initDB(): Promise<void> {
+  // Если инициализация уже идёт или завершена — ждём тот же Promise
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
     try {
-      const worker = await loadWorkerScript(MVP_BUNDLE.mainWorker);
+      const worker = await loadWorkerScript(EH_BUNDLE.mainWorker);
       const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
       db = new duckdb.AsyncDuckDB(logger, worker);
-      await db.instantiate(MVP_BUNDLE.mainModule);
+      await db.instantiate(EH_BUNDLE.mainModule);
       conn = await db.connect();
-      console.log('[DuckDB] ✅ Initialized with MVP bundle (fallback)');
-    } catch (mvpError) {
-      console.error('[DuckDB] ❌ Both bundles failed:', mvpError);
-      throw new Error(`DuckDB initialization failed: ${mvpError instanceof Error ? mvpError.message : 'Unknown'}`);
+      console.log('[DuckDB] ✅ Initialized with EH bundle');
+    } catch (ehError) {
+      console.warn('[DuckDB] EH bundle failed, falling back to MVP:', ehError);
+      try {
+        const worker = await loadWorkerScript(MVP_BUNDLE.mainWorker);
+        const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
+        db = new duckdb.AsyncDuckDB(logger, worker);
+        await db.instantiate(MVP_BUNDLE.mainModule);
+        conn = await db.connect();
+        console.log('[DuckDB] ✅ Initialized with MVP bundle (fallback)');
+      } catch (mvpError) {
+        initPromise = null; // Сбрасываем, чтобы можно было попробовать снова
+        throw new Error(
+          `DuckDB initialization failed: ${mvpError instanceof Error ? mvpError.message : 'Unknown'}`
+        );
+      }
     }
-  }
+  })();
+
+  return initPromise;
 }
 
 
@@ -256,6 +262,10 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
   try {
     await initDB();
 
+    if (!conn) {
+      throw new Error('DuckDB connection was not established after initDB()');
+    }
+
     if (type === 'REGISTER_ARROW') {
       const { datasetId, buffer } = payload;
       const tableName = buildTableName(datasetId);
@@ -388,16 +398,19 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
 
       // 2. Батчинг (Чанкование) для защиты оперативной памяти
-      const BATCH_SIZE = 15000; // Обрабатываем по 15к строк за раз
-      
+      const BATCH_SIZE = 15000;
+      await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
+
       for (let i = 0; i < flatRows.length; i += BATCH_SIZE) {
         const chunk = flatRows.slice(i, i + BATCH_SIZE);
-        
         const arrowTable = tableFromJSON(chunk);
-        
-        await conn!.insertArrowTable(arrowTable, { name: tableName });
-        
-        chunk.length = 0; 
+        const isFirstBatch = i === 0;
+
+        await conn!.insertArrowTable(arrowTable, {
+          name: tableName,
+          create: isFirstBatch,   // создаём только на первом батче
+        });
+        chunk.length = 0;
       }
 
       // 3. Формируем метаданные для Zustand (чтобы не гонять это в UI-потоке)
@@ -432,7 +445,7 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
 
     if (type === 'GET_PREVIEW') {
       const { datasetId, limit } = payload;
-      const tableName = buildTableName(datasetId)
+      const tableName = buildTableName(datasetId);
       
       try {
         // Проверяем что таблица существует
