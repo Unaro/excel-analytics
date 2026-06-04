@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo, memo, useRef, useCallback } from 'react';
+import { useState, useMemo, memo, useRef, useCallback, Fragment } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend,
@@ -135,6 +135,7 @@ function ThresholdLabel({
     </>
   );
 }
+
 // ═══════════════════════════════════════════════════════════
 // ЛЕГЕНДА ПОРОГОВЫХ ЗНАЧЕНИЙ
 // ═══════════════════════════════════════════════════════════
@@ -216,7 +217,6 @@ function ThresholdLegend({
     </div>
   );
 }
-
 // ═══════════════════════════════════════════════════════════
 // ТИПЫ
 // ═══════════════════════════════════════════════════════════
@@ -242,13 +242,17 @@ interface CustomTooltipProps {
 
 function CustomTooltip({ active, payload, label, metricNames }: CustomTooltipProps) {
   if (active && payload && payload.length > 0) {
+    // Исключаем пороговые ключи из тултипа
+    const filteredPayload = payload.filter(p => !p.dataKey.toString().endsWith('_threshold'));
+    if (filteredPayload.length === 0) return null;
+
     return (
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-lg shadow-xl text-sm z-50 animate-in fade-in zoom-in-95">
         <p className="font-bold text-slate-900 dark:text-white mb-2 max-w-[200px] truncate border-b border-slate-100 dark:border-slate-800 pb-1">
           {label}
         </p>
         <div className="space-y-1.5">
-          {payload.map((entry) => {
+          {filteredPayload.map((entry) => {
             const metricId = entry.dataKey;
             const metricName = metricNames[metricId] || entry.name;
             const formattedValue = entry.payload[`${metricId}_formatted`];
@@ -268,7 +272,6 @@ function CustomTooltip({ active, payload, label, metricNames }: CustomTooltipPro
   }
   return null;
 }
-
 // ═══════════════════════════════════════════════════════════
 // ПРОПСЫ ЧАРТОВ: добавлены virtualMetrics
 // ═══════════════════════════════════════════════════════════
@@ -413,54 +416,76 @@ const MemoizedRadarChart = memo(function RadarChartComp({
     <ResponsiveContainer width="100%" height="100%">
       <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
         <PolarGrid stroke={axisColor} strokeOpacity={0.2} />
-        <PolarAngleAxis
-          dataKey="name"
-          tick={{ fontSize: 10, fill: axisColor }}
-        />
+        <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: axisColor }} />
+        {/* domain={[0, 'auto']} автоматически масштабирует ось, чтобы вместить и данные, и пороги */}
         <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={false} axisLine={false} />
+
         {activeMetricIds.map((metricId, index) => {
           const vm = virtualMetrics.find(v => v.id === metricId);
           const rules = vm?.colorConfig?.rules;
+          const hasThreshold = rules && rules.length > 0;
+          const thresholdRule = hasThreshold ? rules[0] : null;
+          const thresholdColor = thresholdRule ? METRIC_COLOR_HEX[thresholdRule.color] : null;
           const color = CHART_COLORS[index % CHART_COLORS.length];
+
           return (
-            <Radar
-              key={metricId}
-              name={metricNames[metricId]}
-              dataKey={metricId}
-              stroke={color}
-              fill={color}
-              fillOpacity={0.3}
-              isAnimationActive={true}
-              dot={(props: any) => {
-                const { cx, cy, payload } = props;
-                const value = payload?.[metricId];
-                const conditionalColor = getColorForValue(
-                  typeof value === 'number' ? value : null,
-                  rules
-                );
-                const isHighlighted = !!conditionalColor;
-                return (
-                  <circle
-                    key={`dot-${metricId}-${cx}-${cy}`}
-                    cx={cx}
-                    cy={cy}
-                    r={isHighlighted ? 6 : 3}
-                    fill={conditionalColor || color}
-                    stroke="#fff"
-                    strokeWidth={isHighlighted ? 2 : 1}
-                  >
-                    {/* Нативный SVG tooltip при наведении */}
-                    {isHighlighted && (
-                      <title>
-                        {`${metricNames[metricId]}: ${typeof value === 'number' ? value.toLocaleString('ru-RU') : '—'}`}
-                      </title>
-                    )}
-                  </circle>
-                );
-              }}
-            />
+            <Fragment key={metricId}>
+              {/* ─────────────────────────────────────────────────────
+                  ОСНОВНОЙ ПОЛИГОН МЕТРИКИ (с окрашенными точками)
+                  ───────────────────────────────────────────────────── */}
+              <Radar
+                name={metricNames[metricId]}
+                dataKey={metricId}
+                stroke={color}
+                fill={color}
+                fillOpacity={0.3}
+                isAnimationActive={true}
+                dot={(props: any) => {
+                  const { cx, cy, payload } = props;
+                  const value = payload?.[metricId];
+                  const conditionalColor = getColorForValue(
+                    typeof value === 'number' ? value : null,
+                    rules
+                  );
+                  const isHighlighted = !!conditionalColor;
+                  return (
+                    <circle
+                      key={`dot-${metricId}-${cx}-${cy}`}
+                      cx={cx} cy={cy}
+                      r={isHighlighted ? 6 : 3}
+                      fill={conditionalColor || color}
+                      stroke="#fff"
+                      strokeWidth={isHighlighted ? 2 : 1}
+                    >
+                      {isHighlighted && (
+                        <title>{`${metricNames[metricId]}: ${typeof value === 'number' ? value.toLocaleString('ru-RU') : '—'}`}</title>
+                      )}
+                    </circle>
+                  );
+                }}
+              />
+
+              {/* ─────────────────────────────────────────────────────
+                  ПОРОГОВЫЙ ПОЛИГОН (пунктирная "мишень")
+                  ───────────────────────────────────────────────────── */}
+              {hasThreshold && thresholdColor && (
+                <Radar
+                  name={`${metricNames[metricId]} (порог)`}
+                  dataKey={`${metricId}_threshold`}
+                  stroke={thresholdColor}
+                  strokeWidth={2}
+                  strokeDasharray="6 3"
+                  fill="none"
+                  isAnimationActive={false}
+                  legendType="none"
+                  dot={false}
+                  opacity={0.8}
+                />
+              )}
+            </Fragment>
           );
         })}
+
         <Tooltip content={<CustomTooltip metricNames={metricNames} />} />
         <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
       </RadarChart>
@@ -497,15 +522,32 @@ export function ChartsSection({ result }: ChartsSectionProps) {
     return map;
   }, [result.virtualMetrics]);
 
+
   const chartData = useMemo<ChartDataItem[]>(() => {
     if (!result || activeMetricIds.length === 0) return [];
+    
     return result.groups.map(group => {
       const dataItem: ChartDataItem = { name: group.groupName };
+      
       activeMetricIds.forEach(metricId => {
         const val = group.virtualMetrics.find(vm => vm.virtualMetricId === metricId);
         dataItem[metricId] = val?.value ?? 0;
         dataItem[`${metricId}_formatted`] = val?.formattedValue ?? '—';
+
+        // ═══════════════════════════════════════════════════════
+        // ПОРОГ ДЛЯ РАДАРА: берём первое правило как "мишень"
+        // ═══════════════════════════════════════════════════════
+        const vm = result.virtualMetrics.find(v => v.id === metricId);
+        const primaryRule = vm?.colorConfig?.rules?.[0];
+        if (primaryRule) {
+          // Для between используем верхнюю границу как лимит, иначе value
+          const thresholdVal = primaryRule.operator === 'between' && primaryRule.value2 != null
+            ? primaryRule.value2
+            : primaryRule.value;
+          dataItem[`${metricId}_threshold`] = thresholdVal;
+        }
       });
+      
       return dataItem;
     });
   }, [result, activeMetricIds]);
