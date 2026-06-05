@@ -35,6 +35,12 @@ export interface ThresholdPopupProps {
 
 /**
  * Popup пороговых значений на Radix Popover.
+ *
+ * Internal компонент — используется только внутри ThresholdLabel.
+ * НЕ экспортируется через публичный API виджета.
+ *
+ * Рендерится через portal в document.body для избежания
+ * overflow: hidden конфликтов с Recharts SVG-контейнером.
  */
 export const ThresholdPopup = memo(function ThresholdPopup({
   anchorRect,
@@ -66,7 +72,6 @@ export const ThresholdPopup = memo(function ThresholdPopup({
           }}
         />
       </Popover.Anchor>
-
       <Popover.Portal>
         <Popover.Content
           side={placement}
@@ -90,7 +95,7 @@ export const ThresholdPopup = memo(function ThresholdPopup({
             'z-[9999]'
           )}
         >
-          {/* ─── Заголовок ─── */}
+          {/* Заголовок */}
           <div className="px-4 py-3 border-b border-slate-700/50 bg-gradient-to-r from-slate-800/80 to-slate-800/40">
             <div className="flex items-center gap-2 mb-1">
               <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
@@ -103,7 +108,7 @@ export const ThresholdPopup = memo(function ThresholdPopup({
             </div>
           </div>
 
-          {/* ─── Список правил ─── */}
+          {/* Список правил */}
           <div className="p-2 space-y-0.5 max-h-[360px] overflow-y-auto custom-scrollbar">
             {rules.map((entry, i) => {
               const color = METRIC_COLOR_HEX[entry.rule.color];
@@ -150,7 +155,7 @@ export const ThresholdPopup = memo(function ThresholdPopup({
             })}
           </div>
 
-          {/* ─── Футер ─── */}
+          {/* Футер */}
           <div className="px-4 py-2 border-t border-slate-700/50 bg-slate-800/30 flex items-center justify-between">
             <span className="text-[10px] text-slate-500">
               {rules.length === 1 ? '1 правило' : `${rules.length} правил`} на этом уровне
@@ -166,7 +171,6 @@ export const ThresholdPopup = memo(function ThresholdPopup({
             </div>
           </div>
 
-          {/* ─── Стрелка ─── */}
           <Popover.Arrow className="fill-slate-900/95" />
         </Popover.Content>
       </Popover.Portal>

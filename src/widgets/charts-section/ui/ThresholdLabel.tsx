@@ -1,8 +1,9 @@
 'use client';
+
 import { useRef, useState, useCallback } from 'react';
 import type { GroupedThreshold } from '@/shared/lib/utils/thresholds';
-import { useHoverPopup } from '../model/useHoverPopup';
-import { ThresholdPopup, ThresholdRuleEntry } from './ThresholdPopup';
+import { useHoverPopup } from '../model/use-hover-popup';
+import { ThresholdPopup, type ThresholdRuleEntry } from './ThresholdPopup';
 
 interface ThresholdLabelProps {
   viewBox?: { x: number; y: number; width: number; height: number };
@@ -10,6 +11,16 @@ interface ThresholdLabelProps {
   group: GroupedThreshold;
 }
 
+/**
+ * Интерактивный маркер пороговой линии на чартах (Recharts ReferenceLine Label).
+ *
+ * Используется в:
+ *  - BarChartView (дашборд)
+ *  - GroupBarChart (группы) — импортируется через публичный API charts-section
+ *
+ * При hover показывает ThresholdPopup с детализацией всех правил,
+ * попадающих в эту пороговую группу.
+ */
 export function ThresholdLabel({ viewBox, value, group }: ThresholdLabelProps) {
   const { isOpen, show, hide } = useHoverPopup();
   const markerRef = useRef<SVGGElement>(null);
