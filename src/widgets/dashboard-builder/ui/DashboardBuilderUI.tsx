@@ -1,15 +1,16 @@
 'use client';
+
 import { useState } from 'react';
-import { useMetricTemplateStore } from '@/entities/metric';
-import { Plus, Save, Trash2, LayoutGrid, Columns, AlertTriangle, GripVertical } from 'lucide-react';
+import { Plus, Save, Trash2, LayoutGrid, Columns, GripVertical } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Card } from '@/shared/ui/card';
-import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
-import type { useDashboardBuilder } from '@/features/dashboard-builder/model/use-dashboard-builder';
-import type { IndicatorGroup, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
+import type { VirtualMetric } from '@/shared/lib/validators';
 import { DragDropList, RenderItemProps } from '@/shared/ui/drag-drop-list';
+import { GroupAdder } from './GroupAdder';
+import { MappingRow } from './MappingRow';
+import { useDashboardBuilder } from '@/features/dashboard-builder';
 
 interface DashboardBuilderUIProps {
   builder: ReturnType<typeof useDashboardBuilder>;
@@ -101,6 +102,7 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
               <Columns size={18} className="text-indigo-500" />
               <h2>Колонки таблицы</h2>
             </div>
+
             <div className="flex gap-2">
               <Input
                 value={newVmName}
@@ -112,6 +114,7 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
                 <Plus size={18} />
               </Button>
             </div>
+
             {virtualMetrics.length === 0 ? (
               <div className="text-xs text-slate-400 text-center py-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
                 Нет колонок
@@ -148,6 +151,7 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
                 onAdd={addGroupToDashboard}
               />
             </div>
+
             <div className="border rounded-xl overflow-x-auto dark:border-slate-800 flex-1">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-800">
                 <thead className="bg-gray-50 dark:bg-slate-900">
@@ -181,107 +185,5 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
         </div>
       </div>
     </div>
-  );
-}
-
-function GroupAdder({
-  availableGroups, dashboardGroups, onAdd,
-}: {
-  availableGroups: IndicatorGroup[];
-  dashboardGroups: IndicatorGroupInDashboard[];
-  onAdd: (groupId: string) => void;
-}) {
-  const [selectedGroupId, setSelectedGroupId] = useState('');
-  return (
-    <div className="flex gap-2">
-      <Select className="w-50" value={selectedGroupId} onChange={e => setSelectedGroupId(e.target.value)}>
-        <SelectOption value="">+ Выбрать группу</SelectOption>
-        {availableGroups.filter(g => !dashboardGroups.some(dg => dg.groupId === g.id)).map(g => (
-          <SelectOption key={g.id} value={g.id}>{g.name}</SelectOption>
-        ))}
-      </Select>
-      <Button onClick={() => {
-        if (selectedGroupId) { onAdd(selectedGroupId); setSelectedGroupId(''); }
-      }}>
-        Добавить
-      </Button>
-    </div>
-  );
-}
-
-function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, onRemove }: {
-  groupConfig: IndicatorGroupInDashboard;
-  virtualMetrics: VirtualMetric[];
-  allGroups: IndicatorGroup[];
-  onUpdateBinding: (gid: string, vid: string, mid: string) => void;
-  onRemove: () => void;
-}) {
-  const fullGroup = allGroups.find(g => g.id === groupConfig.groupId);
-  const templates = useMetricTemplateStore(s => s.templates);
-
-  if (!fullGroup) {
-    return (
-      <tr className="bg-rose-50/40 dark:bg-rose-950/20">
-        <td className="px-4 py-3 sticky left-0 bg-rose-50/80 dark:bg-rose-950/40 border-r dark:border-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-          <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
-            <AlertTriangle size={14} className="shrink-0" />
-            <span className="text-sm font-medium">Группа удалена</span>
-          </div>
-          <span className="text-[10px] text-rose-400 dark:text-rose-500 font-mono">
-            ID: {groupConfig.groupId.slice(0, 12)}…
-          </span>
-        </td>
-        {virtualMetrics.map(vm => (
-          <td key={vm.id} className="px-4 py-2">
-            <span className="text-xs text-rose-400 dark:text-rose-500 italic">—</span>
-          </td>
-        ))}
-        <td className="px-2 text-center">
-          <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-500 hover:text-rose-700" onClick={onRemove}>
-            <Trash2 size={14} />
-          </Button>
-        </td>
-      </tr>
-    );
-  }
-
-  return (
-    <tr className="group hover:bg-slate-50 dark:hover:bg-slate-900/50">
-      <td className="px-4 py-3 font-medium text-sm sticky left-0 bg-white dark:bg-slate-950 group-hover:bg-slate-50 border-r dark:border-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-        {fullGroup.name}
-      </td>
-      {virtualMetrics.map(vm => {
-        const binding = groupConfig.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
-        return (
-          <td key={vm.id} className="px-4 py-2">
-            <Select
-              className={cn(
-                "w-full h-8 rounded border px-2 text-xs focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900",
-                binding
-                  ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-300"
-                  : "border-gray-200 text-slate-400 dark:border-slate-800"
-              )}
-              value={binding?.metricId || ''}
-              onChange={(e) => onUpdateBinding(groupConfig.groupId, vm.id, e.target.value)}
-            >
-              <SelectOption value="">—</SelectOption>
-              {fullGroup.metrics.map(metric => {
-                const tpl = templates.find(t => t.id === metric.templateId);
-                return (
-                  <SelectOption key={metric.id} value={metric.id}>
-                    {`${metric?.customName || ''}(${tpl?.name || 'Metric'})`}
-                  </SelectOption>
-                );
-              })}
-            </Select>
-          </td>
-        );
-      })}
-      <td className="px-2 text-center">
-        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-500" onClick={onRemove}>
-          <Trash2 size={14} />
-        </Button>
-      </td>
-    </tr>
   );
 }
