@@ -1,4 +1,3 @@
-// app/actions/pg-compute.ts
 'use server';
 
 import { compileQuery } from '@/shared/lib/computation/lib/query-compiler';

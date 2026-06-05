@@ -10,6 +10,7 @@ import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { ChartComponentProps } from '../model/types';
+import { CustomBarShapeProps } from '@/shared/lib/types/recharts';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -98,7 +99,7 @@ export const BarChartView = memo(function BarChartView({
               radius={[4, 4, 0, 0]}
               isAnimationActive={true}
               animationDuration={800}
-              shape={(props: any) => {
+              shape={(props: CustomBarShapeProps) => {
                 const { x, y, width, height, value, fill } = props;
                 const conditionalColor = getColorForValue(
                   typeof value === 'number' ? value : null,

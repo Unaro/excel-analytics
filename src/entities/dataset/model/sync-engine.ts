@@ -1,6 +1,5 @@
 'use client';
 import { nanoid } from 'nanoid';
-import { fetchPgTableData, getPgSchema, testPgConnection } from '@/app/actions/postgres';
 import { useDatasetStore } from './store';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useDashboardStore } from '@/entities/dashboard';
@@ -12,6 +11,7 @@ import { PgConnectionConfig } from '@/shared/api/postgres/client';
 import { ColumnClassification, ColumnConfig, DatasetRow, ReplaceFileResult } from './types';
 import { del, set } from 'idb-keyval';
 import { createComputationCache } from '@/shared/lib/storage';
+import { fetchPgTableData, getPgSchema, testPgConnection } from '@/shared/api/server-actions';
 
 function mapPgType(type: string): ColumnClassification {
   const t = type.toLowerCase();

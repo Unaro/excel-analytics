@@ -1,12 +1,12 @@
 'use client';
 import { useState } from 'react';
-import { testPgConnection } from '@/app/actions/postgres';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Card } from '@/shared/ui/card';
 import { Database, CheckCircle2, AlertCircle, Loader2, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
+import { testPgConnection } from '@/shared/api/server-actions';
 
 interface PostgresConnectionFormProps {
   onConnected: (config: PgConnectionConfig) => void;

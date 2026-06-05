@@ -4,8 +4,24 @@ import { Sidebar } from '@/widgets/sidebar';
 import { MobileNav } from '@/widgets/mobile-nav';
 import { ThemeProvider } from '@/app/providers';
 import { Toaster } from 'sonner';
+import { useEffect } from 'react';
+import { toast } from '@/shared/ui/toast';
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
+
+
+  useEffect(() => {
+    const warned = sessionStorage.getItem('crypto_warning_shown');
+    if (!warned) {
+      toast.info(
+        'Безопасность улучшена: ключи шифрования теперь хранятся только в рамках сессии. ' +
+        'После закрытия вкладки потребуется повторный ввод паролей PostgreSQL.',
+        { duration: 10000 }
+      );
+      sessionStorage.setItem('crypto_warning_shown', '1');
+    }
+  }, []);
+
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <div className="min-h-screen flex flex-col lg:flex-row">

@@ -11,6 +11,7 @@ import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
+import { CustomBarShapeProps } from '@/shared/lib/types/recharts';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -113,7 +114,7 @@ export const GroupBarChart = memo(function GroupBarChart({
                   barSize={20}
                   isAnimationActive={true}
                   animationDuration={800}
-                  shape={(props: any) => {
+                  shape={(props: CustomBarShapeProps) => {
                     const { x, y, width, height, value, fill } = props;
                     const conditionalColor = getColorForValue(
                       typeof value === 'number' ? value : null,

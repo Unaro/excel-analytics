@@ -1,6 +1,5 @@
 // features/computation/lib/postgres/engine.ts
 import type { ClientComputeParams, CompiledQuery, IComputeEngine, MetricAggregationMeta } from '../types';
-import { computePgMetrics } from '@/app/actions/pg-compute';
 import { compileQuery } from '../query-compiler';
 import { getActiveFilter, formatValue } from '../utils';
 import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
@@ -8,6 +7,8 @@ import { useDatasetStore } from '@/entities/dataset';
 import { decryptConfig } from '@/shared/lib/utils/crypto';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
 import { DashboardComputationResult, GroupComputationResult, VirtualMetricValue } from '@/entities/metric';
+import { computePgMetrics } from '@/shared/api/server-actions';
+import { aggregateProcessedRows } from '../aggregation';
 
 /**
  * Безопасное экранирование SQL-идентификаторов (schema, table, column).
@@ -35,80 +36,6 @@ function buildAggregateMetadataMap(
     }
   }
   return metadata;
-}
-
-function aggregateProcessedRows(
-  processedRows: Record<string, number | null>[],
-  aggregateMetadata: Map<string, MetricAggregationMeta>,
-  formulas: CompiledQuery['formulas']
-): Record<string, number | null> {
-  // ... тот же код что и в worker.ts ...
-  if (processedRows.length === 0) return {};
-
-  const summary: Record<string, number | null> = {};
-  const keys = Object.keys(processedRows[0]);
-
-  for (const key of keys) {
-    if (key.startsWith('__agg_sum__') || key.startsWith('__agg_count__')) {
-      summary[key] = null;
-      continue;
-    }
-    if (key === '_group_label' || key === '_record_count') continue;
-
-    const meta = aggregateMetadata.get(key);
-    const values = processedRows
-      .map(row => row[key])
-      .filter((v): v is number => typeof v === 'number' && isFinite(v));
-
-    if (values.length === 0) { summary[key] = null; continue; }
-
-    switch (meta?.aggregateFunction) {
-      case 'SUM':
-      case 'COUNT':
-      case 'COUNT_DISTINCT':
-        summary[key] = values.reduce((a, b) => a + b, 0);
-        break;
-      case 'AVG': {
-        const sumKey = `__agg_sum__${key}`;
-        const countKey = `__agg_count__${key}`;
-        let totalSum = 0, totalCount = 0;
-        for (const row of processedRows) {
-          totalSum += (typeof row[sumKey] === 'number' ? row[sumKey] : 0);
-          totalCount += (typeof row[countKey] === 'number' ? row[countKey] : 0);
-        }
-        summary[key] = totalCount > 0 ? totalSum / totalCount : null;
-        break;
-      }
-      case 'MAX':
-        summary[key] = Math.max(...values);
-        break;
-      case 'MIN':
-        summary[key] = Math.min(...values);
-        break;
-      case 'MEDIAN':
-      case 'PERCENTILE': {
-        const sorted = [...values].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        summary[key] = sorted.length % 2 === 0
-          ? (sorted[mid - 1] + sorted[mid]) / 2
-          : sorted[mid];
-        break;
-      }
-      default:
-        summary[key] = values.reduce((a, b) => a + b, 0);
-    }
-  }
-
-  if (formulas.size > 0) {
-    const recalculated = recalculateFormulasOnAggregated(summary, formulas);
-    for (const [key, val] of Object.entries(recalculated)) {
-      if (!key.startsWith('__agg_') && !key.startsWith('base_')) {
-        summary[key] = val;
-      }
-    }
-  }
-
-  return summary;
 }
 
 
