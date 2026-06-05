@@ -21,6 +21,7 @@ import { DashboardMetricsTable } from '@/widgets/DashboardMetricsTable';
 import { useDashboardCalculation } from '@/features/computation/model/use-dashboard-calculation';
 import { useHierarchyTree } from '@/entities/hierarchy/lib/hooks/use-hierarchy-tree';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { ErrorBoundary } from '@/shared/ui/error-boundary';
 
 function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
   const { id: dashboardId } = use(params);
@@ -217,10 +218,12 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-6">
         {/* --- ЛЕВАЯ КОЛОНКА: Фильтры --- */}
         <div className="lg:col-span-3 space-y-2">
-          <HierarchyTree
-            dashboardId={dashboardId}
-            currentFilters={dashboard.hierarchyFilters}
-          />
+          <ErrorBoundary label="Дерево иерархии">
+            <HierarchyTree
+              dashboardId={dashboardId}
+              currentFilters={dashboard.hierarchyFilters}
+            />
+          </ErrorBoundary>
           {result && (
             <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm">
               <div className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase mb-1">Статистика выборки</div>
@@ -234,16 +237,20 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
 
         {/* --- ПРАВАЯ КОЛОНКА: Данные --- */}
         <div className="lg:col-span-9 space-y-6">
-          <KPIGrid
-            dashboardId={dashboardId}
-            widgets={dashboard.kpiWidgets || []}
-            currentFilters={dashboard.hierarchyFilters}
-            isEditMode={true}
-          />
+          <ErrorBoundary label="KPI Grid" onReset={recalculate}>
+            <KPIGrid
+              dashboardId={dashboardId}
+              widgets={dashboard.kpiWidgets || []}
+              currentFilters={dashboard.hierarchyFilters}
+              isEditMode={true}
+            />
+          </ErrorBoundary>
           {result && (
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <ChartsSection result={result} />
-            </div>
+            <ErrorBoundary label="Графики" onReset={recalculate}>
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <ChartsSection result={result} />
+              </div>
+            </ErrorBoundary>
           )}
           {error && (
             <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 p-4 rounded-xl flex items-start gap-3">
@@ -254,15 +261,17 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
               </div>
             </div>
           )}
-          <DashboardMetricsTable
-            dashboardId={dashboardId}
-            groups={result?.groups || []}
-            loading={isComputing}
-            hiddenMetricIds={hiddenMetricIds}
-            onToggleMetricVisibility={toggleMetricVisibility}
-            getGroupHref={(groupId) => `/groups/${groupId}?filters=${encodeURIComponent(JSON.stringify(currentPath))}`}
-            className="mt-6"
-          />
+          <ErrorBoundary label="Таблица метрик" onReset={recalculate}>
+            <DashboardMetricsTable
+              dashboardId={dashboardId}
+              groups={result?.groups || []}
+              loading={isComputing}
+              hiddenMetricIds={hiddenMetricIds}
+              onToggleMetricVisibility={toggleMetricVisibility}
+              getGroupHref={(groupId) => `/groups/${groupId}?filters=${encodeURIComponent(JSON.stringify(currentPath))}`}
+              className="mt-6"
+            />
+          </ErrorBoundary>
         </div>
       </div>
     </div>
