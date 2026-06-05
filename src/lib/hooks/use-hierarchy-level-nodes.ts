@@ -171,7 +171,7 @@ export function useHierarchyLevelNodes(
 
     compute();
     return () => { cancelled = true; };
-  }, [activeDatasetId, level, columnName, isSyncing, filtersHash, parentPath, engine, cache, dataset, hasNextLevel, validColumns]);
+  }, [activeDatasetId, level, columnName, isSyncing, filtersHash, engine, cache, dataset, hasNextLevel, validColumns]);
 
   return { nodes, isLoading };
 }

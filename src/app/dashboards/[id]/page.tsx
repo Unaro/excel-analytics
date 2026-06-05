@@ -1,5 +1,5 @@
 'use client';
-import { Suspense, use, useEffect, useState, useMemo } from 'react';
+import { Suspense, use, useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChartsSection } from '@/widgets/ChartsSection';
@@ -98,6 +98,13 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
   const { result, isComputing, error, recalculate } = useDashboardCalculation(dashboardId);
   const [hiddenMetricIds, setHiddenMetricIds] = useState<string[]>([]);
   
+  const hierarchyFilters = useDashboardStore(useShallow(
+    useCallback(
+      (s) => s.dashboards.find(d => d.id === dashboardId)?.hierarchyFilters ?? [],
+      [dashboardId]
+    )
+  ));
+
   const toggleMetricVisibility = (id: string) => {
     setHiddenMetricIds(prev => prev.includes(id) ? prev.filter(mId => mId !== id) : [...prev, id]);
   };
@@ -221,7 +228,7 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
           <ErrorBoundary label="Дерево иерархии">
             <HierarchyTree
               dashboardId={dashboardId}
-              currentFilters={dashboard.hierarchyFilters}
+              currentFilters={hierarchyFilters}
             />
           </ErrorBoundary>
           {result && (
@@ -241,7 +248,7 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
             <KPIGrid
               dashboardId={dashboardId}
               widgets={dashboard.kpiWidgets || []}
-              currentFilters={dashboard.hierarchyFilters}
+              currentFilters={hierarchyFilters}
               isEditMode={true}
             />
           </ErrorBoundary>

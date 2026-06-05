@@ -2,11 +2,54 @@ import type { ComputeDialect, CompiledQuery, QueryParam, ClientComputeParams, Me
 
 const quote = (id: string) => `"${id.replace(/"/g, '""')}"`;
 
+// ─────────────────────────────────────────────────────────────
+// Whitelist разрешённых SQL-операторов для WHERE-условий.
+// Defence-in-depth: даже если Zod-схема валидирует на входе,
+// данные могут прийти из кэша/импорта/старой версии схемы.
+// ─────────────────────────────────────────────────────────────
+const ALLOWED_OPERATORS = new Set([
+  '=', '>', '<', '>=', '<=', '!=', '<>',
+  'LIKE', 'ILIKE', 'BETWEEN',
+]);
+
+/**
+ * Нормализует оператор:
+ *  - 'exact' и undefined → '='
+ *  - всё, что не в whitelist → '=' (с console.warn)
+ *  - 'between' (любой регистр) → 'BETWEEN'
+ */
+function sanitizeOperator(op: string | undefined): string {
+  if (!op || op === 'exact') return '=';
+  const normalized = op.toUpperCase();
+  if (!ALLOWED_OPERATORS.has(normalized)) {
+    console.warn(`[query-compiler] Blocked invalid operator: ${op}`);
+    return '=';
+  }
+  return op === 'between' ? 'BETWEEN' : op;
+}
+
+/**
+ * Экранирует значение для inline-вставки в SQL (DuckDB).
+ * Возвращает 'NULL' для любых не-примитивных типов —
+ * никогда не строим SQL из объектов/массивов.
+ */
 function escapeDuckDBValue(val: QueryParam): string {
   if (val === null || val === undefined) return 'NULL';
-  if (typeof val === 'number') return String(val);
+  if (typeof val === 'number') {
+    if (!isFinite(val)) return 'NULL'; // защита от NaN/Infinity
+    return String(val);
+  }
   if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
-  return `'${String(val).replace(/'/g, "''")}'`;
+  if (typeof val === 'string') {
+    const escaped = val
+      .replace(/\\/g, '\\\\')     // экранируем обратные слэши
+      .replace(/'/g, "''")         // одинарные кавычки
+      .replace(/\0/g, '');         // null-byte injection
+    return `'${escaped}'`;
+  }
+  // Fallback: объекты, массивы, функции → NULL
+  console.warn(`[query-compiler] Unexpected value type: ${typeof val}`);
+  return 'NULL';
 }
 
 function castToNumeric(expr: string, dialect: ComputeDialect): string {
@@ -66,26 +109,26 @@ export function compileQuery(params: ClientComputeParams, dialect: ComputeDialec
     filters.forEach((f) => {
       if (!isColumnValid(f.columnName)) return;
       const col = quote(f.columnName);
+      const op = sanitizeOperator(f.operator);
+
       if (dialect === 'postgres') {
-        if (f.operator === 'between' && f.value2 != null) {
+        if (op === 'BETWEEN' && f.value2 != null) {
           whereConditions.push(`${col} BETWEEN $${pgParams.length + 1} AND $${pgParams.length + 2}`);
           pgParams.push(f.value as QueryParam, f.value2 as QueryParam);
         } else {
-          const op = f.operator && f.operator !== 'exact' ? f.operator : '=';
           whereConditions.push(`${col} ${op} $${pgParams.length + 1}`);
           pgParams.push(f.value as QueryParam);
         }
       } else {
-        if (f.operator === 'between' && f.value2 != null) {
+        if (op === 'BETWEEN' && f.value2 != null) {
           whereConditions.push(`${col} BETWEEN ${escapeDuckDBValue(f.value)} AND ${escapeDuckDBValue(f.value2)}`);
         } else {
-          const op = f.operator && f.operator !== 'exact' ? f.operator : '=';
           whereConditions.push(`${col} ${op} ${escapeDuckDBValue(f.value)}`);
         }
       }
     });
   }
-
+  
   const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
 
   // 2. SELECT Clause

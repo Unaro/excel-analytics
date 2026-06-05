@@ -12,6 +12,8 @@ import { useFilterActions } from '@/features/hierarchy-filters/model/use-filter-
 import { HierarchyFilterValue } from '@/shared/lib/validators';
 import { useHierarchyLevelNodes } from '@/lib/hooks/use-hierarchy-level-nodes';
 
+const EMPTY_PATH: HierarchyFilterValue[] = [];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ROOT COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -69,7 +71,7 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
           key={structureKey}
           dashboardId={dashboardId}
           levelIndex={0}
-          parentPath={[]}
+          parentPath={EMPTY_PATH}
           levels={levels}
           activeFilters={currentFilters}
           customSelectHandler={onFilterChange}
