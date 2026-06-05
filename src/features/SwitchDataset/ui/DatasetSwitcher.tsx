@@ -1,13 +1,13 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+
+import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import * as Popover from '@radix-ui/react-popover';
 import { useDatasetStore } from '@/entities/dataset';
 import { Button } from '@/shared/ui/button';
-import { 
-  Database, Trash2, ChevronDown, Check, FileSpreadsheet, 
-  Loader2, AlertCircle, Plus, 
-  RefreshCw,
-  LucideDatabase
+import {
+  Database, Trash2, ChevronDown, Check, FileSpreadsheet,
+  Loader2, Plus, RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { toast } from 'sonner';
@@ -19,22 +19,9 @@ interface DatasetSwitcherProps {
 
 export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
   const [open, setOpen] = useState(false);
-  const [refreshingId, setRefreshingId] = useState<string | null>(null); 
-
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
-  
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const datasets = useDatasetStore(s => s.datasets);
   const activeId = useDatasetStore(s => s.activeDatasetId);
@@ -52,12 +39,11 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
     return <span className="w-2 h-2 rounded-full bg-slate-400" />;
   };
 
-
   const handleSwitch = (id: string) => {
     if (isDisabled) return;
     if (id !== activeId) {
       switchDataset(id);
-      if (['/dashboards', '/hierarchy', '/groups'].some(p => pathname?.startsWith(p))) { // В будущем нужно создать динамический список данных
+      if (['/dashboards', '/hierarchy', '/groups'].some(p => pathname?.startsWith(p))) {
         router.refresh();
       }
       toast.success('Датасет переключен');
@@ -68,17 +54,13 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
   const handleRemove = (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const confirmed = window.confirm(
-        `Удалить датасет "${name}"?
-    ⚠️ Это удалит только данные.
-    Настройки дашбордов, метрики и группы сохранятся.`
+      `Удалить датасет "${name}"?\n⚠️ Это удалит только данные.\nНастройки дашбордов, метрики и группы сохранятся.`
     );
     if (confirmed) {
       removeDataset(id);
       toast.info(`Датасет "${name}" удален`);
-      
       if (id === activeId) {
         const remainingIds = Object.keys(datasets).filter(k => k !== id);
-        
         if (remainingIds.length > 0) {
           switchDataset(remainingIds[0]);
         } else {
@@ -88,8 +70,7 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
           router.push('/setup');
         }
       }
-      
-      if (open) setOpen(false);
+      setOpen(false);
     }
   };
 
@@ -116,74 +97,98 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
   };
 
   return (
-    <div className="relative w-full" ref={containerRef}>
-      {/* Кнопка-триггер */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => !isDisabled && setOpen(!open)}
-        disabled={isDisabled}    
-        className={cn(
-          "w-full justify-between gap-2 h-auto py-2.5 px-3",
-          "border-slate-200 dark:border-slate-700",
-          "bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800",
-          open && "ring-2 ring-indigo-500 border-indigo-300 dark:border-indigo-700",
-          isDisabled && "opacity-60 cursor-not-allowed" 
-        )}
-      >
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          {activeDataset?.sourceType === 'postgres' && (
-            <div className="relative">
-              <Database size={16} className={cn("shrink-0 transition-colors", 
-                activeDataset.pgStatus === 'offline' ? "text-red-500" : "text-indigo-600 dark:text-indigo-400")} 
-              />
-              <div className="absolute -bottom-0.5 -right-0.5">
-                <StatusDot status={activeDataset.pgStatus} />
-              </div>
-            </div>
-          )}
-           {activeDataset?.sourceType === 'file' && (
-            <FileSpreadsheet size={16} className={cn("shrink-0 transition-colors", "text-indigo-600 dark:text-indigo-400")} /> 
-           )}
-          <div className="text-left min-w-0 flex-1">
-            {isSyncing ? (
-              <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-                <Loader2 size={12} className="animate-spin" />
-                Синхронизация...
-              </span>
-            ) : activeDataset ? (
-              <>
-                <div className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
-                  {activeDataset.name}
-                </div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                  <span className="truncate">
-                    {activeDataset.metadata?.totalRows ?? 0} строк
-                  </span>
-                </div>
-              </>
-            ) : (
-              <span className="text-xs text-slate-400">Нет датасета</span>
-            )}
-          </div>
-        </div>
-        <ChevronDown 
-          size={14} 
+    <Popover.Root open={open} onOpenChange={(v) => !isDisabled && setOpen(v)}>
+      <Popover.Trigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isDisabled}
           className={cn(
-            "text-slate-400 shrink-0 transition-transform",
-            open && "rotate-180"
-          )} 
-        />
-        {isDisabled && (
-          <span className="ml-2 text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-            Привязан к дашборду
-          </span>
-        )}
-      </Button>
+            'w-full justify-between gap-2 h-auto py-2.5 px-3',
+            'border-slate-200 dark:border-slate-700',
+            'bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800',
+            open && 'ring-2 ring-indigo-500 border-indigo-300 dark:border-indigo-700',
+            isDisabled && 'opacity-60 cursor-not-allowed'
+          )}
+        >
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            {activeDataset?.sourceType === 'postgres' && (
+              <div className="relative">
+                <Database
+                  size={16}
+                  className={cn(
+                    'shrink-0 transition-colors',
+                    activeDataset.pgStatus === 'offline'
+                      ? 'text-red-500'
+                      : 'text-indigo-600 dark:text-indigo-400'
+                  )}
+                />
+                <div className="absolute -bottom-0.5 -right-0.5">
+                  <StatusDot status={activeDataset.pgStatus} />
+                </div>
+              </div>
+            )}
+            {activeDataset?.sourceType === 'file' && (
+              <FileSpreadsheet
+                size={16}
+                className="shrink-0 transition-colors text-indigo-600 dark:text-indigo-400"
+              />
+            )}
+            <div className="text-left min-w-0 flex-1">
+              {isSyncing ? (
+                <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                  <Loader2 size={12} className="animate-spin" />
+                  Синхронизация...
+                </span>
+              ) : activeDataset ? (
+                <>
+                  <div className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">
+                    {activeDataset.name}
+                  </div>
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    <span className="truncate">
+                      {activeDataset.metadata?.totalRows ?? 0} строк
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <span className="text-xs text-slate-400">Нет датасета</span>
+              )}
+            </div>
+          </div>
+          <ChevronDown
+            size={14}
+            className={cn(
+              'text-slate-400 shrink-0 transition-transform',
+              open && 'rotate-180'
+            )}
+          />
+          {isDisabled && (
+            <span className="ml-2 text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+              Привязан к дашборду
+            </span>
+          )}
+        </Button>
+      </Popover.Trigger>
 
-      {/* Выпадающий список */}
-      {open && (
-        <div className="absolute top-full mt-2 left-0 right-0 w-full min-w-[280px] max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+      <Popover.Portal>
+        <Popover.Content
+          side="bottom"
+          align="start"
+          sideOffset={8}
+          collisionPadding={10}
+          className={cn(
+            'w-[--radix-popover-trigger-width] min-w-[280px] max-w-sm',
+            'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700',
+            'rounded-xl shadow-2xl overflow-hidden',
+            'origin-[--radix-popover-content-transform-origin]',
+            'data-[state=open]:animate-in data-[state=closed]:animate-out',
+            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+            'data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2',
+            'z-[9999]'
+          )}
+        >
           {/* Хедер дропдауна */}
           <div className="px-3 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30">
             <div className="flex items-center justify-between">
@@ -202,9 +207,9 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
               <div className="py-6 px-3 text-center">
                 <Database size={24} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
                 <p className="text-xs text-slate-400 mb-3">Нет загруженных датасетов</p>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={handleAddNew}
                   className="w-full h-8 text-xs"
                 >
@@ -218,27 +223,29 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
                   <div
                     key={ds.id}
                     className={cn(
-                      "flex items-center gap-2 p-2 rounded-lg transition-all cursor-pointer group",
-                      "border border-transparent",
+                      'flex items-center gap-2 p-2 rounded-lg transition-all cursor-pointer group',
+                      'border border-transparent',
                       isActive
-                        ? "bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800"
-                        : "hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-200 dark:hover:border-slate-700"
+                        ? 'bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800/50 hover:border-slate-200 dark:hover:border-slate-700'
                     )}
                     onClick={() => handleSwitch(ds.id)}
                   >
-                    {/* Иконка источника */}
                     <div className="flex items-center gap-2">
                       {ds.sourceType === 'file' ? <FileSpreadsheet size={14} /> : <Database size={14} />}
                       {ds.sourceType === 'postgres' && <StatusDot status={ds.pgStatus} />}
                     </div>
 
-                    {/* Информация */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className={cn(
-                          "text-sm font-medium truncate",
-                          isActive ? "text-indigo-700 dark:text-indigo-300" : "text-slate-700 dark:text-slate-200"
-                        )}>
+                        <span
+                          className={cn(
+                            'text-sm font-medium truncate',
+                            isActive
+                              ? 'text-indigo-700 dark:text-indigo-300'
+                              : 'text-slate-700 dark:text-slate-200'
+                          )}
+                        >
                           {ds.name}
                         </span>
                         {isActive && (
@@ -252,17 +259,15 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
                         )}
                       </div>
                     </div>
-    
 
-                    {/* Кнопка обновления */}
                     {ds.sourceType === 'postgres' && (
                       <button
                         onClick={(e) => handleRefresh(ds.id, e)}
                         disabled={refreshingId === ds.id}
                         className={cn(
-                          "p-1.5 rounded-md transition-all opacity-0 group-hover:opacity-100",
-                          "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20",
-                          refreshingId === ds.id && "animate-spin cursor-wait"
+                          'p-1.5 rounded-md transition-all opacity-0 group-hover:opacity-100',
+                          'text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20',
+                          refreshingId === ds.id && 'animate-spin cursor-wait'
                         )}
                         title="Обновить данные из БД"
                       >
@@ -270,12 +275,11 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
                       </button>
                     )}
 
-                    {/* Кнопка удаления */}
                     <button
                       onClick={(e) => handleRemove(ds.id, ds.name, e)}
                       className={cn(
-                        "p-1.5 rounded-md transition-all opacity-0 group-hover:opacity-100",
-                        "text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        'p-1.5 rounded-md transition-all opacity-0 group-hover:opacity-100',
+                        'text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
                       )}
                       title="Удалить датасет"
                     >
@@ -289,17 +293,17 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
 
           {/* Футер дропдауна */}
           <div className="px-3 py-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/20">
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleAddNew}
               className="w-full h-8 text-xs text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 justify-start"
             >
               <Plus size={14} className="mr-2" /> Добавить новый датасет
             </Button>
           </div>
-        </div>
-      )}
-    </div>
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
