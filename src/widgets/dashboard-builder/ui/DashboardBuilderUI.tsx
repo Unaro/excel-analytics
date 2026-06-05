@@ -1,49 +1,34 @@
 'use client';
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { Plus, Save, Trash2, LayoutGrid, Columns, AlertTriangle, GripVertical } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Card } from '@/shared/ui/card';
 import { Select, SelectOption } from '@/shared/ui/select';
-import { toast } from 'sonner';
 import { cn } from '@/shared/lib/utils';
-import { IndicatorGroup, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
+import type { useDashboardBuilder } from '@/features/dashboard-builder/model/use-dashboard-builder';
+import type { IndicatorGroup, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
 import { DragDropList, RenderItemProps } from '@/shared/ui/drag-drop-list';
 
 interface DashboardBuilderUIProps {
-  builder: ReturnType<typeof import('@/features/dashboard-builder/model/use-dashboard-builder').useDashboardBuilder>;
+  builder: ReturnType<typeof useDashboardBuilder>;
   mode: 'create' | 'edit';
+  onSave: () => void;
 }
 
-export function DashboardBuilderUI({ builder, mode }: DashboardBuilderUIProps) {
-  const router = useRouter();
+export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUIProps) {
   const {
     name, setName, description, setDescription,
     virtualMetrics, addVirtualMetric, removeVirtualMetric, reorderVirtualMetrics,
     dashboardGroups, addGroupToDashboard, removeGroupFromDashboard, updateBinding,
-    saveDashboard, availableGroups
+    availableGroups
   } = builder;
 
   const [newVmName, setNewVmName] = useState('');
-  const [selectedGroupId, setSelectedGroupId] = useState('');
-
-  const handleSave = () => {
-    try {
-      const id = saveDashboard();
-      toast.success('Дашборд сохранен');
-      router.push(`/dashboards/${id}`);
-    } catch {
-      toast.error('Ошибка сохранения');
-    }
-  };
 
   const renderVirtualMetric = ({
-    item: vm,
-    isDragging,
-    listeners,
-    attributes,
+    item: vm, isDragging, listeners, attributes,
   }: RenderItemProps<VirtualMetric>) => (
     <div
       {...attributes}
@@ -76,10 +61,7 @@ export function DashboardBuilderUI({ builder, mode }: DashboardBuilderUIProps) {
         onPointerDown={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation();
-          removeVirtualMetric(vm.id);
-        }}
+        onClick={(e) => { e.stopPropagation(); removeVirtualMetric(vm.id); }}
         aria-label={`Удалить колонку "${vm.name}"`}
       >
         <Trash2 size={14} />
@@ -95,11 +77,13 @@ export function DashboardBuilderUI({ builder, mode }: DashboardBuilderUIProps) {
             {mode === 'edit' ? 'Настройка дашборда' : 'Новый дашборд'}
           </h1>
         </div>
-        <Button onClick={handleSave}>
+        <Button onClick={onSave}>
           <Save size={16} className="mr-2" /> Сохранить
         </Button>
       </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Левая колонка: Мета + Колонки */}
         <div className="space-y-6 lg:col-span-1">
           <Card className="p-5 space-y-4">
             <div>
@@ -111,6 +95,7 @@ export function DashboardBuilderUI({ builder, mode }: DashboardBuilderUIProps) {
               <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Краткое описание" />
             </div>
           </Card>
+
           <Card className="p-5 space-y-4">
             <div className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white">
               <Columns size={18} className="text-indigo-500" />
@@ -148,6 +133,8 @@ export function DashboardBuilderUI({ builder, mode }: DashboardBuilderUIProps) {
             )}
           </Card>
         </div>
+
+        {/* Правая колонка: Матрица */}
         <div className="lg:col-span-2 space-y-4">
           <Card className="p-6 min-h-125 flex flex-col">
             <div className="flex justify-between items-center mb-6">
@@ -155,21 +142,11 @@ export function DashboardBuilderUI({ builder, mode }: DashboardBuilderUIProps) {
                 <LayoutGrid size={18} className="text-emerald-500" />
                 <h2>Конфигурация строк</h2>
               </div>
-              <div className="flex gap-2">
-                <Select
-                  className="w-50"
-                  value={selectedGroupId}
-                  onChange={e => setSelectedGroupId(e.target.value)}
-                >
-                  <SelectOption value="">+ Выбрать группу</SelectOption>
-                  {availableGroups.filter(g => !dashboardGroups.some(dg => dg.groupId === g.id)).map(g => (
-                    <SelectOption key={g.id} value={g.id}>{g.name}</SelectOption>
-                  ))}
-                </Select>
-                <Button onClick={() => { if (selectedGroupId) { addGroupToDashboard(selectedGroupId); setSelectedGroupId(''); } }}>
-                  Добавить
-                </Button>
-              </div>
+              <GroupAdder
+                availableGroups={availableGroups}
+                dashboardGroups={dashboardGroups}
+                onAdd={addGroupToDashboard}
+              />
             </div>
             <div className="border rounded-xl overflow-x-auto dark:border-slate-800 flex-1">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-800">
@@ -207,6 +184,31 @@ export function DashboardBuilderUI({ builder, mode }: DashboardBuilderUIProps) {
   );
 }
 
+function GroupAdder({
+  availableGroups, dashboardGroups, onAdd,
+}: {
+  availableGroups: IndicatorGroup[];
+  dashboardGroups: IndicatorGroupInDashboard[];
+  onAdd: (groupId: string) => void;
+}) {
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+  return (
+    <div className="flex gap-2">
+      <Select className="w-50" value={selectedGroupId} onChange={e => setSelectedGroupId(e.target.value)}>
+        <SelectOption value="">+ Выбрать группу</SelectOption>
+        {availableGroups.filter(g => !dashboardGroups.some(dg => dg.groupId === g.id)).map(g => (
+          <SelectOption key={g.id} value={g.id}>{g.name}</SelectOption>
+        ))}
+      </Select>
+      <Button onClick={() => {
+        if (selectedGroupId) { onAdd(selectedGroupId); setSelectedGroupId(''); }
+      }}>
+        Добавить
+      </Button>
+    </div>
+  );
+}
+
 function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, onRemove }: {
   groupConfig: IndicatorGroupInDashboard;
   virtualMetrics: VirtualMetric[];
@@ -214,11 +216,10 @@ function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, o
   onUpdateBinding: (gid: string, vid: string, mid: string) => void;
   onRemove: () => void;
 }) {
-  const fullGroup = allGroups.find((g) => g.id === groupConfig.groupId);
+  const fullGroup = allGroups.find(g => g.id === groupConfig.groupId);
   const templates = useMetricTemplateStore(s => s.templates);
-  const isOrphaned = !fullGroup;
 
-  if (isOrphaned) {
+  if (!fullGroup) {
     return (
       <tr className="bg-rose-50/40 dark:bg-rose-950/20">
         <td className="px-4 py-3 sticky left-0 bg-rose-50/80 dark:bg-rose-950/40 border-r dark:border-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
@@ -230,19 +231,13 @@ function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, o
             ID: {groupConfig.groupId.slice(0, 12)}…
           </span>
         </td>
-        {virtualMetrics.map((vm) => (
+        {virtualMetrics.map(vm => (
           <td key={vm.id} className="px-4 py-2">
             <span className="text-xs text-rose-400 dark:text-rose-500 italic">—</span>
           </td>
         ))}
         <td className="px-2 text-center">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-rose-500 hover:text-rose-700 hover:bg-rose-100 dark:hover:bg-rose-900/30"
-            onClick={onRemove}
-            title="Удалить привязку"
-          >
+          <Button variant="ghost" size="icon" className="h-7 w-7 text-rose-500 hover:text-rose-700" onClick={onRemove}>
             <Trash2 size={14} />
           </Button>
         </td>
@@ -252,11 +247,11 @@ function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, o
 
   return (
     <tr className="group hover:bg-slate-50 dark:hover:bg-slate-900/50">
-      <td className="px-4 py-3 font-medium text-sm sticky left-0 bg-white dark:bg-slate-950 group-hover:bg-slate-50 dark:group-hover:bg-slate-900/50 border-r dark:border-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-        {fullGroup!.name}
+      <td className="px-4 py-3 font-medium text-sm sticky left-0 bg-white dark:bg-slate-950 group-hover:bg-slate-50 border-r dark:border-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+        {fullGroup.name}
       </td>
-      {virtualMetrics.map((vm: VirtualMetric) => {
-        const binding = groupConfig.virtualMetricBindings?.find((b) => b.virtualMetricId === vm.id);
+      {virtualMetrics.map(vm => {
+        const binding = groupConfig.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
         return (
           <td key={vm.id} className="px-4 py-2">
             <Select
@@ -270,9 +265,13 @@ function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, o
               onChange={(e) => onUpdateBinding(groupConfig.groupId, vm.id, e.target.value)}
             >
               <SelectOption value="">—</SelectOption>
-              {fullGroup!.metrics.map((metric) => {
+              {fullGroup.metrics.map(metric => {
                 const tpl = templates.find(t => t.id === metric.templateId);
-                return <SelectOption key={metric.id} value={metric.id}>{`${metric?.customName}(${tpl?.name})` || tpl?.name || 'Metric'}</SelectOption>;
+                return (
+                  <SelectOption key={metric.id} value={metric.id}>
+                    {`${metric?.customName || ''}(${tpl?.name || 'Metric'})`}
+                  </SelectOption>
+                );
               })}
             </Select>
           </td>

@@ -1,7 +1,7 @@
 'use client';
 import { useMemo } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
-import { DataTableViewer } from '@/widgets/DataTableViewer';
+import { DataTableViewer } from '@/widgets/data-table-viewer';
 import { Info, Loader2, AlertCircle } from 'lucide-react';
 
 export function RawDataViewer() {

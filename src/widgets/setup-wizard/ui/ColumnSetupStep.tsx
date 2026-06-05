@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { ColumnManager } from '@/features/ManageColumns';
-import { RawDataViewer } from '@/widgets/RawDataViewer';
+import { RawDataViewer } from '@/widgets/raw-data-viewer';
 
 interface ColumnSetupStepProps {
   isSyncing: boolean;

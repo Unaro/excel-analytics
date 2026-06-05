@@ -1,7 +1,7 @@
 'use client';
 import { ClientOnly } from '@/shared/lib/hydration';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
-import { TemplateManager } from '@/widgets/TemplateManager';
+import { TemplateManager } from '@/widgets/template-manager';
 
 export function MetricsManagerWidget() {
   return (

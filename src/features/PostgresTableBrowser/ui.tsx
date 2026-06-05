@@ -6,7 +6,7 @@ import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { Table, Loader2, Check, Database, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
-import { DataTableViewer } from '@/widgets/DataTableViewer';
+import { DataTableViewer } from '@/widgets/data-table-viewer';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
 
 interface PostgresTableBrowserProps {

@@ -1,33 +1,48 @@
 'use client';
 import { use } from 'react';
 import Link from 'next/link';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
-import { useStoreHydration } from '@/shared/lib/hydration';
+import { ClientOnly } from '@/shared/lib/hydration'; // ← ПРАВИЛЬНЫЙ СПОСОБ
 import { useDashboardComputation } from '@/features/compute-dashboard';
 import { useDashboardDatasetSync, useDashboardOrphanCleanup } from '@/features/dashboard-dataset-sync';
+import { flattenDashboardResult } from '@/features/charts-data';
 import { useHierarchyTree } from '@/entities/hierarchy/lib/hooks/use-hierarchy-tree';
-import { HierarchyTree } from '@/widgets/HierarchyFilter';
-import { KPIGrid } from '@/widgets/KpiGrid';
-import { ChartsSection } from '@/widgets/ChartsSection';
-import { DashboardMetricsTable } from '@/widgets/DashboardMetricsTable';
+import { HierarchyTree } from '@/widgets/hierarchy-filter';
+import { KPIGrid } from '@/widgets/kpi-grid';
+import { DashboardMetricsTable } from '@/widgets/dashboard-metrics-table';
 import { DashboardHeader } from './DashboardHeader';
 import { DashboardStats } from './DashboardStats';
 import { ErrorBoundary } from '@/shared/ui/error-boundary';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { AlertCircle } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
+import { ChartsSectionWidget } from '@/widgets/charts-section/ui/ChartsSectionWidget';
 
 interface DashboardViewWidgetProps {
   params: Promise<{ id: string }>;
 }
 
+/**
+ * Обёртка с ClientOnly для предотвращения hydration mismatch.
+ * Сервер и клиент оба рендерят <LoadingScreen /> при первом рендере.
+ * После mount клиент рендерит DashboardViewContent.
+ */
 export function DashboardViewWidget({ params }: DashboardViewWidgetProps) {
-  const { id: dashboardId } = use(params);
-  const hydrated = useStoreHydration();
+  return (
+    <ClientOnly fallback={<LoadingScreen message="Загрузка дашборда..." />}>
+      <DashboardViewContent params={params} />
+    </ClientOnly>
+  );
+}
 
-  // Синхронизация датасета и orphan-cleanup
-  useDashboardOrphanCleanup(dashboardId, hydrated);
+function DashboardViewContent({ params }: DashboardViewWidgetProps) {
+  const { id: dashboardId } = use(params);
+
+  // ─── Orphan cleanup (один раз при монтировании) ───
+  useDashboardOrphanCleanup(dashboardId, true);
+
+  // ─── Синхронизация датасета ───
   const {
     boundDataset,
     hasData,
@@ -38,18 +53,10 @@ export function DashboardViewWidget({ params }: DashboardViewWidgetProps) {
     refreshDataset,
   } = useDashboardDatasetSync(dashboardId);
 
-  // Вычисления
+  // ─── Вычисления ───
   const { result, isComputing, error, recalculate } = useDashboardComputation(dashboardId);
 
-  // UI-состояние
-  const [hiddenMetricIds, setHiddenMetricIds] = useState<string[]>([]);
-  const toggleMetricVisibility = useCallback((id: string) => {
-    setHiddenMetricIds(prev =>
-      prev.includes(id) ? prev.filter(mId => mId !== id) : [...prev, id]
-    );
-  }, []);
-
-  // Данные дашборда
+  // ─── Данные дашборда ───
   const dashboard = useDashboardStore(
     useShallow(s => s.dashboards.find(d => d.id === dashboardId))
   );
@@ -63,10 +70,28 @@ export function DashboardViewWidget({ params }: DashboardViewWidgetProps) {
     )
   );
 
-  // Гидрационная защита
-  if (!hydrated) return <LoadingScreen message="Загрузка системы..." />;
+  // ─── Локальное UI-состояние для чартов ───
+  const dashboardVirtualMetrics = dashboard?.virtualMetrics ?? [];
+  const [activeMetricIds, setActiveMetricIds] = useState<string[]>(() =>
+    dashboardVirtualMetrics.length > 0 ? [dashboardVirtualMetrics[0].id] : []
+  );
+  // Для single-режима: radio (только один тип)
+  const [chartTypes, setChartTypes] = useState<('bar' | 'radar')[]>(['bar']);
+  const [hiddenMetricIds, setHiddenMetricIds] = useState<string[]>([]);
 
-  // Дашборд не найден
+  const toggleMetricVisibility = useCallback((id: string) => {
+    setHiddenMetricIds(prev =>
+      prev.includes(id) ? prev.filter(mId => mId !== id) : [...prev, id]
+    );
+  }, []);
+
+  // ─── Плоские данные для ChartsSectionWidget ───
+  const { breakdown, virtualMetrics } = useMemo(
+    () => flattenDashboardResult(result, dashboardVirtualMetrics),
+    [result, dashboardVirtualMetrics]
+  );
+
+  // ─── Дашборд не найден ───
   if (!dashboard) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-950 gap-4">
@@ -80,10 +105,10 @@ export function DashboardViewWidget({ params }: DashboardViewWidgetProps) {
     );
   }
 
-  // Датасет недоступен
+  // ─── Датасет недоступен ───
   if (!hasData && dashboard.datasetId) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-slate-950 p-6">
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950 p-6">
         <div className="max-w-md w-full bg-white dark:bg-slate-900 border border-dashed border-amber-300 dark:border-amber-700 rounded-2xl p-8 text-center shadow-sm">
           <div className="w-16 h-16 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-4">
             <AlertCircle size={32} />
@@ -153,10 +178,19 @@ export function DashboardViewWidget({ params }: DashboardViewWidgetProps) {
             />
           </ErrorBoundary>
 
-          {result && (
+          {result && breakdown.length > 0 && (
             <ErrorBoundary label="Графики" onReset={recalculate}>
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <ChartsSection result={result} />
+                <ChartsSectionWidget
+                  breakdown={breakdown}
+                  virtualMetrics={virtualMetrics}
+                  metricConfigs={dashboardVirtualMetrics}
+                  activeMetricIds={activeMetricIds}
+                  chartTypes={chartTypes}
+                  onActiveMetricIdsChange={setActiveMetricIds}
+                  onChartTypesChange={setChartTypes}
+                  mode="single"
+                />
               </div>
             </ErrorBoundary>
           )}

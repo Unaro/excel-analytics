@@ -1,13 +1,7 @@
 'use client';
-
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useMetricTemplateStore } from '@/entities/metric';
-import {
-  Save, Trash2, FunctionSquare,
-  Calculator, Filter, Search, Hash,
-  Database, GripVertical
-} from 'lucide-react';
+import { Save, Trash2, FunctionSquare, Calculator, Filter, Search, Hash, GripVertical } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Card } from '@/shared/ui/card';
@@ -17,30 +11,31 @@ import { Select, SelectOption, SelectGroup } from '@/shared/ui/select';
 import { TemplateForm } from '@/features/CreateMetricTemplate';
 import { SearchableSelect } from '@/shared/ui/searchable-select';
 import { cn } from '@/shared/lib/utils';
-import { toast } from 'sonner';
 import { useDatasetStore } from '@/entities/dataset';
-import { useGroupBuilder, FormMetricState } from '@/features/group-builder/model/use-group-builder';
-import { DragDropList } from '@/shared/ui/drag-drop-list';
-import type { RenderItemProps } from '@/shared/ui/drag-drop-list';
+import type { useGroupBuilder, FormMetricState } from '@/features/group-builder/model/use-group-builder';
+import { DragDropList, RenderItemProps } from '@/shared/ui/drag-drop-list';
+import { Database } from 'lucide-react';
 
-// ─────────────────────────────────────────────────────────────
-// Утилита для остановки drag-событий на интерактивных элементах
-// ─────────────────────────────────────────────────────────────
+interface GroupBuilderUIProps {
+  builder: ReturnType<typeof useGroupBuilder>;
+  mode: 'create' | 'edit';
+  onSave: () => void;
+}
+
 const stopDragEvents = {
   onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
   onMouseDown: (e: React.MouseEvent) => e.stopPropagation(),
   onTouchStart: (e: React.TouchEvent) => e.stopPropagation(),
 };
 
-export function GroupBuilder({ groupId }: { groupId?: string }) {
-  const router = useRouter();
+export function GroupBuilderUI({ builder, mode, onSave }: GroupBuilderUIProps) {
   const {
     name, setName, selectedMetrics,
     addMetricToGroup, updateVariableType, updateBindingValue,
-    removeMetric, reorderMetrics, saveGroup,
+    removeMetric, reorderMetrics,
     availableTemplates, availableColumns,
     columnSearchQuery, setColumnSearchQuery, updateMetricUnit, updateMetricCustomName
-  } = useGroupBuilder(groupId);
+  } = builder;
 
   const hasDataset = !!useDatasetStore(s => s.activeDatasetId);
   const templates = useMetricTemplateStore(s => s.templates);
@@ -56,46 +51,26 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Датасет не выбран</h3>
           <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
             Для создания или редактирования группы метрик необходимо сначала выбрать активный датасет.
-            Перейдите в раздел управления данными, чтобы загрузить или выбрать набор данных.
           </p>
         </div>
       </div>
     );
   }
 
-  const handleSave = () => {
-    try {
-      saveGroup();
-      toast.success(groupId ? `Группа ${name} обновлена` : 'Группа создана');
-      router.push('/groups');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Ошибка');
-    }
-  };
-
-  // ─────────────────────────────────────────────────────────────
-  // Рендер-функция карточки метрики (внутри компонента для замыкания)
-  // ─────────────────────────────────────────────────────────────
   const renderMetric = ({
-    item,
-    index,
-    isDragging,
-    listeners,
-    attributes,
+    item, index, isDragging, listeners, attributes,
   }: RenderItemProps<FormMetricState>) => {
     const template = templates.find(t => t.id === item.templateId);
     if (!template) return null;
 
     return (
-      <div
-        className={cn(
-          'bg-white dark:bg-slate-950 rounded-xl p-5 border relative group shadow-sm transition-all',
-          isDragging
-            ? 'border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-200 dark:ring-indigo-800 shadow-xl scale-[1.01]'
-            : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700'
-        )}
-      >
-        {/* ─── Заголовок карточки: DRAG-ЗОНА ─── */}
+      <div className={cn(
+        'bg-white dark:bg-slate-950 rounded-xl p-5 border relative group shadow-sm transition-all',
+        isDragging
+          ? 'border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-200 dark:ring-indigo-800 shadow-xl scale-[1.01]'
+          : 'border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700'
+      )}>
+        {/* Заголовок: DRAG-ЗОНА */}
         <div
           {...attributes}
           {...listeners}
@@ -105,11 +80,10 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
             isDragging && 'cursor-grabbing'
           )}
         >
-          {/* Grip + номер (визуальный индикатор drag) */}
           <div className="flex items-center gap-2 shrink-0">
             <div className={cn(
               'text-slate-300 dark:text-slate-600 transition-colors',
-              'group-hover:text-indigo-400 dark:group-hover:text-indigo-500',
+              'group-hover:text-indigo-400',
               isDragging && 'text-indigo-500'
             )}>
               <GripVertical size={16} />
@@ -119,7 +93,6 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
             </div>
           </div>
 
-          {/* Иконка типа + кастомное название */}
           <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white text-lg min-w-0">
             {template.type === 'aggregate' ? (
               <FunctionSquare size={18} className="text-blue-500 shrink-0" />
@@ -131,55 +104,46 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
               value={item.customName || ''}
               onChange={(e) => updateMetricCustomName(item.tempId, e.target.value)}
               placeholder={template.name}
-              className="bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 focus:outline-none px-1 -mx-1 transition-colors max-w-[200px] text-inherit placeholder:text-slate-400 dark:placeholder:text-slate-600"
-              title="Переименуйте метрику для этой группы (опционально)"
+              className="bg-transparent border-b border-transparent hover:border-slate-300 dark:hover:border-slate-600 focus:border-indigo-500 focus:outline-none px-1 -mx-1 transition-colors max-w-[200px] text-inherit placeholder:text-slate-400"
               {...stopDragEvents}
             />
           </div>
 
-          {/* Поле единицы измерения */}
           <div className="ml-1">
             <Input
               placeholder="ед. (чел.)"
               value={item.unit}
               onChange={(e) => updateMetricUnit(item.tempId, e.target.value)}
-              className="h-7 w-24 text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 focus:bg-white dark:focus:bg-slate-950 placeholder:text-slate-400"
+              className="h-7 w-24 text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
               {...stopDragEvents}
             />
           </div>
 
-          {/* Бейдж формулы (для calculated) */}
           {template.type === 'calculated' && (
             <Badge variant="outline" className="font-mono text-[10px] opacity-70 ml-2 shrink-0">
               {template.formula}
             </Badge>
           )}
 
-          {/* Кнопка удаления */}
           <Button
             variant="ghost"
             size="icon"
             className="ml-auto h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
-            onClick={(e) => {
-              e.stopPropagation();
-              removeMetric(item.tempId);
-            }}
+            onClick={(e) => { e.stopPropagation(); removeMetric(item.tempId); }}
             {...stopDragEvents}
           >
             <Trash2 size={16} />
           </Button>
         </div>
 
-        {/* ─── Привязки переменных ─── */}
+        {/* Привязки переменных */}
         <div className="space-y-4 pl-0 sm:pl-9">
           {item.requiredVariables.map(variable => (
             <div key={variable} className="flex flex-col sm:flex-row sm:items-center gap-3 text-sm">
-              {/* Имя переменной */}
               <div className="w-full sm:w-10 h-8 flex items-center justify-center bg-slate-100 dark:bg-slate-900 border dark:border-slate-800 rounded font-mono font-bold text-slate-600 dark:text-slate-400 shrink-0">
                 {variable}
               </div>
 
-              {/* Переключатель Типа (Колонка / Метрика) */}
               <div className="flex p-1 bg-slate-100 dark:bg-slate-900 border dark:border-slate-800 rounded-lg shrink-0 h-9 self-start sm:self-auto">
                 <button
                   onClick={() => updateVariableType(item.tempId, variable, 'field')}
@@ -203,13 +167,12 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
                       : 'text-slate-500 hover:text-slate-900 dark:text-slate-400',
                     index === 0 && 'opacity-50 cursor-not-allowed'
                   )}
-                  title={index === 0 ? 'Нельзя сослаться на метрику, т.к. это первая метрика в списке' : ''}
+                  title={index === 0 ? 'Нельзя сослаться на метрику выше в списке' : ''}
                 >
                   <Calculator size={12} /> Метрика
                 </button>
               </div>
 
-              {/* Выбор Значения */}
               <div className="flex-1 min-w-0">
                 {item.variableTypes[variable] === 'field' ? (
                   <SearchableSelect
@@ -217,12 +180,7 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
                     onChange={(val) => updateBindingValue(item.tempId, variable, val)}
                     options={availableColumns
                       .filter(c => c.classification === 'numeric')
-                      .map(col => ({
-                        value: col.columnName,
-                        label: col.displayName,
-                        subLabel: col.alias
-                      }))
-                    }
+                      .map(col => ({ value: col.columnName, label: col.displayName, subLabel: col.alias }))}
                     placeholder={columnSearchQuery ? `Выберите из найденных (${availableColumns.length})...` : 'Выберите колонку Excel...'}
                     className="w-full"
                   />
@@ -253,20 +211,17 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
 
   return (
     <div className="space-y-8">
-      {/* Хедер страницы */}
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-          {groupId ? 'Редактирование группы' : 'Новая группа'}
+          {mode === 'edit' ? 'Редактирование группы' : 'Новая группа'}
         </h2>
-        <Button onClick={handleSave} className="bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-emerald-600">
+        <Button onClick={onSave} className="bg-emerald-600 hover:bg-emerald-700 text-white">
           <Save size={18} className="mr-2" /> Сохранить
         </Button>
       </div>
 
       <Card className="p-6 space-y-8">
-        {/* Блок 1: Основные настройки и Глобальный фильтр */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b dark:border-slate-800">
-          {/* Название */}
           <div>
             <label className="text-sm font-medium mb-2 block text-slate-700 dark:text-slate-300">
               Название группы
@@ -279,11 +234,10 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
             />
           </div>
 
-          {/* Глобальный фильтр колонок (Контекст) */}
           <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
-            <label className="text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2 text-slate-500 dark:text-slate-400">
+            <label className="text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2 text-slate-500">
               <Filter size={12} />
-              Контекст данных (Фильтр колонок)
+              Контекст данных
             </label>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -299,16 +253,10 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
                 </span>
               )}
             </div>
-            <p className="text-[10px] text-slate-400 mt-1.5 leading-tight">
-              Введите ключевое слово (например, &quot;школ&quot;), чтобы отфильтровать 200+ колонок Excel.
-              Это упростит выбор в выпадающих списках ниже.
-            </p>
           </div>
         </div>
 
-        {/* Блок 2: Список метрик */}
         <div className="space-y-6">
-          {/* Хедер списка + Добавление */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
             <div>
               <h3 className="font-bold text-lg text-slate-900 dark:text-white">Состав метрик</h3>
@@ -347,18 +295,15 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
             </div>
           </div>
 
-          {/* Пустое состояние */}
           {selectedMetrics.length === 0 && (
             <div className="text-center py-16 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-900/20">
               <div className="mx-auto w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-3 text-slate-400">
                 <Calculator size={24} />
               </div>
               <p className="text-slate-500 font-medium">Список пуст</p>
-              <p className="text-xs text-slate-400">Добавьте первую метрику из списка выше</p>
             </div>
           )}
 
-          {/* ─── Карточки Метрик: DragDropList ─── */}
           {selectedMetrics.length > 0 && (
             <>
               <DragDropList<FormMetricState>
@@ -370,16 +315,13 @@ export function GroupBuilder({ groupId }: { groupId?: string }) {
               />
               <div className="flex items-center justify-center gap-2 text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <GripVertical size={10} />
-                <span>
-                  Порядок влияет на вычисление calculated-метрик (формулы могут ссылаться только на метрики выше в списке)
-                </span>
+                <span>Порядок влияет на вычисление calculated-метрик</span>
               </div>
             </>
           )}
         </div>
       </Card>
 
-      {/* Диалог создания шаблона */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent>
           <DialogHeader>

@@ -1,7 +1,7 @@
 'use client';
 
-import { Sidebar } from '@/widgets/Sidebar';
-import { MobileNav } from '@/widgets/MobileNav';
+import { Sidebar } from '@/widgets/sidebar';
+import { MobileNav } from '@/widgets/mobile-nav';
 import { ThemeProvider } from '@/app/providers';
 import { Toaster } from 'sonner';
 

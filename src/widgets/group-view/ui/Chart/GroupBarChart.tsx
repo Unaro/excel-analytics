@@ -8,13 +8,10 @@ import {
 import { Card } from '@/shared/ui/card';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { getColorForValue } from '@/shared/lib/utils/metric-colors';
-import {
-  GroupedThreshold,
-  groupThresholdsByValue,
-} from '@/features/computation/lib/threshold-utils';
-import { ThresholdPopup, ThresholdRuleEntry } from '@/widgets/ChartsSection/ThresholdPopup';
-import { useHoverPopup } from '@/widgets/ChartsSection/useHoverPopup';
+import { ThresholdPopup, ThresholdRuleEntry } from '@/widgets/charts-section/ui/ThresholdPopup';
+import { useHoverPopup } from '@/widgets/charts-section/model/useHoverPopup';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { GroupedThreshold, groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 

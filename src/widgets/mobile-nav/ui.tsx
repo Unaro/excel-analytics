@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Menu, LayoutDashboard } from 'lucide-react';
-import { Sidebar } from '@/widgets/Sidebar';
+import { Sidebar } from '@/widgets/sidebar';
 import { Button } from '@/shared/ui/button';
 import { usePathname } from 'next/navigation';
 

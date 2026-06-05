@@ -7,8 +7,8 @@ import {
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
 import { checkRule } from '@/shared/lib/utils/metric-colors';
-import { groupThresholdsByValue } from '@/features/computation/lib/threshold-utils';
 import type { VirtualMetric } from '@/shared/lib/validators';
+import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 

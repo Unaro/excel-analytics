@@ -5,8 +5,8 @@ import { BreakdownItem, VirtualMetricValue } from '@/entities/metric';
 import { GroupBarChart } from './Chart/GroupBarChart';
 import { GroupRadarChart } from './Chart/GroupRadarChart';
 import { VirtualMetric } from '@/shared/lib/validators';
-import { groupThresholdsByValue } from '@/features/computation/lib/threshold-utils';
-import { ThresholdLegend } from '@/widgets/ChartsSection';
+import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
+import { ThresholdLegend } from '@/widgets/charts-section/ui/ThresholdLegend';
 
 interface GroupChartsPanelProps {
   breakdown: BreakdownItem[];

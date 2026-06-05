@@ -31,14 +31,13 @@ const METRIC_COLOR_HEX: Record<string, string> = {
  * Логика:
  * - Для правила `between` создаём ДВЕ группы (min и max границы)
  * - Для остальных — одну группу
- * - Правила с разницей < 0.5% от максимального значения объединяются
+ * - Правила с разницей < tolerancePercent от размаха значений объединяются
  */
 export function groupThresholdsByValue(
   virtualMetrics: VirtualMetric[],
   activeMetricIds: string[],
   tolerancePercent: number = 0.5
 ): GroupedThreshold[] {
-  // 1. Собираем все "точки" (y-значения) с привязкой к правилу
   interface ThresholdPoint {
     y: number;
     metricName: string;
@@ -54,7 +53,6 @@ export function groupThresholdsByValue(
 
     for (const rule of vm.colorConfig.rules) {
       if (rule.operator === 'between' && rule.value2 != null) {
-        // between создаёт ДВЕ линии (границы диапазона)
         points.push({ y: rule.value, metricName: vm.name, metricId, rule });
         points.push({ y: rule.value2, metricName: vm.name, metricId, rule });
       } else {
@@ -65,17 +63,13 @@ export function groupThresholdsByValue(
 
   if (points.length === 0) return [];
 
-  // 2. Сортируем по Y для корректной группировки
   points.sort((a, b) => a.y - b.y);
 
-  // 3. Вычисляем "масштаб" для tolerance (на основе размаха значений)
   const minY = points[0].y;
   const maxY = points[points.length - 1].y;
   const range = Math.abs(maxY - minY);
-  // Минимальный абсолютный допуск = 1 единица (чтобы не группировать 100 и 101)
   const absoluteTolerance = Math.max(range * (tolerancePercent / 100), 1);
 
-  // 4. Группируем близкие точки
   const groups: GroupedThreshold[] = [];
   let currentGroup: ThresholdPoint[] = [points[0]];
 
@@ -84,17 +78,14 @@ export function groupThresholdsByValue(
     const curr = points[i];
 
     if (Math.abs(curr.y - prev.y) <= absoluteTolerance) {
-      // Близкое значение — добавляем в текущую группу
       currentGroup.push(curr);
     } else {
-      // Закрываем текущую группу и начинаем новую
       groups.push(buildGroup(currentGroup));
       currentGroup = [curr];
     }
   }
-  // Не забываем последнюю группу
-  groups.push(buildGroup(currentGroup));
 
+  groups.push(buildGroup(currentGroup));
   return groups;
 }
 
@@ -102,12 +93,10 @@ function buildGroup(points: Array<{
   y: number;
   metricName: string;
   metricId: string;
-  rule: any;
+  rule: FormattingRule;
 }>): GroupedThreshold {
-  // Среднее Y для линии (чтобы линия была ровно посередине близких значений)
   const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
 
-  // Убираем дубликаты (одно и то же правило одной метрики)
   const uniqueRules = new Map<string, GroupedThreshold['rules'][0]>();
   for (const p of points) {
     const key = `${p.metricId}:${p.rule.id}:${p.y}`;
