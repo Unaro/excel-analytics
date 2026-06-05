@@ -1,39 +1,41 @@
 'use client';
+
 import Link from 'next/link';
-import {
-  ArrowLeft, Edit, RotateCw, RefreshCw, Loader2,
-  Database, FileSpreadsheet
-} from 'lucide-react';
+import { ArrowLeft, Edit, RotateCw, Loader2 } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { AddKPIDialog } from '@/features/AddKpiWidget';
 import type { Dashboard } from '@/entities/dashboard';
-import type { DatasetEntry } from '@/entities/dataset';
+import { DatasetStatusBadge, type DatasetStatus } from './DatasetStatusBadge';
+
+export interface ComputationStatus {
+  isComputing: boolean;
+  computedAt?: number;
+  onRecalculate: () => void;
+}
 
 interface DashboardHeaderProps {
   dashboard: Dashboard;
-  boundDataset: DatasetEntry | null;
-  isComputing: boolean;
-  isSyncing: boolean;
-  isPgSource: boolean;
-  pgStatus?: string;
-  refreshingDataset: boolean;
-  computedAt?: number;
-  onRecalculate: () => void;
-  onRefreshDataset: () => void;
+  datasetStatus: DatasetStatus;
+  computationStatus: ComputationStatus;
 }
 
+/**
+ * Хедер страницы просмотра дашборда.
+ *
+ * Пропсы сгруппированы по доменам:
+ *  - `dashboard` — данные дашборда (название, описание)
+ *  - `datasetStatus` — состояние привязанного датасета (PG/Excel, online/offline, refresh)
+ *  - `computationStatus` — состояние вычислений (isComputing, computedAt, recalculate)
+ *
+ * Раньше было 11 разрозненных пропсов — сейчас 3 логических объекта.
+ */
 export function DashboardHeader({
   dashboard,
-  boundDataset,
-  isComputing,
-  isSyncing,
-  isPgSource,
-  pgStatus,
-  refreshingDataset,
-  computedAt,
-  onRecalculate,
-  onRefreshDataset,
+  datasetStatus,
+  computationStatus,
 }: DashboardHeaderProps) {
+  const { isComputing, computedAt, onRecalculate } = computationStatus;
+
   return (
     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl shadow-sm border border-gray-200 dark:border-slate-800">
       <div className="flex items-center gap-4">
@@ -54,7 +56,6 @@ export function DashboardHeader({
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        {/* Статус вычисления */}
         <div className="text-xs font-mono text-gray-400 dark:text-slate-500 mr-1">
           {isComputing ? (
             <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 animate-pulse">
@@ -65,48 +66,7 @@ export function DashboardHeader({
           ) : null}
         </div>
 
-        {/* Статус датасета */}
-        {boundDataset && (
-          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-            {isPgSource ? (
-              <>
-                <Database
-                  size={14}
-                  className={`shrink-0 ${pgStatus === 'offline' ? 'text-red-500' : 'text-indigo-600 dark:text-indigo-400'}`}
-                />
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    pgStatus === 'online'
-                      ? 'bg-emerald-500'
-                      : pgStatus === 'offline'
-                      ? 'bg-red-500 animate-pulse'
-                      : 'bg-amber-400 animate-ping'
-                  }`}
-                />
-                <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wide">
-                  {boundDataset.rows?.length ?? 0} строк
-                </span>
-              </>
-            ) : (
-              <>
-                <FileSpreadsheet size={14} className="text-indigo-600 dark:text-indigo-400" />
-                <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 uppercase tracking-wide">
-                  Excel
-                </span>
-              </>
-            )}
-            {isPgSource && (
-              <button
-                onClick={onRefreshDataset}
-                disabled={refreshingDataset || isSyncing}
-                className="ml-1 p-1.5 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Обновить данные из PostgreSQL"
-              >
-                <RefreshCw size={13} className={refreshingDataset ? 'animate-spin' : ''} />
-              </button>
-            )}
-          </div>
-        )}
+        <DatasetStatusBadge status={datasetStatus} />
 
         <AddKPIDialog dashboardId={dashboard.id} />
 
