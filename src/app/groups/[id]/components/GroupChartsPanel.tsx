@@ -4,10 +4,14 @@ import { ChartType } from './ChartTypeSelector';
 import { BreakdownItem, VirtualMetricValue } from '@/entities/metric';
 import { GroupBarChart } from './Chart/GroupBarChart';
 import { GroupRadarChart } from './Chart/GroupRadarChart';
+import { VirtualMetric } from '@/shared/lib/validators';
+import { groupThresholdsByValue } from '@/features/computation/lib/threshold-utils';
+import { ThresholdLegend } from '@/widgets/ChartsSection';
 
 interface GroupChartsPanelProps {
   breakdown: BreakdownItem[];
   virtualMetrics: VirtualMetricValue[];
+  metricConfigs: VirtualMetric[];
   activeMetricIds: string[];
   chartTypes: ChartType[];
 }
@@ -24,12 +28,20 @@ interface ChartDataItem {
 export const GroupChartsPanel = memo(function GroupChartsPanel({
   breakdown,
   virtualMetrics,
+  metricConfigs,
   activeMetricIds,
   chartTypes,
 }: GroupChartsPanelProps) {
   const activeMetrics = useMemo(
     () => virtualMetrics.filter(vm => activeMetricIds.includes(vm.virtualMetricId)),
     [virtualMetrics, activeMetricIds]
+  );
+  const metricKeys = activeMetrics.map(vm => vm.virtualMetricId);
+
+
+  const groupedThresholds = useMemo(
+    () => groupThresholdsByValue(metricConfigs, metricKeys),
+    [metricConfigs, metricKeys]
   );
 
   const multiMetricData = useMemo<ChartDataItem[]>(() => {
@@ -39,9 +51,12 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
         const val = item.virtualMetrics.find(m => m.virtualMetricId === vm.virtualMetricId);
         row[vm.virtualMetricId] = val?.value ?? 0;
       });
+      groupedThresholds.forEach((group, gi) => {
+        row[`__threshold_${gi}`] = group.y;
+      });
       return row;
     });
-  }, [breakdown, activeMetrics]);
+  }, [breakdown, activeMetrics, groupedThresholds]);
 
   
   const metricNames = useMemo(() => {
@@ -52,30 +67,40 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
     return map;
   }, [activeMetrics]);
 
-  const metricKeys = activeMetrics.map(vm => vm.virtualMetricId);
+
 
   if (activeMetrics.length === 0) {
     return null;
   }
 
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-      {chartTypes.includes('bar') && (
-        <GroupBarChart
-          data={multiMetricData}
-          metricKeys={metricKeys}
-          metricNames={metricNames}
-          title="Сравнение по столбцам"
-        />
-      )}
-      {chartTypes.includes('radar') && (
-        <GroupRadarChart
-          data={multiMetricData}
-          metricKeys={metricKeys}
-          metricNames={metricNames}
-          title="Радарная диаграмма"
-        />
-      )}
+    <div className="space-y-4">
+      {/* Легенда пороговых значений */}
+      <ThresholdLegend
+        virtualMetrics={metricConfigs}
+        activeMetricIds={activeMetricIds}
+      />
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        {chartTypes.includes('bar') && (
+          <GroupBarChart
+            data={multiMetricData}
+            metricKeys={metricKeys}
+            metricNames={metricNames}
+            title="Сравнение по столбцам"
+            metricConfigs={metricConfigs}  
+          />
+        )}
+        {chartTypes.includes('radar') && (
+          <GroupRadarChart
+            data={multiMetricData}
+            metricKeys={metricKeys}
+            metricNames={metricNames}
+            title="Радарная диаграмма"
+            metricConfigs={metricConfigs}
+          />
+        )}
+      </div>
     </div>
   );
 });

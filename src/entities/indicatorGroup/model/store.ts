@@ -6,6 +6,7 @@ import { FieldBinding, GroupMetric, IndicatorGroup } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
 import { createComputationCache } from '@/lib/storage';
+import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
 
 interface IndicatorGroupState {
   groups: IndicatorGroup[];
@@ -68,12 +69,10 @@ export const useIndicatorGroupStore = create<IndicatorGroupState>()(
       },
       
       deleteGroup: (id) => {
-        // 1. Удаляем саму группу
         set((state) => ({
           groups: state.groups.filter((group) => group.id !== id),
         }));
 
-        // 2. Каскадная очистка ссылок во всех дашбордах
         const { dashboards, removeIndicatorGroup } = useDashboardStore.getState();
         dashboards.forEach(dashboard => {
           if (dashboard.indicatorGroups.some(g => g.groupId === id)) {
@@ -87,6 +86,14 @@ export const useIndicatorGroupStore = create<IndicatorGroupState>()(
             .clearByDashboard(datasetId, ds.id)
             .catch(() => {});
         });
+
+        // Каскадная очистка UI-настроек метрик (colorConfig и др.)
+        try {
+          const { clearGroupConfigs } = useGroupMetricConfigStore.getState();
+          clearGroupConfigs(id);
+        } catch {
+          // Игнорируем, если стор не инициализирован
+        }
       },
       duplicateGroup: (id) => {
         const group = get().getGroup(id);

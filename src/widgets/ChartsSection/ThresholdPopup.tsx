@@ -5,15 +5,7 @@ import { createPortal } from 'react-dom';
 import * as Popover from '@radix-ui/react-popover';
 import { FormattingRule, MetricColor } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
-
-const METRIC_COLOR_HEX: Record<MetricColor, string> = {
-  emerald: '#10b981',
-  rose:    '#f43f5e',
-  amber:   '#f59e0b',
-  blue:    '#3b82f6',
-  indigo:  '#6366f1',
-  slate:   '#94a3b8',
-};
+import { METRIC_COLOR_HEX } from '@/shared/lib/utils/metric-colors';
 
 function getOperatorLabel(op: string): string {
   switch (op) {

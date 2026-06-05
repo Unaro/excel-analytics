@@ -12,7 +12,7 @@ import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { DashboardComputationResult } from '@/entities/metric';
 import { VirtualMetric } from '@/shared/lib/validators';
-import { checkRule } from '@/shared/lib/utils/metric-colors';
+import { checkRule, getColorForValue } from '@/shared/lib/utils/metric-colors';
 import type { FormattingRule, ConditionOperator, MetricColor } from '@/entities/dashboard';
 import { GroupedThreshold, groupThresholdsByValue } from '@/features/computation/lib/threshold-utils';
 import { useHoverPopup } from './useHoverPopup';
@@ -29,18 +29,8 @@ const CHART_COLORS = [
 ];
 
 // ═══════════════════════════════════════════════════════════
-// МАППИНГИ И ХЕЛПЕРЫ ДЛЯ ПОРОГОВ
+// ХЕЛПЕРЫ ДЛЯ ПОРОГОВ
 // ═══════════════════════════════════════════════════════════
-
-const METRIC_COLOR_HEX: Record<MetricColor, string> = {
-  emerald: '#10b981',
-  rose:    '#f43f5e',
-  amber:   '#f59e0b',
-  blue:    '#3b82f6',
-  indigo:  '#6366f1',
-  slate:   '#94a3b8',
-};
-
 function getOperatorLabel(op: ConditionOperator): string {
   switch (op) {
     case '>': return '>';
@@ -53,25 +43,6 @@ function getOperatorLabel(op: ConditionOperator): string {
     default: return op;
   }
 }
-
-/**
- * Возвращает HEX-цвет правила, под которое попадает значение, или null.
- *
- * ВАЖНО: Правила проверяются СВЕРХУ ВНИЗ по массиву `rules`.
- */
-function getColorForValue(
-  value: number | null | undefined,
-  rules: FormattingRule[] | undefined
-): string | null {
-  if (value == null || !rules || rules.length === 0) return null;
-  for (const rule of rules) {
-    if (checkRule(value, rule.operator, rule.value, rule.value2)) {
-      return METRIC_COLOR_HEX[rule.color] || null;
-    }
-  }
-  return null;
-}
-
 
 interface ThresholdLabelProps {
   viewBox?: { x: number; y: number; width: number; height: number };
@@ -283,7 +254,7 @@ interface ThresholdLegendProps {
   activeMetricIds: string[];
 }
 
-const ThresholdLegend = memo(function ThresholdLegend({
+export const ThresholdLegend = memo(function ThresholdLegend({
   virtualMetrics,
   activeMetricIds,
 }: ThresholdLegendProps) {

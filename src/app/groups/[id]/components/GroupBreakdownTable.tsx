@@ -7,6 +7,10 @@ import { cn } from '@/shared/lib/utils';
 import { BreakdownItem, VirtualMetricValue, GroupComputationResult } from '@/entities/metric';
 import { HierarchyLevel } from '@/entities/hierarchy';
 import { SortIcon } from './SortIcon';
+import { VirtualMetric } from '@/shared/lib/validators';
+import { GroupMetricConfigPopover } from '@/features/ConfigureGroupMetric';
+import { MetricCell } from '@/entities/metric/ui/metric-cell';
+import { GroupMetricCell } from '@/entities/groupMetricConfig';
 
 export interface SortConfig {
   key: string;
@@ -51,22 +55,28 @@ interface GroupBreakdownTableProps {
   breakdown: BreakdownItem[];
   summary: GroupComputationResult | null;
   virtualMetrics: VirtualMetricValue[];
+  metricMetas: VirtualMetric[];
   nextLevel: HierarchyLevel | null;
   onDrillDown: (label: string) => void;
   activeMetricIds: string[];
   sortConfig: SortConfig | null;
   onSortChange: (config: SortConfig) => void;
+  groupId: string;
+  groupMetricIds: string[];
 }
 
 export const GroupBreakdownTable = memo(function GroupBreakdownTable({
   breakdown,
   summary,
   virtualMetrics,
+  metricMetas,
   nextLevel,
   onDrillDown,
   activeMetricIds,
   sortConfig,
   onSortChange,
+  groupId,
+  groupMetricIds,
 }: GroupBreakdownTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -143,21 +153,39 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                   <SortIcon active={sortConfig?.key === 'label'} direction={sortConfig?.direction ?? 'desc'} />
                 </div>
               </th>
-              {visibleMetrics.map(vm => (
-                <th
-                  key={vm.virtualMetricId}
-                  scope="col"
-                  className="px-6 py-3 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 select-none"
-                  onClick={() => toggleSort(vm.virtualMetricId)}
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    <span className="truncate max-w-[150px]" title={vm.virtualMetricName}>
-                      {vm.virtualMetricName}
-                    </span>
-                    <SortIcon active={sortConfig?.key === vm.virtualMetricId} direction={sortConfig?.direction ?? 'desc'} />
-                  </div>
-                </th>
-              ))}
+              {visibleMetrics.map(vm => {
+                const vmIndex = virtualMetrics.findIndex(v => v.virtualMetricId === vm.virtualMetricId);
+                const groupMetricId = vmIndex >= 0 ? groupMetricIds[vmIndex] : null;
+                const metricConfig = metricMetas.find(c => c.id === vm.virtualMetricId);
+
+                return (
+                  <th
+                    key={vm.virtualMetricId}
+                    scope="col"
+                    className="px-6 py-3 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 select-none group/th"
+                    onClick={() => toggleSort(vm.virtualMetricId)}
+                  >
+                    <div className="flex items-center justify-end gap-1">
+                      {groupMetricId && (
+                        <GroupMetricConfigPopover
+                          groupId={groupId}
+                          metricId={groupMetricId}
+                          metricName={vm.virtualMetricName}
+                        />
+                      )}
+                      <span className="truncate max-w-[150px]" title={vm.virtualMetricName}>
+                        {vm.virtualMetricName}
+                      </span>
+                      {metricConfig?.unit && (
+                        <span className="text-[10px] text-slate-400 lowercase bg-slate-100 dark:bg-slate-800 px-1.5 rounded">
+                          {metricConfig.unit}
+                        </span>
+                      )}
+                      <SortIcon active={sortConfig?.key === vm.virtualMetricId} direction={sortConfig?.direction ?? 'desc'} />
+                    </div>
+                  </th>
+                );
+              })}
               <th
                 scope="col"
                 className="px-6 py-3 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 select-none"
@@ -189,14 +217,29 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                     )}
                   </div>
                 </td>
-                {visibleMetrics.map(vm => {
-                  const val = item.virtualMetrics.find(m => m.virtualMetricId === vm.virtualMetricId);
-                  return (
-                    <td key={vm.virtualMetricId} className="px-6 py-3 text-sm text-right font-mono text-slate-700 dark:text-slate-200">
-                      {val?.formattedValue ?? '—'}
-                    </td>
-                  );
-                })}
+                  {visibleMetrics.map((vm, vmIdx) => {
+                    const val = item.virtualMetrics.find(m => m.virtualMetricId === vm.virtualMetricId);
+                    const meta = metricMetas.find(c => c.id === vm.virtualMetricId);
+                    const originalIdx = virtualMetrics.findIndex(v => v.virtualMetricId === vm.virtualMetricId);
+                    const groupMetricId = originalIdx >= 0 ? groupMetricIds[originalIdx] : null;
+                    return (
+                      <td key={vm.virtualMetricId} className="px-6 py-3 text-sm text-right">
+                        {val && meta && groupMetricId ? (
+                          <GroupMetricCell
+                            groupId={groupId}
+                            metricId={groupMetricId}
+                            value={val.value}
+                            formattedValue={val.formattedValue}
+                            displayFormat={meta.displayFormat}
+                            decimalPlaces={meta.decimalPlaces}
+                            unit={meta.unit}
+                          />
+                        ) : (
+                          <span className="text-slate-300 dark:text-slate-600 select-none">−</span>
+                        )}
+                      </td>
+                    );
+                  })}
                 <td className="px-6 py-3 text-sm text-right text-slate-500 dark:text-slate-400 font-mono">
                   {item.recordCount.toLocaleString('ru-RU')}
                 </td>
@@ -206,11 +249,30 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
             {summary && (
               <tr className="bg-slate-50/50 dark:bg-slate-800/20 font-semibold">
                 <td className="px-6 py-3 text-sm text-slate-700 dark:text-slate-200">Итого</td>
-                {visibleMetrics.map(vm => (
-                  <td key={vm.virtualMetricId} className="px-6 py-3 text-sm text-right font-mono text-slate-900 dark:text-slate-100">
-                    {vm.formattedValue}
-                  </td>
-                ))}
+                {visibleMetrics.map(vm => {
+                  const meta = metricMetas.find(c => c.id === vm.virtualMetricId);
+                  const originalIdx = virtualMetrics.findIndex(v => v.virtualMetricId === vm.virtualMetricId);
+                  const groupMetricId = originalIdx >= 0 ? groupMetricIds[originalIdx] : null;
+                  return (
+                    <td key={vm.virtualMetricId} className="px-6 py-3 text-sm text-right">
+                      {meta && groupMetricId ? (
+                        <GroupMetricCell
+                          groupId={groupId}
+                          metricId={groupMetricId}
+                          value={vm.value}
+                          formattedValue={vm.formattedValue}
+                          displayFormat={meta.displayFormat}
+                          decimalPlaces={meta.decimalPlaces}
+                          unit={meta.unit}
+                        />
+                      ) : (
+                        <span className="font-mono text-slate-900 dark:text-slate-100">
+                          {vm.formattedValue}
+                        </span>
+                      )}
+                    </td>
+                  );
+                })}
                 <td className="px-6 py-3 text-sm text-right text-slate-500 dark:text-slate-400 font-mono">
                   {summary.recordCount.toLocaleString('ru-RU')}
                 </td>

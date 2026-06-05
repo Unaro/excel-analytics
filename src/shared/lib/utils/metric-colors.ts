@@ -1,4 +1,4 @@
-import { MetricColor, ConditionOperator } from "@/entities/dashboard";
+import { MetricColor, ConditionOperator, FormattingRule } from "@/entities/dashboard";
 
 export const COLOR_STYLES: Record<MetricColor, string> = {
   emerald: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20",
@@ -9,6 +9,15 @@ export const COLOR_STYLES: Record<MetricColor, string> = {
   slate:   "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800",
 };
 
+export const METRIC_COLOR_HEX: Record<MetricColor, string> = {
+  emerald: '#10b981',
+  rose:    '#f43f5e',
+  amber:   '#f59e0b',
+  blue:    '#3b82f6',
+  indigo:  '#6366f1',
+  slate:   '#94a3b8',
+};
+
 export function checkRule(value: number, operator: ConditionOperator, threshold: number, threshold2?: number): boolean {
   switch (operator) {
     case '>': return value > threshold;
@@ -17,8 +26,30 @@ export function checkRule(value: number, operator: ConditionOperator, threshold:
     case '<=': return value <= threshold;
     case '==': return value === threshold;
     case '!=': return value !== threshold;
-    case 'between': 
+    case 'between':
       return value >= threshold && value <= (threshold2 ?? threshold);
     default: return false;
   }
+}
+
+/**
+ * Возвращает HEX-цвет первого совпавшего правила, или null.
+ *
+ * Правила применяются СВЕРХУ ВНИЗ по массиву (первое совпавшее "побеждает").
+ *
+ * Переиспользуется в:
+ *  - widgets/ChartsSection (дашборд: бары, точки радара)
+ *  - app/groups/[id]/Chart (группы: бары, точки радара)
+ */
+export function getColorForValue(
+  value: number | null | undefined,
+  rules: FormattingRule[] | undefined
+): string | null {
+  if (value == null || !rules || rules.length === 0) return null;
+  for (const rule of rules) {
+    if (checkRule(value, rule.operator, rule.value, rule.value2)) {
+      return METRIC_COLOR_HEX[rule.color] || null;
+    }
+  }
+  return null;
 }

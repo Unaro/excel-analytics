@@ -11,6 +11,10 @@ import { GroupKpiGrid } from './components/GroupKpiGrid';
 import { GroupBreakdownTable, sortBreakdownItems, SortConfig } from './components/GroupBreakdownTable';
 import { GroupChartsPanel } from './components/GroupChartsPanel';
 import { ChartTypeSelector, ChartType } from './components/ChartTypeSelector';
+import { useMetricTemplateStore } from '@/entities/metric';
+import { useShallow } from 'zustand/react/shallow';
+import { VirtualMetric } from '@/shared/lib/validators';
+import { buildVmIdFromFields } from '@/shared/lib/utils/metric-ids';
 
 function GroupProfileContent({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -19,9 +23,17 @@ function GroupProfileContent({ params }: { params: Promise<{ id: string }> }) {
 
   const {
     group, currentPath, nextLevel, summary, breakdown,
-    virtualMetrics, isComputing, error,
+    virtualMetrics, baseVirtualMetrics, isComputing, error,
     drillDown, resetToLevel, resetAll,
   } = useGroupBreakdown(id, path);
+
+  /**
+   * Список metricId (наноиды) в порядке virtualMetrics.
+   * Нужен GroupMetricConfigPopover для записи в groupMetricConfigStore.
+   */
+  const groupMetricIds = useMemo(() => {
+    return group?.metrics.map(m => m.id) ?? [];
+  }, [group]);
 
   const [activeMetricIds, setActiveMetricIds] = useState<string[]>([]);
   const [chartTypes, setChartTypes] = useState<ChartType[]>(['bar', 'radar']);
@@ -132,16 +144,19 @@ function GroupProfileContent({ params }: { params: Promise<{ id: string }> }) {
 
       {/* Таблица с разбивкой */}
       {!isComputing && breakdown && breakdown.length > 0 && (
-        <GroupBreakdownTable
-          breakdown={breakdown}
-          sortConfig={sortConfig}
-          onSortChange={setSortConfig}
-          summary={summary}
-          virtualMetrics={summaryVirtualMetrics}
-          nextLevel={nextLevel}
-          onDrillDown={drillDown}
-          activeMetricIds={activeMetricIds}
-        />
+      <GroupBreakdownTable
+        breakdown={breakdown}
+        sortConfig={sortConfig}
+        onSortChange={setSortConfig}
+        summary={summary}
+        virtualMetrics={summaryVirtualMetrics}
+        metricMetas={baseVirtualMetrics}
+        nextLevel={nextLevel}
+        onDrillDown={drillDown}
+        activeMetricIds={activeMetricIds}
+        groupId={id}
+        groupMetricIds={groupMetricIds}
+      />
       )}
 
       {/* Панель графиков */}
@@ -149,6 +164,7 @@ function GroupProfileContent({ params }: { params: Promise<{ id: string }> }) {
         <GroupChartsPanel
           breakdown={chartBreakdown}
           virtualMetrics={summaryVirtualMetrics}
+          metricConfigs={virtualMetrics}
           activeMetricIds={activeMetricIds}
           chartTypes={chartTypes}
         />

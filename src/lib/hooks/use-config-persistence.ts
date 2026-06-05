@@ -18,6 +18,7 @@ import {
   VirtualMetric,
   VirtualMetricBindingInDashboard,
 } from '@/shared/lib/validators';
+import { GroupMetricConfig, useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
 
 /**
  * Хук для экспорта/импорта конфигурации датасета.
@@ -47,8 +48,17 @@ export function useConfigPersistence() {
       return;
     }
 
+    const datasetGroupIds = new Set(indicatorGroups.map(g => g.id));
+    const allGroupConfigs = useGroupMetricConfigStore.getState().configsByGroup;
+    const groupMetricConfigs: Record<string, Record<string, GroupMetricConfig>> = {};
+    for (const [groupId, metricConfigs] of Object.entries(allGroupConfigs)) {
+      if (datasetGroupIds.has(groupId) && Object.keys(metricConfigs).length > 0) {
+        groupMetricConfigs[groupId] = metricConfigs;
+      }
+    }
+
     const payload: DatasetConfigExport = {
-      version: 1,
+      version: 2,
       exportType: 'dataset_config',
       exportedAt: Date.now(),
       sourceDatasetId: datasetId,
@@ -58,6 +68,9 @@ export function useConfigPersistence() {
         hierarchyLevels: useHierarchyStore.getState().levelsByDataset[datasetId] || [],
         columnConfigs: useColumnConfigStore.getState().configsByDataset[datasetId] || [],
         metricTemplates: useMetricTemplateStore.getState().templates,
+        groupMetricConfigs: Object.keys(groupMetricConfigs).length > 0
+          ? groupMetricConfigs
+          : undefined,
       },
     };
 
@@ -71,7 +84,12 @@ export function useConfigPersistence() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    toast.success(`Экспортировано: ${dashboards.length} дашбордов, ${indicatorGroups.length} групп`);
+    toast.success(
+      `Экспортировано: ${dashboards.length} дашбордов, ${indicatorGroups.length} групп` +
+      (Object.keys(groupMetricConfigs).length > 0
+        ? `, ${Object.keys(groupMetricConfigs).length} групп с настройками цвета`
+        : '')
+    );
   }, []);
 
   // ═══════════════════════════════════════════════════════════
@@ -90,8 +108,8 @@ export function useConfigPersistence() {
       if (parsed.exportType !== 'dataset_config') {
         throw new Error('Файл не является конфигом датасета');
       }
-      if (parsed.version !== 1) {
-        throw new Error(`Неподдерживаемая версия конфига: ${parsed.version}`);
+      if (parsed.version !== 1 && parsed.version !== 2) {
+        throw new Error(`Неподдерживаемая версия конфига: ${parsed.version}. Ожидается 1 или 2.`);
       }
 
       const config = parsed as unknown as DatasetConfigExport;
@@ -227,6 +245,17 @@ export function useConfigPersistence() {
         dashboards: [...otherDashboards, ...importedDashboards],
       });
 
+
+      // ───────────────────────────────────────────────────────
+      // 5.5. UI-настройки метрик групп (colorConfig и др.)
+      //      Merge с существующими — не затираем другие датасеты.
+      //      Присутствует только в версии 2 конфига.
+      // ───────────────────────────────────────────────────────
+      const importedGroupConfigs = data.groupMetricConfigs;
+      if (importedGroupConfigs && Object.keys(importedGroupConfigs).length > 0) {
+        useGroupMetricConfigStore.getState().importConfigs(importedGroupConfigs);
+      }
+
       // ───────────────────────────────────────────────────────
       // 6. Инвалидация кэша вычислений
       // ───────────────────────────────────────────────────────
@@ -243,9 +272,14 @@ export function useConfigPersistence() {
         console.warn('[ConfigImport] PG cache invalidation failed:', err);
       }
 
+      const importedGroupConfigsCount = data.groupMetricConfigs
+        ? Object.keys(data.groupMetricConfigs).length
+        : 0;
+
       toast.success(
         `Конфиг применён: ${importedDashboards.length} дашбордов, ` +
-          `${importedGroups.length} групп, ${data.hierarchyLevels?.length || 0} уровней`
+        `${importedGroups.length} групп, ${data.hierarchyLevels?.length || 0} уровней` +
+        (importedGroupConfigsCount > 0 ? `, ${importedGroupConfigsCount} групп с настройками цвета` : '')
       );
       router.refresh();
     } catch (e) {
