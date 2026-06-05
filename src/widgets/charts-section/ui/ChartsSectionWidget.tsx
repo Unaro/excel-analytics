@@ -11,9 +11,7 @@ import { MetricSelector } from './MetricSelector';
 import { cn } from '@/shared/lib/utils';
 import type { BreakdownItem, VirtualMetricValue } from '@/entities/metric';
 import type { VirtualMetric } from '@/shared/lib/validators';
-import { ChartType } from '@/entities/dashboard/model/types';
-
-export type ChartMode = 'single' | 'multi';
+import { ChartMode, ChartType } from '@/shared/lib/types/chart';
 
 interface ChartsSectionWidgetProps {
   breakdown: BreakdownItem[];

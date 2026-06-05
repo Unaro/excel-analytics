@@ -1,4 +1,4 @@
-import { DataItem } from '@/shared/lib/utils/fortmating-rules';
+import { DataItem } from '@/shared/lib/types/chart-data';
 import type { VirtualMetric } from '@/shared/lib/validators';
 
 export interface ChartComponentProps {

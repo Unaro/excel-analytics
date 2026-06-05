@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useEffect } from 'react';
-import { useGroupBreakdown } from '@/features/group-breakdown';
 import { GroupBreakdownTable } from './GroupBreakdownTable';
 import { GroupPageHeader } from './GroupPageHeader';
 import { GroupKpiGrid } from './GroupKpiGrid';
@@ -11,6 +10,7 @@ import { GroupNotFound } from './GroupNotFound';
 import { sortBreakdownItems as sortBreakdown } from '../lib/sort-breakdown';
 import { useGroupViewState } from '../model/use-group-view-state';
 import { useGroupPath } from '@/shared/lib/hooks/use-group-path';
+import { useGroupBreakdown } from '../model/use-group-breakdown';
 
 interface GroupViewContentProps {
   groupId: string;

@@ -1,2 +1,1 @@
-export * from './ui';
-
+export { FileUploader } from './ui/FileUploader'

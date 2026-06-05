@@ -1,7 +1,8 @@
 import { VirtualMetric } from "@/shared/lib/validators";
 import { useCallback, useState } from "react";
-import { DashboardViewState } from "../ui/DashboardViewContent";
-import { ChartType } from "@/entities/dashboard/model/types";
+import type { DashboardViewState } from "./types";
+import { ChartType } from "@/shared/lib/types/chart";
+
 
 /**
  * UI-состояние виджета просмотра дашборда.

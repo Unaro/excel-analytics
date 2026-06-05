@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import type { BreakdownItem, VirtualMetricValue } from '@/entities/metric';
 import type { VirtualMetric } from '@/shared/lib/validators';
-import { DataItem } from '@/shared/lib/utils/fortmating-rules';
+import { DataItem } from '@/shared/lib/types/chart-data';
 
 export function useChartDataMapper(
   breakdown: BreakdownItem[],

@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { SortConfig } from './types';
-import { ChartType } from '@/entities/dashboard/model/types';
+import { ChartType } from '@/shared/lib/types/chart';
 
 /**
  * UI-состояние виджета просмотра группы.

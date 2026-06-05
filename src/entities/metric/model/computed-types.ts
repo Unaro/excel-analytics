@@ -67,6 +67,8 @@ export interface GroupComputationResult {
   // Мета-информация
   recordCount: number;
   computedAt: number;
+
+  breakdown?: BreakdownItem[];
 }
 
 /**
@@ -125,13 +127,4 @@ export interface BreakdownItem {
   recordCount: number;
   /** Значения метрик для этой группы */
   virtualMetrics: VirtualMetricValue[];
-}
-
-export interface GroupComputationResult {
-  groupId: string;
-  groupName: string;
-  virtualMetrics: VirtualMetricValue[];
-  breakdown?: BreakdownItem[]; 
-  recordCount: number;
-  computedAt: number;
 }

@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import type { ChartComponentProps } from '../model/types';
-import { useThresholdGrouping } from '@/features/charts-thresholds';
+import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 

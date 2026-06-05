@@ -8,6 +8,7 @@ import type { HierarchyFilterValue } from '@/entities/hierarchy/model/types';
 import type { DisplayFormat } from '@/entities/metric/model/types';
 import { FormattingRule } from '@/shared/lib/utils/fortmating-rules';
 import { MetricColor } from '@/shared/lib/utils/metric-colors';
+import type { ChartType } from '@/shared/lib/types/chart';
 
 
 export interface ColorConfig {
@@ -30,17 +31,6 @@ export type WidgetType =
   | 'table'            // Обычная таблица данных
   | 'indicator_groups' // Таблица с группами показателей
   | 'text';            // Текстовый блок
-
-/**
- * Тип графика
- */
-export type ChartType = 
-//  | 'line'      // Линейный график
-  | 'bar'       // Столбчатая диаграмма
-//  | 'pie'       // Круговая диаграмма
-//  | 'area'      // Диаграмма с областями
-//  | 'scatter'   // Точечная диаграмма
-  | 'radar';    // Радарная диаграмма
 
 /**
  * Настройки графика

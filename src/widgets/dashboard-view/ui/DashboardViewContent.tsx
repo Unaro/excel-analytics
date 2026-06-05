@@ -17,20 +17,10 @@ import { useDashboardOrphanCleanup } from '../model/use-dashboard-orphan-cleanup
 import { useDashboardDatasetSync } from '../model/use-dashboard-dataset-sync';
 import { useDashboardComputation } from '../model/use-dashboard-computation';
 import { useDashboardViewState } from '../model/use-dashboard-view-state';
-import { ChartType } from '@/entities/dashboard/model/types';
 import { flattenDashboardResult } from '@/entities/metric/lib/flatten-dashboard-result';
 
 interface DashboardViewContentProps {
   params: Promise<{ id: string }>;
-}
-
-export interface DashboardViewState {
-  activeMetricIds: string[];
-  chartTypes: ChartType[];
-  hiddenMetricIds: string[];
-  setActiveMetricIds: (ids: string[]) => void;
-  setChartTypes: (types: ChartType[]) => void;
-  toggleMetricVisibility: (id: string) => void;
 }
 
 /**

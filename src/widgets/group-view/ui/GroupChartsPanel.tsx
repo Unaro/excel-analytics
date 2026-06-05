@@ -6,8 +6,8 @@ import { GroupRadarChart } from './Chart/GroupRadarChart';
 import { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLegend } from '@/shared/ui/threshold-marker/ThresholdLegend';
-import { ChartType } from '@/entities/dashboard/model/types';
-import { DataItem } from '@/shared/lib/utils/fortmating-rules';
+import { DataItem } from '@/shared/lib/types/chart-data';
+import { ChartType } from '@/shared/lib/types/chart';
 
 interface GroupChartsPanelProps {
   breakdown: BreakdownItem[];

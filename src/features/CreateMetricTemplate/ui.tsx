@@ -6,7 +6,7 @@ import { Check, X } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { toast } from 'sonner';
-import { VisualFormulaBuilder } from '@/features/BuildFormula';
+import { VisualFormulaBuilder } from '@/widgets/formula-builder';
 import { useFormulaValidation } from '@/entities/formula/lib/hooks/use-formula-validation';
 
 interface TemplateFormProps {

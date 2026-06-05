@@ -37,15 +37,3 @@ export interface MetricRowProps {
   onUpdateBindingValue: (metricTempId: string, alias: string, value: string) => void;
   onRemoveMetric: (tempId: string) => void;
 }
-
-export interface FormMetricState {
-  id: string;
-  templateId: string;
-  tempId: string;
-  unit: string;
-  customName?: string;
-  originalMetricId?: string;
-  requiredVariables: string[];
-  variableTypes: Record<string, 'field' | 'metric'>;
-  bindings: Record<string, string>;
-}

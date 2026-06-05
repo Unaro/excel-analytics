@@ -2,7 +2,7 @@
 import { memo } from 'react';
 import type { GroupedThreshold } from '@/shared/lib/utils/thresholds';
 import type { VirtualMetric } from '@/shared/lib/validators';
-import { useThresholdGrouping } from '@/features/charts-thresholds';
+import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 
 interface ThresholdLegendProps {
   virtualMetrics: VirtualMetric[];
