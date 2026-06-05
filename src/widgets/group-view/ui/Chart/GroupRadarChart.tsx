@@ -6,33 +6,11 @@ import {
   Radar, Legend, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
-import { checkRule } from '@/shared/lib/utils/metric-colors';
+import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
-
-const METRIC_COLOR_HEX: Record<string, string> = {
-  emerald: '#10b981',
-  rose:    '#f43f5e',
-  amber:   '#f59e0b',
-  blue:    '#3b82f6',
-  indigo:  '#6366f1',
-  slate:   '#94a3b8',
-};
-
-function getColorForValue(
-  value: number | null | undefined,
-  rules: any[] | undefined
-): string | null {
-  if (value == null || !rules || rules.length === 0) return null;
-  for (const rule of rules) {
-    if (checkRule(value, rule.operator, rule.value, rule.value2)) {
-      return METRIC_COLOR_HEX[rule.color] || null;
-    }
-  }
-  return null;
-}
 
 interface GroupRadarChartProps {
   data: Array<{ name: string; [key: string]: string | number }>;
@@ -49,7 +27,6 @@ export const GroupRadarChart = memo(function GroupRadarChart({
   title,
   metricConfigs,
 }: GroupRadarChartProps) {
-  // Группируем пороги для отрисовки полигонов.
   const groupedThresholds = useMemo(
     () => groupThresholdsByValue(metricConfigs || [], metricKeys),
     [metricConfigs, metricKeys]
@@ -70,10 +47,6 @@ export const GroupRadarChart = memo(function GroupRadarChart({
             />
             <PolarRadiusAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
 
-            {/* ─────────────────────────────────────────────────────
-                ПОРОГОВЫЕ ПОЛИГОНЫ (под основными, чтобы не перекрывать)
-                Каждый сгруппированный threshold → один пунктирный полигон
-                ───────────────────────────────────────────────────── */}
             {groupedThresholds.map((group, gi) => {
               const thresholdKey = `__threshold_${gi}`;
               return (
@@ -87,20 +60,18 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                   fill={group.primaryColor}
                   fillOpacity={0.04}
                   isAnimationActive={false}
-                  legendType="none"    // Скрываем из Legend
-                  dot={false}          // Без точек на пороге
+                  legendType="none"
+                  dot={false}
                   opacity={0.85}
                 />
               );
             })}
 
-            {/* ─────────────────────────────────────────────────────
-                ОСНОВНЫЕ ПОЛИГОНЫ МЕТРИК (поверх порогов)
-                ───────────────────────────────────────────────────── */}
             {metricKeys.map((key, idx) => {
               const vm = metricConfigs?.find(v => v.id === key);
               const rules = vm?.colorConfig?.rules;
               const defaultColor = COLORS[idx % COLORS.length];
+
               return (
                 <Radar
                   key={key}
@@ -118,6 +89,7 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                       rules
                     );
                     const isHighlighted = !!conditionalColor;
+
                     return (
                       <circle
                         key={`dot-${key}-${cx}-${cy}`}
@@ -139,12 +111,14 @@ export const GroupRadarChart = memo(function GroupRadarChart({
             <Tooltip
               content={({ active, payload, label }) => {
                 if (!active || !payload || !payload.length) return null;
-                // ФИЛЬТРУЕМ пороговые ключи — они не нужны в tooltip
+
                 const filtered = payload.filter((p: any) => {
                   const key = String(p.dataKey);
                   return !key.startsWith('__threshold_');
                 });
+
                 if (filtered.length === 0) return null;
+
                 return (
                   <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
                     <div className="font-bold text-slate-900 dark:text-white mb-2">{label}</div>

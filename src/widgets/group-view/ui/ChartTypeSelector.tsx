@@ -1,9 +1,9 @@
 'use client';
+
 import { BarChart3, Radar } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { LucideIcon } from 'lucide-react';
-
-export type ChartType = 'bar' | 'radar';
+import type { ChartType } from '../model/types';
 
 interface ChartOption {
   type: ChartType;

@@ -1,12 +1,12 @@
 'use client';
 import { memo, useMemo } from 'react';
-import { ChartType } from './ChartTypeSelector';
 import { BreakdownItem, VirtualMetricValue } from '@/entities/metric';
 import { GroupBarChart } from './Chart/GroupBarChart';
 import { GroupRadarChart } from './Chart/GroupRadarChart';
 import { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLegend } from '@/widgets/charts-section/ui/ThresholdLegend';
+import { ChartType } from '@/features/group-view-state';
 
 interface GroupChartsPanelProps {
   breakdown: BreakdownItem[];

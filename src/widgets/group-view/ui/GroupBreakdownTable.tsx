@@ -1,4 +1,5 @@
 'use client';
+
 import { memo, useMemo, useState } from 'react';
 import { Search, ChevronRight, Layers } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
@@ -8,48 +9,10 @@ import { BreakdownItem, VirtualMetricValue, GroupComputationResult } from '@/ent
 import { HierarchyLevel } from '@/entities/hierarchy';
 import { VirtualMetric } from '@/shared/lib/validators';
 import { GroupMetricConfigPopover } from '@/features/ConfigureGroupMetric';
-import { MetricCell } from '@/entities/metric/ui/metric-cell';
 import { GroupMetricCell } from '@/entities/groupMetricConfig';
 import { SortIcon } from '@/shared/ui/sort-icon';
-
-export interface SortConfig {
-  key: string;
-  direction: 'asc' | 'desc';
-}
-
-// ═══════════════════════════════════════════════════════════
-// УТИЛИТА: вынесена для переиспользования в родителе
-// ═══════════════════════════════════════════════════════════
-export function sortBreakdownItems(
-  items: BreakdownItem[],
-  sortKey: string,
-  direction: 'asc' | 'desc'
-): BreakdownItem[] {
-  return [...items].sort((a, b) => {
-    let aVal: number | string;
-    let bVal: number | string;
-    if (sortKey === 'label') {
-      aVal = a.label;
-      bVal = b.label;
-    } else if (sortKey === 'recordCount') {
-      aVal = a.recordCount;
-      bVal = b.recordCount;
-    } else {
-      const aMetric = a.virtualMetrics.find(m => m.virtualMetricId === sortKey);
-      const bMetric = b.virtualMetrics.find(m => m.virtualMetricId === sortKey);
-      aVal = aMetric?.value ?? -Infinity;
-      bVal = bMetric?.value ?? -Infinity;
-    }
-    if (typeof aVal === 'string' && typeof bVal === 'string') {
-      return direction === 'asc'
-        ? aVal.localeCompare(bVal, undefined, { numeric: true })
-        : bVal.localeCompare(aVal, undefined, { numeric: true });
-    }
-    return direction === 'asc'
-      ? (aVal as number) - (bVal as number)
-      : (bVal as number) - (aVal as number);
-  });
-}
+import { sortBreakdownItems } from '../lib/sort-breakdown';
+import type { SortConfig } from '../model/types';
 
 interface GroupBreakdownTableProps {
   breakdown: BreakdownItem[];
@@ -87,13 +50,16 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
 
   const sortedBreakdown = useMemo(() => {
     let items = [...breakdown];
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       items = items.filter(item => item.label.toLowerCase().includes(q));
     }
+
     if (sortConfig) {
       items = sortBreakdownItems(items, sortConfig.key, sortConfig.direction);
     }
+
     return items;
   }, [breakdown, searchQuery, sortConfig]);
 
@@ -139,6 +105,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
           />
         </div>
       </div>
+
       <div className="overflow-x-auto custom-scrollbar">
         <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800">
           <thead className="bg-slate-50 dark:bg-slate-900/50">
@@ -153,6 +120,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                   <SortIcon active={sortConfig?.key === 'label'} direction={sortConfig?.direction ?? 'desc'} />
                 </div>
               </th>
+
               {visibleMetrics.map(vm => {
                 const vmIndex = virtualMetrics.findIndex(v => v.virtualMetricId === vm.virtualMetricId);
                 const groupMetricId = vmIndex >= 0 ? groupMetricIds[vmIndex] : null;
@@ -186,6 +154,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                   </th>
                 );
               })}
+
               <th
                 scope="col"
                 className="px-6 py-3 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 select-none"
@@ -196,9 +165,11 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                   <SortIcon active={sortConfig?.key === 'recordCount'} direction={sortConfig?.direction ?? 'desc'} />
                 </div>
               </th>
+
               {nextLevel && <th scope="col" className="w-10"></th>}
             </tr>
           </thead>
+
           <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800/50">
             {sortedBreakdown.map((item) => (
               <tr
@@ -217,42 +188,49 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                     )}
                   </div>
                 </td>
-                  {visibleMetrics.map((vm, vmIdx) => {
-                    const val = item.virtualMetrics.find(m => m.virtualMetricId === vm.virtualMetricId);
-                    const meta = metricMetas.find(c => c.id === vm.virtualMetricId);
-                    const originalIdx = virtualMetrics.findIndex(v => v.virtualMetricId === vm.virtualMetricId);
-                    const groupMetricId = originalIdx >= 0 ? groupMetricIds[originalIdx] : null;
-                    return (
-                      <td key={vm.virtualMetricId} className="px-6 py-3 text-sm text-right">
-                        {val && meta && groupMetricId ? (
-                          <GroupMetricCell
-                            groupId={groupId}
-                            metricId={groupMetricId}
-                            value={val.value}
-                            formattedValue={val.formattedValue}
-                            displayFormat={meta.displayFormat}
-                            decimalPlaces={meta.decimalPlaces}
-                            unit={meta.unit}
-                          />
-                        ) : (
-                          <span className="text-slate-300 dark:text-slate-600 select-none">−</span>
-                        )}
-                      </td>
-                    );
-                  })}
+
+                {visibleMetrics.map((vm, vmIdx) => {
+                  const val = item.virtualMetrics.find(m => m.virtualMetricId === vm.virtualMetricId);
+                  const meta = metricMetas.find(c => c.id === vm.virtualMetricId);
+                  const originalIdx = virtualMetrics.findIndex(v => v.virtualMetricId === vm.virtualMetricId);
+                  const groupMetricId = originalIdx >= 0 ? groupMetricIds[originalIdx] : null;
+
+                  return (
+                    <td key={vm.virtualMetricId} className="px-6 py-3 text-sm text-right">
+                      {val && meta && groupMetricId ? (
+                        <GroupMetricCell
+                          groupId={groupId}
+                          metricId={groupMetricId}
+                          value={val.value}
+                          formattedValue={val.formattedValue}
+                          displayFormat={meta.displayFormat}
+                          decimalPlaces={meta.decimalPlaces}
+                          unit={meta.unit}
+                        />
+                      ) : (
+                        <span className="text-slate-300 dark:text-slate-600 select-none">−</span>
+                      )}
+                    </td>
+                  );
+                })}
+
                 <td className="px-6 py-3 text-sm text-right text-slate-500 dark:text-slate-400 font-mono">
                   {item.recordCount.toLocaleString('ru-RU')}
                 </td>
+
                 {nextLevel && <td />}
               </tr>
             ))}
+
             {summary && (
               <tr className="bg-slate-50/50 dark:bg-slate-800/20 font-semibold">
                 <td className="px-6 py-3 text-sm text-slate-700 dark:text-slate-200">Итого</td>
+
                 {visibleMetrics.map(vm => {
                   const meta = metricMetas.find(c => c.id === vm.virtualMetricId);
                   const originalIdx = virtualMetrics.findIndex(v => v.virtualMetricId === vm.virtualMetricId);
                   const groupMetricId = originalIdx >= 0 ? groupMetricIds[originalIdx] : null;
+
                   return (
                     <td key={vm.virtualMetricId} className="px-6 py-3 text-sm text-right">
                       {meta && groupMetricId ? (
@@ -273,9 +251,11 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                     </td>
                   );
                 })}
+
                 <td className="px-6 py-3 text-sm text-right text-slate-500 dark:text-slate-400 font-mono">
                   {summary.recordCount.toLocaleString('ru-RU')}
                 </td>
+
                 {nextLevel && <td />}
               </tr>
             )}
