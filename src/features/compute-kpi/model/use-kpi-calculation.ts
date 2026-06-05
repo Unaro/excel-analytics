@@ -2,11 +2,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
 import { DashboardComputationResult, useMetricTemplateStore } from '@/entities/metric';
-import { createComputeEngine } from '@/features/computation/lib/engine-factory';
-import { compileKPIsToComputeParams, KPI_VIRTUAL_GROUP_ID } from '@/features/computation/lib/kpi-compiler';
-import { createComputationCache } from '@/shared/lib/storage'; // ← ОБНОВЛЁННЫЙ ИМПОРТ
+import { createComputeEngine } from '@/shared/lib/computation/lib/engine-factory';
+import { compileKPIsToComputeParams, KPI_VIRTUAL_GROUP_ID } from '@/shared/lib/computation/lib/kpi-compiler';
+import { createComputationCache } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
-import type { ClientComputeParams } from '@/features/computation/lib/types';
+import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { HierarchyFilterValue, MetricTemplate } from '@/shared/lib/validators';
 import { KPIWidget } from '@/entities/dashboard';
 import { useColumnConfigStore } from '@/entities/columnConfig';

@@ -7,8 +7,8 @@ import { useMetricTemplateStore } from '@/entities/metric';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { get, set } from 'idb-keyval';
-import { rowsToArrowBuffer } from '@/features/computation/lib/duckdb/arrow-converter';
-import { duckdbManager } from '@/features/computation/lib/duckdb/manager';
+import { rowsToArrowBuffer } from '@/shared/lib/computation/lib/duckdb/arrow-converter';
+import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';
 import { toast } from '@/shared/ui/toast';
 
 let globalHydrationStarted = false;

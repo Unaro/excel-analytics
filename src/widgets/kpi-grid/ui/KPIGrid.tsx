@@ -5,7 +5,7 @@ import { Layers, Trash2, Calculator } from 'lucide-react';
 import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
 import { HierarchyFilterValue } from '@/shared/lib/validators';
-import { useKPICalculation } from '@/features/computation/model/use-kpi-calculation';
+import { useKPICalculation } from '@/features/compute-kpi/model/use-kpi-calculation';
 
 interface KPIGridProps {
   dashboardId: string;

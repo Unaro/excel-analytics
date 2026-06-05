@@ -1,8 +1,8 @@
 // app/actions/pg-compute.ts
 'use server';
 
-import { compileQuery } from '@/features/computation/lib/query-compiler';
-import { ClientComputeParams } from '@/features/computation/lib/types';
+import { compileQuery } from '@/shared/lib/computation/lib/query-compiler';
+import { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { createPgClient, PgConnectionConfig } from '@/shared/api/postgres/client';
 
 /**

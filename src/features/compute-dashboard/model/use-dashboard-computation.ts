@@ -1,14 +1,14 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { useDatasetStore } from '@/entities/dataset';
+import { DatasetState, useDatasetStore } from '@/entities/dataset';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useComputedMetricsStore } from '@/entities/metric';
 import { createComputationCache } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
-import { createComputeEngine } from '@/features/computation/lib/engine-factory';
-import { ClientComputeParams } from '@/features/computation/lib/types';
+import { createComputeEngine } from '@/shared/lib/computation/lib/engine-factory';
+import { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { useShallow } from 'zustand/react/shallow';
 import type { Dashboard } from '@/entities/dashboard';
 import type { MetricTemplate } from '@/entities/metric';
@@ -26,9 +26,9 @@ const EMPTY_VIRTUAL_METRICS: VirtualMetric[] = [];
 const EMPTY_GROUPS: IndicatorGroup[] = [];
 const EMPTY_TEMPLATES: MetricTemplate[] = [];
 
-const selectActiveDatasetId = (s: any) => s.activeDatasetId;
-const selectIsSyncing = (s: any) => s.isSyncing;
-const selectActiveDataset = (s: any) =>
+const selectActiveDatasetId = (s: DatasetState) => s.activeDatasetId;
+const selectIsSyncing = (s: DatasetState) => s.isSyncing;
+const selectActiveDataset = (s: DatasetState) =>
   s.activeDatasetId ? s.datasets[s.activeDatasetId] ?? null : null;
 const selectGroups = (s: { groups: IndicatorGroup[] }) => s.groups;
 const selectTemplates = (s: { templates: MetricTemplate[] }) => s.templates;

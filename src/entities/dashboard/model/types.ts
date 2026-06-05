@@ -6,18 +6,9 @@ import type {
 
 import type { HierarchyFilterValue } from '@/entities/hierarchy/model/types';
 import type { DisplayFormat } from '@/entities/metric/model/types';
+import { FormattingRule } from '@/shared/lib/utils/fortmating-rules';
+import { MetricColor } from '@/shared/lib/utils/metric-colors';
 
-// Оставляем ТОЛЬКО UI-типы:
-export type MetricColor = 'emerald' | 'rose' | 'amber' | 'blue' | 'indigo' | 'slate';
-export type ConditionOperator = '>' | '>=' | '<' | '<=' | '==' | '!=' | 'between';
-
-export interface FormattingRule {
-  id: string;
-  operator: ConditionOperator;
-  value: number;
-  value2?: number;
-  color: MetricColor;
-}
 
 export interface ColorConfig {
   rules: FormattingRule[]; 

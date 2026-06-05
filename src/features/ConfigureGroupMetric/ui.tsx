@@ -4,12 +4,12 @@
 import { useCallback, useMemo } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Settings, Plus } from 'lucide-react';
-import type { FormattingRule, MetricColor } from '@/entities/dashboard';
 import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
 import { cn } from '@/shared/lib/utils';
 import { nanoid } from 'nanoid';
 import { DragDropList } from '@/shared/ui/drag-drop-list';
-import { RuleCard } from '@/features/ConfigureTableMetric/RuleCard';
+import { RuleCard } from '@/shared/ui/rule-card/ui/RuleCard';
+import { FormattingRule } from '@/shared/lib/utils/fortmating-rules';
 
 interface GroupMetricConfigPopoverProps {
   groupId: string;

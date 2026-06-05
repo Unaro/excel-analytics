@@ -3,9 +3,9 @@
 import { memo } from 'react';
 import { createPortal } from 'react-dom';
 import * as Popover from '@radix-ui/react-popover';
-import { FormattingRule, MetricColor } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
-import { METRIC_COLOR_HEX } from '@/shared/lib/utils/metric-colors';
+import { METRIC_COLOR_HEX, MetricColor } from '@/shared/lib/utils/metric-colors';
+import { FormattingRule } from '@/shared/lib/utils/fortmating-rules';
 
 function getOperatorLabel(op: string): string {
   switch (op) {

@@ -7,7 +7,7 @@ import { useDashboardStore } from '@/entities/dashboard';
 import { transliterate } from '@/shared/lib/utils/translit';
 import { toast } from 'sonner';
 import { decryptConfig, encryptConfig } from '@/shared/lib/utils/crypto';
-import { duckdbManager } from '@/features/computation/lib/duckdb/manager';
+import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';
 import { PgConnectionConfig } from '@/shared/api/postgres/client';
 import { ColumnClassification, ColumnConfig, DatasetRow, ReplaceFileResult } from './types';
 import { del, set } from 'idb-keyval';

@@ -2,33 +2,16 @@
 
 import { memo } from 'react';
 import { Copy, Trash2 } from 'lucide-react';
-import { FormattingRule, ConditionOperator, MetricColor } from '@/entities/dashboard';
-import { COLOR_STYLES } from '@/shared/lib/utils/metric-colors';
+import { COLOR_STYLES, METRIC_COLOR_HEX, MetricColor } from '@/shared/lib/utils/metric-colors';
 import { cn } from '@/shared/lib/utils';
-import type { RenderItemProps } from '@/shared/ui/drag-drop-list';
+import { ConditionOperator, RuleCardProps } from '../types';
 
-// Утилита для остановки drag-событий на интерактивных элементах
-const stopDragEvents = {
+
+export const stopDragEvents = {
   onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
   onMouseDown: (e: React.MouseEvent) => e.stopPropagation(),
   onTouchStart: (e: React.TouchEvent) => e.stopPropagation(),
 };
-
-const METRIC_COLOR_HEX: Record<MetricColor, string> = {
-  emerald: '#10b981',
-  rose: '#f43f5e',
-  amber: '#f59e0b',
-  blue: '#3b82f6',
-  indigo: '#6366f1',
-  slate: '#94a3b8',
-};
-
-interface RuleCardProps extends RenderItemProps<FormattingRule> {
-  onUpdate: (ruleId: string, updates: Partial<FormattingRule>) => void;
-  onRemove: (ruleId: string) => void;
-  onDuplicate: (rule: FormattingRule) => void;
-  parseNumber: (value: string) => number;
-}
 
 export const RuleCard = memo(function RuleCard({
   item: rule,

@@ -1,0 +1,1 @@
+export { useKPICalculation } from './model/use-kpi-calculation'
