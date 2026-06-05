@@ -177,6 +177,13 @@ export function useConfigPersistence() {
             const semanticKey = `${name}::${displayFormat}::${decimalPlaces}::${unit ?? ''}`;
 
             if (!vmByKey.has(semanticKey)) {
+              const originalVm = d.virtualMetrics?.find(vm => {
+                return vm.name === name 
+                  && vm.displayFormat === displayFormat 
+                  && vm.decimalPlaces === decimalPlaces 
+                  && vm.unit === unit;
+              });
+              
               vmByKey.set(semanticKey, {
                 id: buildDeterministicVmId(semanticKey),
                 name,
@@ -184,6 +191,8 @@ export function useConfigPersistence() {
                 decimalPlaces,
                 order: vmByKey.size,
                 unit,
+                colorConfig: originalVm?.colorConfig 
+                || d.virtualMetrics?.find(vm => vm.id === metric.id)?.colorConfig
               });
             }
 
