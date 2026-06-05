@@ -1,0 +1,1 @@
+export { DashboardViewWidget } from './ui/DashboardViewWidget';

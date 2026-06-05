@@ -1,0 +1,1 @@
+export { GroupViewWidget } from './ui/GroupViewWidget';

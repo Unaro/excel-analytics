@@ -1,0 +1,1 @@
+export { useDashboardComputation } from './model/use-dashboard-computation';

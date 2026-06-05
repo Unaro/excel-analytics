@@ -1,0 +1,1 @@
+export { useDeleteGroup } from './model/use-delete-group';

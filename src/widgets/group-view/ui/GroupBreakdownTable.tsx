@@ -6,11 +6,11 @@ import { Badge } from '@/shared/ui/badge';
 import { cn } from '@/shared/lib/utils';
 import { BreakdownItem, VirtualMetricValue, GroupComputationResult } from '@/entities/metric';
 import { HierarchyLevel } from '@/entities/hierarchy';
-import { SortIcon } from './SortIcon';
 import { VirtualMetric } from '@/shared/lib/validators';
 import { GroupMetricConfigPopover } from '@/features/ConfigureGroupMetric';
 import { MetricCell } from '@/entities/metric/ui/metric-cell';
 import { GroupMetricCell } from '@/entities/groupMetricConfig';
+import { SortIcon } from '@/shared/ui/sort-icon';
 
 export interface SortConfig {
   key: string;

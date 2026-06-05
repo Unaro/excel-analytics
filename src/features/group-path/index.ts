@@ -1,0 +1,1 @@
+export { useGroupPath } from './model/use-group-path';

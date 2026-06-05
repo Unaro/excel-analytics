@@ -1,0 +1,1 @@
+export { useDashboardFilters } from './model/use-dashboard-filters';
