@@ -3,7 +3,6 @@
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
-import { useSetupWizard } from '@/features/setup-wizard';
 import { useDatasetManager } from '@/features/setup-dataset';
 import { useDatasetReplace } from '@/features/setup-dataset';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
@@ -13,6 +12,7 @@ import { SetupStepper } from './SetupStepper';
 import { DatasetManager } from './DatasetManager';
 import { UploadStep } from './UploadStep';
 import { ColumnSetupStep } from './ColumnSetupStep';
+import { useSetupWizard } from '../model/use-setup-wizard';
 
 /**
  * Приватный оркестратор мастера настройки.

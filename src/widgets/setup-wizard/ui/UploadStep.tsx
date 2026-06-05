@@ -1,10 +1,11 @@
 'use client';
-import { FileUploader } from '@/features/UploadExcel';
-import { PostgresConnectionForm } from '@/features/PostgresConnection';
-import { PostgresTableBrowser } from '@/features/PostgresTableBrowser';
+
+import { FileUploader } from '@/widgets/file-uploader';
+import { PgStep, SourceType } from '../model/types';
 import { SourceTypeSelector } from './SourceTypeSelector';
-import type { SourceType, PgStep } from '@/features/setup-wizard';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
+import { PostgresConnectionForm } from '@/widgets/postgres-connection-form';
+import { PostgresTableBrowser } from '@/widgets/postgres-table-browser';
 
 interface UploadStepProps {
   sourceType: SourceType;
@@ -17,18 +18,12 @@ interface UploadStepProps {
 }
 
 export function UploadStep({
-  sourceType,
-  pgStep,
-  pgConfig,
-  onSourceTypeChange,
-  onFileSuccess,
-  onPgConnected,
-  onPgSyncComplete,
+  sourceType, pgStep, pgConfig,
+  onSourceTypeChange, onFileSuccess, onPgConnected, onPgSyncComplete,
 }: UploadStepProps) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <SourceTypeSelector value={sourceType} onChange={onSourceTypeChange} />
-
       {sourceType === 'file' ? (
         <FileUploader onSuccess={onFileSuccess} />
       ) : pgStep === 'connection' ? (

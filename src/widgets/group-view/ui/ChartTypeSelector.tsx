@@ -3,7 +3,7 @@
 import { BarChart3, Radar } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { LucideIcon } from 'lucide-react';
-import type { ChartType } from '../model/types';
+import { ChartType } from '@/entities/dashboard/model/types';
 
 interface ChartOption {
   type: ChartType;

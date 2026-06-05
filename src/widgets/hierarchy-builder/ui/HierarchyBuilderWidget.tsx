@@ -1,7 +1,8 @@
 'use client';
+
 import { ClientOnly } from '@/shared/lib/hydration';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
-import { HierarchyBuilder } from '@/features/BuildHierarchy';
+import { HierarchyBuilder } from './HierarchyBuilder';
 
 export function HierarchyBuilderWidget() {
   return (
@@ -31,7 +32,6 @@ function HierarchyBuilderContent() {
           </span>
         </p>
       </div>
-
       <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm transition-colors">
         <HierarchyBuilder />
       </div>

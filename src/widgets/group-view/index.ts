@@ -1,2 +1,2 @@
 export { GroupViewWidget } from './ui/GroupViewWidget';
-export type { ChartType, SortConfig } from './model/types';
+export type { SortConfig } from './model/types';

@@ -1,8 +1,20 @@
 import type { DraggableAttributes } from '@dnd-kit/core';
 import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities';
 import type { MetricTemplate } from '@/shared/lib/validators';
-import { FormMetricState, useGroupBuilder } from '@/features/group-builder/model/use-group-builder';
-import { ColumnConfig } from '@/entities/dataset';
+import type { ColumnConfig } from '@/entities/dataset';
+import type { useGroupBuilder } from './use-group-builder';
+
+export interface FormMetricState {
+  id: string;
+  templateId: string;
+  tempId: string;
+  unit: string;
+  customName?: string;
+  originalMetricId?: string;
+  requiredVariables: string[];
+  variableTypes: Record<string, 'field' | 'metric'>;
+  bindings: Record<string, string>;
+}
 
 export interface GroupBuilderUIProps {
   builder: ReturnType<typeof useGroupBuilder>;
@@ -24,4 +36,16 @@ export interface MetricRowProps {
   onUpdateVariableType: (metricTempId: string, alias: string, type: 'field' | 'metric') => void;
   onUpdateBindingValue: (metricTempId: string, alias: string, value: string) => void;
   onRemoveMetric: (tempId: string) => void;
+}
+
+export interface FormMetricState {
+  id: string;
+  templateId: string;
+  tempId: string;
+  unit: string;
+  customName?: string;
+  originalMetricId?: string;
+  requiredVariables: string[];
+  variableTypes: Record<string, 'field' | 'metric'>;
+  bindings: Record<string, string>;
 }

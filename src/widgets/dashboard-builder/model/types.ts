@@ -1,4 +1,5 @@
-import type { IndicatorGroup, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
+import { IndicatorGroup } from "@/entities/metric";
+import { IndicatorGroupInDashboard, VirtualMetric } from "@/shared/lib/validators";
 
 export interface GroupAdderProps {
   availableGroups: IndicatorGroup[];

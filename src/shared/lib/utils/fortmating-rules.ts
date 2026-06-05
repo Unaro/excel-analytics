@@ -8,3 +8,8 @@ export interface FormattingRule {
   value2?: number;
   color: MetricColor;
 }
+
+export interface DataItem {
+  name: string;
+  [key: string]: string | number;
+}

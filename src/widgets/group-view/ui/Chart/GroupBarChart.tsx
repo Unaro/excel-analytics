@@ -8,9 +8,9 @@ import {
 import { Card } from '@/shared/ui/card';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { getColorForValue } from '@/shared/lib/utils/metric-colors';
-import { ThresholdLabel } from '@/widgets/charts-section';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
+import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 

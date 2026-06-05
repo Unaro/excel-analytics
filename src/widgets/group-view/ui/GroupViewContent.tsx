@@ -2,8 +2,6 @@
 
 import { useMemo, useEffect } from 'react';
 import { useGroupBreakdown } from '@/features/group-breakdown';
-import { useGroupPath } from '@/features/group-path';
-import { useGroupViewState } from '@/features/group-view-state';
 import { GroupBreakdownTable } from './GroupBreakdownTable';
 import { GroupPageHeader } from './GroupPageHeader';
 import { GroupKpiGrid } from './GroupKpiGrid';
@@ -11,6 +9,8 @@ import { ChartTypeSelector } from './ChartTypeSelector';
 import { GroupChartsPanel } from './GroupChartsPanel';
 import { GroupNotFound } from './GroupNotFound';
 import { sortBreakdownItems as sortBreakdown } from '../lib/sort-breakdown';
+import { useGroupViewState } from '../model/use-group-view-state';
+import { useGroupPath } from '@/shared/lib/hooks/use-group-path';
 
 interface GroupViewContentProps {
   groupId: string;

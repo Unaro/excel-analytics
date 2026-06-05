@@ -7,10 +7,10 @@ import {
   LucideIcon, X,
   Settings
 } from 'lucide-react';
-import { ThemeToggle } from '@/features/ThemeToggle';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
-import DatasetSwitcher from '@/features/SwitchDataset';
+import DatasetSwitcher from '@/widgets/dataset-switcher';
+import { ThemeToggle } from '@/shared/ui/theme-toggle';
 
 type MenuItemLink = { type: 'link'; href: string; label: string; icon: LucideIcon; };
 type MenuItemDivider = { type: 'divider'; };

@@ -1,2 +1,3 @@
-export * from './model/store';
-export * from './model/types';
+export { useDashboardStore } from './model/store';
+
+export type { Dashboard, ColorConfig, KPIWidget } from './model/types'

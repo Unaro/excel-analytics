@@ -1,4 +1,5 @@
 'use client';
+
 import { memo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -6,9 +7,9 @@ import {
 } from 'recharts';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { getColorForValue } from '@/shared/lib/utils/metric-colors';
+import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
+import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { ChartComponentProps } from '../model/types';
-import { useThresholdGrouping } from '@/features/charts-thresholds';
-import { ThresholdLabel } from './ThresholdLabel';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -63,8 +64,6 @@ export const BarChartView = memo(function BarChartView({
           }}
           cursor={{ fill: 'var(--tooltip-cursor, rgba(0,0,0,0.05))', opacity: 0.1 }}
         />
-
-        {/* Пороговые линии */}
         {groupedThresholds.map((group, gi) => (
           <ReferenceLine
             key={`threshold-${gi}`}
@@ -86,13 +85,10 @@ export const BarChartView = memo(function BarChartView({
             />
           </ReferenceLine>
         ))}
-
-        {/* Бары с условным окрашиванием */}
         {activeMetricIds.map((metricId, index) => {
           const vm = virtualMetrics.find(v => v.id === metricId);
           const rules = vm?.colorConfig?.rules;
           const defaultColor = COLORS[index % COLORS.length];
-
           return (
             <Bar
               key={metricId}
@@ -120,7 +116,6 @@ export const BarChartView = memo(function BarChartView({
             />
           );
         })}
-
         <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
       </BarChart>
     </ResponsiveContainer>

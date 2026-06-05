@@ -1,7 +1,7 @@
 'use client';
 import { FileSpreadsheet, Database } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
-import type { SourceType } from '@/features/setup-wizard';
+import type { SourceType } from '../model/types';
 
 interface SourceTypeSelectorProps {
   value: SourceType;

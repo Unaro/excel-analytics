@@ -1,13 +1,8 @@
 'use client';
 import { useState, useCallback, useEffect } from 'react';
 import type { VirtualMetric } from '@/shared/lib/validators';
-
-export type ChartType = 'bar' | 'radar';
-
-export interface SortConfig {
-  key: string;
-  direction: 'asc' | 'desc';
-}
+import { SortConfig } from './types';
+import { ChartType } from '@/entities/dashboard/model/types';
 
 /**
  * UI-состояние виджета просмотра группы.

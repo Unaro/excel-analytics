@@ -10,7 +10,6 @@ import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash
 import { createComputeEngine } from '@/shared/lib/computation/lib/engine-factory';
 import { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { useShallow } from 'zustand/react/shallow';
-import type { Dashboard } from '@/entities/dashboard';
 import type { MetricTemplate } from '@/entities/metric';
 import type { DashboardComputationResult } from '@/entities/metric';
 import type {
@@ -19,6 +18,7 @@ import type {
   IndicatorGroupInDashboard,
   VirtualMetric,
 } from '@/shared/lib/validators';
+import { Dashboard } from '@/entities/dashboard';
 
 const EMPTY_FILTERS: HierarchyFilterValue[] = [];
 const EMPTY_DASHBOARD_GROUPS: IndicatorGroupInDashboard[] = [];

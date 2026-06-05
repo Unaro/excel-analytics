@@ -1,12 +1,8 @@
+import { DataItem } from '@/shared/lib/utils/fortmating-rules';
 import type { VirtualMetric } from '@/shared/lib/validators';
 
-export interface ChartDataItem {
-  name: string;
-  [key: string]: string | number;
-}
-
 export interface ChartComponentProps {
-  data: ChartDataItem[];
+  data: DataItem[];
   activeMetricIds: string[];
   metricNames: Record<string, string>;
   axisColor: string;

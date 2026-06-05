@@ -6,20 +6,9 @@ import { useColumnConfigStore } from '@/entities/columnConfig';
 import { nanoid } from 'nanoid';
 import { extractVariables } from '@/shared/lib/utils/formula';
 import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
+import { FormMetricState } from './types';
 
 const EMPTY_COLUMNS: ColumnConfig[] = []
-
-export interface FormMetricState {
-  id: string;
-  templateId: string;
-  tempId: string;
-  unit: string;
-  customName?: string;
-  originalMetricId?: string;
-  requiredVariables: string[];
-  variableTypes: Record<string, 'field' | 'metric'>;
-  bindings: Record<string, string>;
-}
 
 export function useGroupBuilder(existingGroupId?: string) {
   const { addGroup, updateGroup, getGroup } = useIndicatorGroupStore();

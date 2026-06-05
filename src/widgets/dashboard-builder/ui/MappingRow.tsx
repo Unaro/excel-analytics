@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/button';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { cn } from '@/shared/lib/utils';
-import type { MappingRowProps } from '../model/types';
+import { MappingRowProps } from '../model/types';
 
 export function MappingRow({
   groupConfig,

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/shared/ui/button';
 import { Select, SelectOption } from '@/shared/ui/select';
-import type { GroupAdderProps } from '../model/types';
+import { GroupAdderProps } from '../model/types';
 
 export function GroupAdder({
   availableGroups,

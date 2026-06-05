@@ -1,10 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
-
-export type SetupStep = 'manager' | 'upload' | 'columns';
-export type SourceType = 'file' | 'postgres';
-export type PgStep = 'connection' | 'browser';
+import { PgStep, SetupStep, SourceType } from './types';
 
 export function useSetupWizard() {
   const datasets = useDatasetStore(s => s.datasets);

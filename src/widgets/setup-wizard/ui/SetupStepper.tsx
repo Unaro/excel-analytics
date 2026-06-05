@@ -1,7 +1,7 @@
 'use client';
 import { Database, TableProperties, Check } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
-import type { SetupStep } from '@/features/setup-wizard';
+import type { SetupStep } from '../model/types';
 
 interface SetupStepperProps {
   step: SetupStep;

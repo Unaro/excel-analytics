@@ -12,25 +12,14 @@ import { TemplateForm } from '@/features/CreateMetricTemplate';
 import { useDatasetStore } from '@/entities/dataset';
 import { DragDropList, RenderItemProps } from '@/shared/ui/drag-drop-list';
 import { MetricRow } from './MetricRow';
-import type { GroupBuilderUIProps } from '../model/types';
-import { FormMetricState } from '@/features/group-builder/model/use-group-builder';
+import type { GroupBuilderUIProps, FormMetricState } from '../model/types';
 
 export function GroupBuilderUI({ builder, mode, onSave }: GroupBuilderUIProps) {
   const {
-    name,
-    setName,
-    selectedMetrics,
-    addMetricToGroup,
-    updateVariableType,
-    updateBindingValue,
-    removeMetric,
-    reorderMetrics,
-    availableTemplates,
-    availableColumns,
-    columnSearchQuery,
-    setColumnSearchQuery,
-    updateMetricUnit,
-    updateMetricCustomName,
+    name, setName, selectedMetrics, addMetricToGroup,
+    updateVariableType, updateBindingValue, removeMetric, reorderMetrics,
+    availableTemplates, availableColumns, columnSearchQuery,
+    setColumnSearchQuery, updateMetricUnit, updateMetricCustomName,
   } = builder;
 
   const hasDataset = !!useDatasetStore(s => s.activeDatasetId);
@@ -55,13 +44,9 @@ export function GroupBuilderUI({ builder, mode, onSave }: GroupBuilderUIProps) {
 
   const renderMetric = ({ item, index, isDragging, listeners, attributes }: RenderItemProps<FormMetricState>) => (
     <MetricRow
-      item={item}
-      index={index}
-      isDragging={isDragging}
-      listeners={listeners}
-      attributes={attributes}
-      templates={templates}
-      availableColumns={availableColumns}
+      item={item} index={index} isDragging={isDragging}
+      listeners={listeners} attributes={attributes}
+      templates={templates} availableColumns={availableColumns}
       selectedMetrics={selectedMetrics}
       onUpdateMetricCustomName={updateMetricCustomName}
       onUpdateMetricUnit={updateMetricUnit}
@@ -88,27 +73,18 @@ export function GroupBuilderUI({ builder, mode, onSave }: GroupBuilderUIProps) {
             <label className="text-sm font-medium mb-2 block text-slate-700 dark:text-slate-300">
               Название группы
             </label>
-            <Input
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Например: Дошкольное образование"
-              className="text-lg h-11"
-            />
+            <Input value={name} onChange={e => setName(e.target.value)}
+              placeholder="Например: Дошкольное образование" className="text-lg h-11" />
           </div>
-
           <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
             <label className="text-xs font-bold uppercase tracking-wider mb-2 flex items-center gap-2 text-slate-500">
-              <Filter size={12} />
-              Контекст данных
+              <Filter size={12} /> Контекст данных
             </label>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={columnSearchQuery}
-                onChange={e => setColumnSearchQuery(e.target.value)}
+              <Input value={columnSearchQuery} onChange={e => setColumnSearchQuery(e.target.value)}
                 placeholder="Например: ДОО"
-                className="pl-9 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800"
-              />
+                className="pl-9 bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800" />
               {columnSearchQuery && (
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-emerald-600 font-medium bg-emerald-50 dark:bg-emerald-900/20 px-1.5 py-0.5 rounded">
                   {availableColumns.length} шт.
@@ -131,20 +107,14 @@ export function GroupBuilderUI({ builder, mode, onSave }: GroupBuilderUIProps) {
                 )}
               </p>
             </div>
-
             <div className="w-full sm:w-64">
-              <Select
-                className="cursor-pointer"
+              <Select className="cursor-pointer"
                 onChange={(e) => {
                   const val = e.target.value;
-                  if (val === 'CREATE_NEW') {
-                    setIsDialogOpen(true);
-                  } else if (val) {
-                    addMetricToGroup(val);
-                  }
+                  if (val === 'CREATE_NEW') { setIsDialogOpen(true); }
+                  else if (val) { addMetricToGroup(val); }
                   e.target.value = '';
-                }}
-              >
+                }}>
                 <SelectOption value="">+ Добавить метрику</SelectOption>
                 <SelectOption value="CREATE_NEW" className="bg-indigo-50 dark:bg-slate-800 text-indigo-600 font-semibold">
                   ✨ Создать новый шаблон...
@@ -170,12 +140,8 @@ export function GroupBuilderUI({ builder, mode, onSave }: GroupBuilderUIProps) {
           {selectedMetrics.length > 0 && (
             <>
               <DragDropList<FormMetricState>
-                items={selectedMetrics}
-                onReorder={reorderMetrics}
-                renderItem={renderMetric}
-                className="space-y-4"
-                dragDelay={0}
-              />
+                items={selectedMetrics} onReorder={reorderMetrics}
+                renderItem={renderMetric} className="space-y-4" dragDelay={0} />
               <div className="flex items-center justify-center gap-2 text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                 <GripVertical size={10} />
                 <span>Порядок влияет на вычисление calculated-метрик</span>
@@ -192,10 +158,7 @@ export function GroupBuilderUI({ builder, mode, onSave }: GroupBuilderUIProps) {
           </DialogHeader>
           <TemplateForm
             onCancel={() => setIsDialogOpen(false)}
-            onSuccess={(newTemplateId) => {
-              setIsDialogOpen(false);
-              addMetricToGroup(newTemplateId);
-            }}
+            onSuccess={(newTemplateId) => { setIsDialogOpen(false); addMetricToGroup(newTemplateId); }}
           />
         </DialogContent>
       </Dialog>

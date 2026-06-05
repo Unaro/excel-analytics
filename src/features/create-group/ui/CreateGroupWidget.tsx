@@ -1,7 +1,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { GroupBuilderUI } from '@/widgets/group-builder';
-import { useGroupBuilder } from '@/features/group-builder/model/use-group-builder';
+import { useGroupBuilder } from '@/widgets/group-builder/model/use-group-builder';
 import { toast } from 'sonner';
 
 export function CreateGroupWidget() {

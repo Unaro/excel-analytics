@@ -5,8 +5,9 @@ import { GroupBarChart } from './Chart/GroupBarChart';
 import { GroupRadarChart } from './Chart/GroupRadarChart';
 import { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
-import { ThresholdLegend } from '@/widgets/charts-section/ui/ThresholdLegend';
-import { ChartType } from '@/features/group-view-state';
+import { ThresholdLegend } from '@/shared/ui/threshold-marker/ThresholdLegend';
+import { ChartType } from '@/entities/dashboard/model/types';
+import { DataItem } from '@/shared/lib/utils/fortmating-rules';
 
 interface GroupChartsPanelProps {
   breakdown: BreakdownItem[];
@@ -14,11 +15,6 @@ interface GroupChartsPanelProps {
   metricConfigs: VirtualMetric[];
   activeMetricIds: string[];
   chartTypes: ChartType[];
-}
-
-interface ChartDataItem {
-  name: string;
-  [key: string]: string | number;
 }
 
 /**
@@ -44,9 +40,9 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
     [metricConfigs, metricKeys]
   );
 
-  const multiMetricData = useMemo<ChartDataItem[]>(() => {
+  const multiMetricData = useMemo<DataItem[]>(() => {
     return breakdown.map(item => {
-      const row: ChartDataItem = { name: item.label };
+      const row: DataItem = { name: item.label };
       activeMetrics.forEach(vm => {
         const val = item.virtualMetrics.find(m => m.virtualMetricId === vm.virtualMetricId);
         row[vm.virtualMetricId] = val?.value ?? 0;

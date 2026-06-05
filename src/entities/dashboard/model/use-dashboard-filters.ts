@@ -1,8 +1,8 @@
 'use client';
-import { useDashboardStore } from '@/entities/dashboard';
 import { useShallow } from 'zustand/react/shallow';
 import { useCallback } from 'react';
 import type { HierarchyFilterValue } from '@/shared/lib/validators';
+import { useDashboardStore } from './store';
 
 export function useDashboardFilters(dashboardId: string) {
   const hierarchyFilters = useDashboardStore(

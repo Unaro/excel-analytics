@@ -5,7 +5,7 @@ import { Layers, Trash2, Calculator } from 'lucide-react';
 import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
 import { HierarchyFilterValue } from '@/shared/lib/validators';
-import { useKPICalculation } from '@/features/compute-kpi/model/use-kpi-calculation';
+import { useKPICalculation } from '../model/use-kpi-calculation';
 
 interface KPIGridProps {
   dashboardId: string;
@@ -25,16 +25,13 @@ export function KPIGrid({ dashboardId, widgets, currentFilters, isEditMode = fal
       {results.map(({ widget, template, formattedValue, error }) => (
         <Card key={widget.id} className="relative p-4 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm hover:shadow-md transition-all group">
           {isEditMode && (
-            <button
-              onClick={() => removeWidget(dashboardId, widget.id)}
-              className="absolute top-2 right-2 p-1.5 bg-rose-50 text-rose-500 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-100"
-            >
+            <button onClick={() => removeWidget(dashboardId, widget.id)}
+              className="absolute top-2 right-2 p-1.5 bg-rose-50 text-rose-500 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-rose-100">
               <Trash2 size={14} />
             </button>
           )}
           <div className="flex items-center gap-3 mb-2">
-            <div className={cn(
-              "p-2 rounded-lg",
+            <div className={cn("p-2 rounded-lg",
               widget.color === 'emerald' ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20" :
               widget.color === 'rose' ? "bg-rose-50 text-rose-600 dark:bg-rose-900/20" :
               widget.color === 'amber' ? "bg-amber-50 text-amber-600 dark:bg-amber-900/20" :
@@ -42,15 +39,14 @@ export function KPIGrid({ dashboardId, widgets, currentFilters, isEditMode = fal
             )}>
               {template?.type === 'aggregate' ? <Layers size={18}/> : <Calculator size={18}/>}
             </div>
-            <div className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider truncate" title={widget.customName || template?.name}>
+            <div className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider truncate"
+              title={widget.customName || template?.name}>
               {widget.customName || template?.name}
             </div>
           </div>
           <div className="flex items-baseline gap-1.5">
             {error ? <span className="text-red-500 text-sm">{error}</span> : formattedValue}
-            <span className="text-sm font-medium text-slate-400">
-              {template?.suffix}
-            </span>
+            <span className="text-sm font-medium text-slate-400">{template?.suffix}</span>
           </div>
         </Card>
       ))}

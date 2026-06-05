@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react';
 import { UploadCloud, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
-import { useFileImport } from '../dataset-import/model/use-file-import';
+import { useFileImport } from '../../features/dataset-import/model/use-file-import';
 
 // Добавляем проп
 interface FileUploaderProps {

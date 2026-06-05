@@ -1,18 +1,7 @@
-'use client';
-
-import { useState, useCallback } from 'react';
-import type { VirtualMetric } from '@/shared/lib/validators';
-
-export type ChartType = 'bar' | 'radar';
-
-export interface DashboardViewState {
-  activeMetricIds: string[];
-  chartTypes: ChartType[];
-  hiddenMetricIds: string[];
-  setActiveMetricIds: (ids: string[]) => void;
-  setChartTypes: (types: ChartType[]) => void;
-  toggleMetricVisibility: (id: string) => void;
-}
+import { VirtualMetric } from "@/shared/lib/validators";
+import { useCallback, useState } from "react";
+import { DashboardViewState } from "../ui/DashboardViewContent";
+import { ChartType } from "@/entities/dashboard/model/types";
 
 /**
  * UI-состояние виджета просмотра дашборда.

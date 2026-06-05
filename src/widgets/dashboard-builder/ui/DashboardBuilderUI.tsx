@@ -10,7 +10,7 @@ import type { VirtualMetric } from '@/shared/lib/validators';
 import { DragDropList, RenderItemProps } from '@/shared/ui/drag-drop-list';
 import { GroupAdder } from './GroupAdder';
 import { MappingRow } from './MappingRow';
-import { useDashboardBuilder } from '@/features/dashboard-builder';
+import { useDashboardBuilder } from '../model/use-dashboard-builder';
 
 interface DashboardBuilderUIProps {
   builder: ReturnType<typeof useDashboardBuilder>;
@@ -84,7 +84,6 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Левая колонка: Мета + Колонки */}
         <div className="space-y-6 lg:col-span-1">
           <Card className="p-5 space-y-4">
             <div>
@@ -102,7 +101,6 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
               <Columns size={18} className="text-indigo-500" />
               <h2>Колонки таблицы</h2>
             </div>
-
             <div className="flex gap-2">
               <Input
                 value={newVmName}
@@ -114,7 +112,6 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
                 <Plus size={18} />
               </Button>
             </div>
-
             {virtualMetrics.length === 0 ? (
               <div className="text-xs text-slate-400 text-center py-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
                 Нет колонок
@@ -137,7 +134,6 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
           </Card>
         </div>
 
-        {/* Правая колонка: Матрица */}
         <div className="lg:col-span-2 space-y-4">
           <Card className="p-6 min-h-125 flex flex-col">
             <div className="flex justify-between items-center mb-6">
@@ -151,7 +147,6 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
                 onAdd={addGroupToDashboard}
               />
             </div>
-
             <div className="border rounded-xl overflow-x-auto dark:border-slate-800 flex-1">
               <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-800">
                 <thead className="bg-gray-50 dark:bg-slate-900">

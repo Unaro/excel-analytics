@@ -1,4 +1,3 @@
-// features/BuildHierarchy/ui.tsx
 'use client';
 
 import { useMemo } from 'react';

@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import type { BreakdownItem, VirtualMetricValue } from '@/entities/metric';
 import type { VirtualMetric } from '@/shared/lib/validators';
-import type { ChartDataItem } from '@/widgets/charts-section/model/types';
+import { DataItem } from '@/shared/lib/utils/fortmating-rules';
 
 export function useChartDataMapper(
   breakdown: BreakdownItem[],
@@ -16,9 +16,9 @@ export function useChartDataMapper(
     [metricConfigs, activeMetricIds]
   );
 
-  const chartData = useMemo<ChartDataItem[]>(() => {
+  const chartData = useMemo<DataItem[]>(() => {
     return breakdown.map(item => {
-      const row: ChartDataItem = { name: item.label };
+      const row: DataItem = { name: item.label };
 
       // Реальные значения метрик
       activeMetricIds.forEach(vmId => {

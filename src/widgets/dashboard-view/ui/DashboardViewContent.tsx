@@ -3,27 +3,34 @@
 import { use, useMemo, useCallback } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useHierarchyTree } from '@/entities/hierarchy';
-import { useDashboardComputation } from '@/features/compute-dashboard';
-import {
-  useDashboardDatasetSync,
-  useDashboardOrphanCleanup,
-} from '@/features/dashboard-dataset-sync';
-import { flattenDashboardResult } from '@/features/charts-data';
 import { HierarchyTree } from '@/widgets/hierarchy-filter';
 import { KPIGrid } from '@/widgets/kpi-grid';
 import { DashboardMetricsTable } from '@/widgets/dashboard-metrics-table';
 import { ChartsSectionWidget } from '@/widgets/charts-section';
 import { ErrorBoundary } from '@/shared/ui/error-boundary';
 import { useShallow } from 'zustand/react/shallow';
-
-import { useDashboardViewState } from '../model/use-dashboard-view-state';
 import { DashboardHeader } from './DashboardHeader';
 import { DashboardStats } from './DashboardStats';
 import { DashboardNotFound } from './DashboardNotFound';
 import { DatasetUnavailable } from './DatasetUnavailable';
+import { useDashboardOrphanCleanup } from '../model/use-dashboard-orphan-cleanup';
+import { useDashboardDatasetSync } from '../model/use-dashboard-dataset-sync';
+import { useDashboardComputation } from '../model/use-dashboard-computation';
+import { useDashboardViewState } from '../model/use-dashboard-view-state';
+import { ChartType } from '@/entities/dashboard/model/types';
+import { flattenDashboardResult } from '@/entities/metric/lib/flatten-dashboard-result';
 
 interface DashboardViewContentProps {
   params: Promise<{ id: string }>;
+}
+
+export interface DashboardViewState {
+  activeMetricIds: string[];
+  chartTypes: ChartType[];
+  hiddenMetricIds: string[];
+  setActiveMetricIds: (ids: string[]) => void;
+  setChartTypes: (types: ChartType[]) => void;
+  toggleMetricVisibility: (id: string) => void;
 }
 
 /**

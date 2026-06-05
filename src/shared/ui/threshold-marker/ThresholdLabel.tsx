@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback } from 'react';
 import type { GroupedThreshold } from '@/shared/lib/utils/thresholds';
-import { useHoverPopup } from '../model/use-hover-popup';
+import { useHoverPopup } from '../../../widgets/charts-section/model/use-hover-popup';
 import { ThresholdPopup, type ThresholdRuleEntry } from './ThresholdPopup';
 
 interface ThresholdLabelProps {

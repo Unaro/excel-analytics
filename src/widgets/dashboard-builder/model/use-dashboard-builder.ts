@@ -2,10 +2,11 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { nanoid } from 'nanoid';
-import { Dashboard, useDashboardStore } from '@/entities/dashboard';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useDatasetStore } from '@/entities/dataset';
 import { IndicatorGroupInDashboard, VirtualMetric, VirtualMetricBindingInDashboard } from '@/shared/lib/validators';
+import { useDashboardStore } from '@/entities/dashboard';
+import { Dashboard } from '@/entities/dashboard';
 
 export function useDashboardBuilder(existingDashboardId?: string) {
   // Сначала ВСЕ хуки — никаких условий до useState
