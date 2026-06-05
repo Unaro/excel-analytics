@@ -10,7 +10,7 @@ import { cn } from '@/shared/lib/utils';
 import { useShallow } from 'zustand/react/shallow';
 import { useFilterActions } from '@/features/hierarchy-filters/model/use-filter-actions';
 import { HierarchyFilterValue } from '@/shared/lib/validators';
-import { useHierarchyLevelNodes } from '@/lib/hooks/use-hierarchy-level-nodes';
+import { useHierarchyLevelNodes } from '@/entities/hierarchy/lib/hooks/use-hierarchy-level-nodes';
 
 const EMPTY_PATH: HierarchyFilterValue[] = [];
 

@@ -11,7 +11,7 @@ import { duckdbManager } from '@/features/computation/lib/duckdb/manager';
 import { PgConnectionConfig } from '@/shared/api/postgres/client';
 import { ColumnClassification, ColumnConfig, DatasetRow, ReplaceFileResult } from './types';
 import { del, set } from 'idb-keyval';
-import { createComputationCache } from '@/lib/storage';
+import { createComputationCache } from '@/shared/lib/storage';
 
 function mapPgType(type: string): ColumnClassification {
   const t = type.toLowerCase();

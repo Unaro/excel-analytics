@@ -5,7 +5,7 @@ import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useComputedMetricsStore } from '@/entities/metric';
-import { createComputationCache } from '@/lib/storage';
+import { createComputationCache } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
 import { createComputeEngine } from '@/features/computation/lib/engine-factory';
 import { ClientComputeParams } from '@/features/computation/lib/types';

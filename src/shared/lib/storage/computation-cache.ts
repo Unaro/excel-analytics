@@ -2,7 +2,6 @@ import { get, set, del, clear as clearDB } from 'idb-keyval';
 import type { IComputationCache, CacheKey, CachedComputationEntry, CacheMetadata } from './types';
 import { DashboardComputationResult } from '@/entities/metric';
 
-
 const FILE_TTL = 24 * 60 * 60 * 1000;
 const PG_TTL = 5 * 60 * 1000;
 
@@ -83,19 +82,16 @@ export class PgComputationCache implements IComputationCache {
     const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
     const raw = sessionStorage.getItem(storageKey) || this.memoryStore.get(storageKey);
     if (!raw) return null;
-    
     const entry: CachedComputationEntry = typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (Date.now() > entry.meta.expiresAt) {
       await this.invalidate(key);
       return null;
     }
-
     const invalidatedAt = await get(`comp:file:invalidated:${key.datasetId}:${key.dashboardId}`) as number | undefined;
     if (invalidatedAt && entry.meta.storedAt < invalidatedAt) {
       await this.invalidate(key);
       return null;
     }
-    
     return entry;
   }
 

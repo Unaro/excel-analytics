@@ -1,6 +1,6 @@
 'use client';
 import { useRef } from 'react';
-import { useConfigPersistence } from '@/lib/hooks/use-config-persistence';
+import { useConfigPersistence } from '@/features/config-persistence/model/use-config-persistence';
 import { useDatasetStore } from '@/entities/dataset';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';

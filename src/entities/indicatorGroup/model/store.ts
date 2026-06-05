@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid';
 import { FieldBinding, GroupMetric, IndicatorGroup } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
-import { createComputationCache } from '@/lib/storage';
+import { createComputationCache } from '@/shared/lib/storage';
 import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
 
 interface IndicatorGroupState {

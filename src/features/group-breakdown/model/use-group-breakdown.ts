@@ -6,7 +6,7 @@ import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { DashboardComputationResult, GroupComputationResult, IndicatorGroup, useMetricTemplateStore } from '@/entities/metric';
 import { useShallow } from 'zustand/react/shallow';
 import { createComputeEngine } from '@/features/computation/lib/engine-factory';
-import { createComputationCache } from '@/lib/storage';
+import { createComputationCache } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
 import { buildVmIdFromFields } from '@/shared/lib/utils/metric-ids';
 import type { ClientComputeParams } from '@/features/computation/lib/types';

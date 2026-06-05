@@ -2,7 +2,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
 import { createComputeEngine } from '@/features/computation/lib/engine-factory';
-import { createComputationCache } from '@/lib/storage';
+import { createComputationCache } from '@/shared/lib/storage'; // ← ОБНОВЛЁННЫЙ ИМПОРТ
 import { generateFiltersHash } from '@/shared/lib/utils/hash';
 import type { ClientComputeParams } from '@/features/computation/lib/types';
 import { HierarchyFilterValue, IndicatorGroup, IndicatorGroupInDashboard, MetricTemplate, GroupMetric, VirtualMetric } from '@/shared/lib/validators';
@@ -10,7 +10,6 @@ import { HierarchyNode, HierarchyLevel } from '@/entities/hierarchy/model/types'
 import { useColumnConfigStore } from '@/entities/columnConfig';
 
 const EMPTY_CONFIGS: ColumnConfig[] = [];
-
 const TPL_ID = '__hierarchy_count_tpl__';
 const METRIC_ID = '__hierarchy_count_m__';
 const GROUP_ID = '__hierarchy_group__';
@@ -34,6 +33,7 @@ function buildDummyParams(columnName: string): {
     createdAt: 0,
     updatedAt: 0,
   };
+
   const metric: GroupMetric = {
     id: METRIC_ID,
     templateId: TPL_ID,
@@ -42,6 +42,7 @@ function buildDummyParams(columnName: string): {
     enabled: true,
     order: 0,
   };
+
   const group: IndicatorGroup = {
     id: GROUP_ID,
     name: 'Hierarchy',
@@ -51,12 +52,14 @@ function buildDummyParams(columnName: string): {
     createdAt: 0,
     updatedAt: 0,
   };
+
   const dashboardGroupsConfig: IndicatorGroupInDashboard[] = [{
     groupId: GROUP_ID,
     enabled: true,
     order: 0,
     virtualMetricBindings: [{ virtualMetricId: VM_ID, metricId: METRIC_ID }],
   }];
+
   const virtualMetrics: VirtualMetric[] = [{
     id: VM_ID,
     name: 'Count',
@@ -64,6 +67,7 @@ function buildDummyParams(columnName: string): {
     decimalPlaces: 0,
     order: 0,
   }];
+
   return { groups: [group], dashboardGroupsConfig, metricTemplates: [template], virtualMetrics };
 }
 
@@ -86,11 +90,11 @@ export function useHierarchyLevelNodes(
   const columnConfigs = useColumnConfigStore(s =>
     activeDatasetId ? (s.configsByDataset[activeDatasetId] ?? EMPTY_CONFIGS) : EMPTY_CONFIGS
   );
-  const validColumns = useMemo(() => 
+
+  const validColumns = useMemo(() =>
     columnConfigs.filter(c => c.classification !== 'ignore').map(c => c.columnName),
     [columnConfigs]
   );
-
 
   const filtersHash = useMemo(() => generateFiltersHash(parentPath), [parentPath]);
   const columnName = level?.columnName ?? '';
@@ -106,7 +110,7 @@ export function useHierarchyLevelNodes(
 
     const compute = async () => {
       const { groups, dashboardGroupsConfig, metricTemplates, virtualMetrics } = buildDummyParams(columnName);
-      
+
       const cacheKey = {
         datasetId: activeDatasetId,
         dashboardId: `hierarchy:${columnName}`,
@@ -148,8 +152,9 @@ export function useHierarchyLevelNodes(
 
         await engine.initialize(activeDatasetId);
         const result = await engine.compute(params);
-        
+
         if (cancelled) return;
+
         await cache.set(cacheKey, result);
 
         const breakdown = result.groups[0]?.breakdown ?? [];
@@ -162,6 +167,7 @@ export function useHierarchyLevelNodes(
           isExpanded: false,
           isSelected: false,
         })).sort((a, b) => a.displayValue.localeCompare(b.displayValue, undefined, { numeric: true }));
+
         setNodes(mapped);
       } catch (err) {
         console.error('[HierarchyNodes] Compute failed:', err);
@@ -172,6 +178,7 @@ export function useHierarchyLevelNodes(
     };
 
     compute();
+
     return () => { cancelled = true; };
   }, [activeDatasetId, level, columnName, isSyncing, filtersHash, engine, cache, dataset, hasNextLevel, validColumns]);
 

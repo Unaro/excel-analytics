@@ -7,7 +7,7 @@ import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { useSetupWizard } from '@/features/setup-wizard';
 import { useDatasetManager } from '@/features/setup-dataset';
 import { useDatasetReplace } from '@/features/setup-dataset';
-import { useConfigPersistence } from '@/lib/hooks/use-config-persistence';
+import { useConfigPersistence } from '@/features/config-persistence/model/use-config-persistence';
 import { SetupStepper } from './SetupStepper';
 import { DatasetManager } from './DatasetManager';
 import { UploadStep } from './UploadStep';
