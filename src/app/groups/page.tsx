@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useStoreHydration } from '@/lib/hooks/use-store-hydration';
@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { useDatasetStore } from '@/entities/dataset';
+import { useDashboardStore } from '@/entities/dashboard';
 
 export default function GroupsListPage() {
   const hydrated = useStoreHydration();
@@ -19,6 +20,14 @@ export default function GroupsListPage() {
   const datasets = useDatasetStore(s => s.datasets);
   
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  const affectedDashboards = useMemo(() => {
+    if (!deleteId) return [];
+    const allDashboards = useDashboardStore.getState().dashboards;
+    return allDashboards.filter(d => 
+      d.indicatorGroups.some(g => g.groupId === deleteId)
+    );
+  }, [deleteId]);
 
   if (!hydrated) {
     return <LoadingScreen message="Загрузка списка групп..." />;
@@ -91,17 +100,45 @@ export default function GroupsListPage() {
           ))}
         </div>
       </div>
-
+      
       <ConfirmDialog
         open={deleteId !== null}
         onOpenChange={(open) => !open && setDeleteId(null)}
         title="Удалить группу?"
-        description="Это действие нельзя отменить"
+        description={
+          affectedDashboards.length > 0 ? (
+            <div className="space-y-2">
+              <p>Это действие нельзя отменить.</p>
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 text-sm text-amber-700 dark:text-amber-300">
+                <p className="font-semibold mb-1">
+                  ⚠️ Группа используется в {affectedDashboards.length} дашборд{affectedDashboards.length === 1 ? 'е' : 'ах'}:
+                </p>
+                <ul className="list-disc list-inside space-y-0.5 text-xs">
+                  {affectedDashboards.slice(0, 5).map(d => (
+                    <li key={d.id}>{d.name}</li>
+                  ))}
+                  {affectedDashboards.length > 5 && (
+                    <li className="text-slate-400">...и ещё {affectedDashboards.length - 5}</li>
+                  )}
+                </ul>
+                <p className="mt-2 text-xs opacity-80">
+                  Привязки будут автоматически удалены из этих дашбордов.
+                </p>
+              </div>
+            </div>
+          ) : (
+            'Это действие нельзя отменить'
+          )
+        }
         variant="destructive"
         onConfirm={() => {
           if (deleteId) {
             deleteGroup(deleteId);
-            toast.success('Группа удалена');
+            toast.success(
+              affectedDashboards.length > 0
+                ? `Группа удалена, очищено ${affectedDashboards.length} дашборд${affectedDashboards.length === 1 ? '' : 'ов'}`
+                : 'Группа удалена'
+            );
           }
         }}
       />

@@ -54,6 +54,8 @@ function getOperatorLabel(op: ConditionOperator): string {
 
 /**
  * Возвращает HEX-цвет правила, под которое попадает значение, или null.
+ * 
+ * ВАЖНО: Правила проверяются СВЕРХУ ВНИЗ по массиву `rules`.
  */
 function getColorForValue(
   value: number | null | undefined,
@@ -242,8 +244,10 @@ interface CustomTooltipProps {
 
 function CustomTooltip({ active, payload, label, metricNames }: CustomTooltipProps) {
   if (active && payload && payload.length > 0) {
-    // Исключаем пороговые ключи из тултипа
-    const filteredPayload = payload.filter(p => !p.dataKey.toString().endsWith('_threshold'));
+    const filteredPayload = payload.filter(p => {
+      const key = p.dataKey.toString();
+      return !key.endsWith('_threshold') && !key.startsWith('__threshold_');
+    });
     if (filteredPayload.length === 0) return null;
 
     return (
@@ -406,83 +410,89 @@ const MemoizedBarChart = memo(function BarChartComp({
 // RADAR CHART: условное окрашивание точек (dot)
 // ═══════════════════════════════════════════════════════════
 const MemoizedRadarChart = memo(function RadarChartComp({
-  data,
-  activeMetricIds,
-  metricNames,
-  axisColor,
-  virtualMetrics,
+  data, activeMetricIds, metricNames, axisColor, virtualMetrics,
 }: ChartComponentProps) {
+
+  // Группируем все пороги всех метрик (та же логика, что в BarChart)
+  const groupedThresholds = useMemo(
+    () => groupThresholdsByValue(virtualMetrics, activeMetricIds),
+    [virtualMetrics, activeMetricIds]
+  );
+
   return (
     <ResponsiveContainer width="100%" height="100%">
       <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
         <PolarGrid stroke={axisColor} strokeOpacity={0.2} />
         <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: axisColor }} />
-        {/* domain={[0, 'auto']} автоматически масштабирует ось, чтобы вместить и данные, и пороги */}
         <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={false} axisLine={false} />
 
+        {/* ═══════════════════════════════════════════════════════════
+            ПОРОГОВЫЕ ПОЛИГОНЫ (под основными, чтобы не перекрывать)
+            Каждый сгруппированный threshold → один пунктирный полигон
+            ═══════════════════════════════════════════════════════════ */}
+        {groupedThresholds.map((group, gi) => {
+          const thresholdKey = `__threshold_${gi}`;
+          return (
+            <Radar
+              key={`threshold-${gi}`}
+              name={`Порог: ${group.y.toLocaleString('ru-RU')}`}
+              dataKey={thresholdKey}
+              stroke={group.primaryColor}
+              strokeWidth={group.isOverlap ? 2.5 : 2}
+              strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
+              fill={group.primaryColor}
+              fillOpacity={0.04}
+              isAnimationActive={false}
+              legendType="none"
+              dot={false}
+              opacity={0.85}
+            />
+          );
+        })}
+
+        {/* ═══════════════════════════════════════════════════════════
+            ОСНОВНЫЕ ПОЛИГОНЫ МЕТРИК (поверх порогов)
+            ═══════════════════════════════════════════════════════════ */}
         {activeMetricIds.map((metricId, index) => {
           const vm = virtualMetrics.find(v => v.id === metricId);
           const rules = vm?.colorConfig?.rules;
-          const hasThreshold = rules && rules.length > 0;
-          const thresholdRule = hasThreshold ? rules[0] : null;
-          const thresholdColor = thresholdRule ? METRIC_COLOR_HEX[thresholdRule.color] : null;
           const color = CHART_COLORS[index % CHART_COLORS.length];
 
           return (
-            <Fragment key={metricId}>
-              {/* ─────────────────────────────────────────────────────
-                  ОСНОВНОЙ ПОЛИГОН МЕТРИКИ (с окрашенными точками)
-                  ───────────────────────────────────────────────────── */}
-              <Radar
-                name={metricNames[metricId]}
-                dataKey={metricId}
-                stroke={color}
-                fill={color}
-                fillOpacity={0.3}
-                isAnimationActive={true}
-                dot={(props: any) => {
-                  const { cx, cy, payload } = props;
-                  const value = payload?.[metricId];
-                  const conditionalColor = getColorForValue(
-                    typeof value === 'number' ? value : null,
-                    rules
-                  );
-                  const isHighlighted = !!conditionalColor;
-                  return (
-                    <circle
-                      key={`dot-${metricId}-${cx}-${cy}`}
-                      cx={cx} cy={cy}
-                      r={isHighlighted ? 6 : 3}
-                      fill={conditionalColor || color}
-                      stroke="#fff"
-                      strokeWidth={isHighlighted ? 2 : 1}
-                    >
-                      {isHighlighted && (
-                        <title>{`${metricNames[metricId]}: ${typeof value === 'number' ? value.toLocaleString('ru-RU') : '—'}`}</title>
-                      )}
-                    </circle>
-                  );
-                }}
-              />
-
-              {/* ─────────────────────────────────────────────────────
-                  ПОРОГОВЫЙ ПОЛИГОН (пунктирная "мишень")
-                  ───────────────────────────────────────────────────── */}
-              {hasThreshold && thresholdColor && (
-                <Radar
-                  name={`${metricNames[metricId]} (порог)`}
-                  dataKey={`${metricId}_threshold`}
-                  stroke={thresholdColor}
-                  strokeWidth={2}
-                  strokeDasharray="6 3"
-                  fill="none"
-                  isAnimationActive={false}
-                  legendType="none"
-                  dot={false}
-                  opacity={0.8}
-                />
-              )}
-            </Fragment>
+            <Radar
+              key={metricId}
+              name={metricNames[metricId]}
+              dataKey={metricId}
+              stroke={color}
+              fill={color}
+              fillOpacity={0.3}
+              isAnimationActive={true}
+              dot={(props: any) => {
+                const { cx, cy, payload } = props;
+                const value = payload?.[metricId];
+                const conditionalColor = getColorForValue(
+                  typeof value === 'number' ? value : null,
+                  rules
+                );
+                const isHighlighted = !!conditionalColor;
+                return (
+                  <circle
+                    key={`dot-${metricId}-${cx}-${cy}`}
+                    cx={cx} cy={cy}
+                    r={isHighlighted ? 6 : 3}
+                    fill={conditionalColor || color}
+                    stroke="#fff"
+                    strokeWidth={isHighlighted ? 2 : 1}
+                  >
+                    {isHighlighted && (
+                      <title>
+                        {`${metricNames[metricId]}: ${typeof value === 'number' ? value.toLocaleString('ru-RU') : '—'}`}
+                      </title>
+                    )}
+                  </circle>
+                );
+              }}
+            />
           );
         })}
 
@@ -492,7 +502,6 @@ const MemoizedRadarChart = memo(function RadarChartComp({
     </ResponsiveContainer>
   );
 });
-
 // ═══════════════════════════════════════════════════════════
 // ROOT COMPONENT
 // ═══════════════════════════════════════════════════════════
@@ -525,29 +534,29 @@ export function ChartsSection({ result }: ChartsSectionProps) {
 
   const chartData = useMemo<ChartDataItem[]>(() => {
     if (!result || activeMetricIds.length === 0) return [];
-    
+
+    // Группируем пороги один раз
+    const groupedThresholds = groupThresholdsByValue(
+      result.virtualMetrics,
+      activeMetricIds
+    );
+
     return result.groups.map(group => {
       const dataItem: ChartDataItem = { name: group.groupName };
-      
+
+      // Реальные значения метрик
       activeMetricIds.forEach(metricId => {
         const val = group.virtualMetrics.find(vm => vm.virtualMetricId === metricId);
         dataItem[metricId] = val?.value ?? 0;
         dataItem[`${metricId}_formatted`] = val?.formattedValue ?? '—';
-
-        // ═══════════════════════════════════════════════════════
-        // ПОРОГ ДЛЯ РАДАРА: берём первое правило как "мишень"
-        // ═══════════════════════════════════════════════════════
-        const vm = result.virtualMetrics.find(v => v.id === metricId);
-        const primaryRule = vm?.colorConfig?.rules?.[0];
-        if (primaryRule) {
-          // Для between используем верхнюю границу как лимит, иначе value
-          const thresholdVal = primaryRule.operator === 'between' && primaryRule.value2 != null
-            ? primaryRule.value2
-            : primaryRule.value;
-          dataItem[`${metricId}_threshold`] = thresholdVal;
-        }
       });
-      
+
+      groupedThresholds.forEach((group_, gi) => {
+        const thresholdKey = `__threshold_${gi}`;
+        // Среднее значение группы как универсальный порог для всех метрик
+        dataItem[thresholdKey] = group_.y;
+      });
+
       return dataItem;
     });
   }, [result, activeMetricIds]);

@@ -9,8 +9,8 @@ import { cn } from '@/shared/lib/utils';
 export interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  title: string;
-  description: string;
+  title: React.ReactNode;
+  description: React.ReactNode;
   onConfirm: () => void | Promise<void>;
   variant?: 'default' | 'destructive';
   isLoading?: boolean;
@@ -70,8 +70,10 @@ export function ConfirmDialog({
             {title}
           </Dialog.Title>
           
-          <Dialog.Description className="mt-2 text-slate-500 dark:text-slate-400">
-            {description}
+          <Dialog.Description asChild>
+            <div className="mt-2 text-slate-500 dark:text-slate-400">
+              {description}
+            </div>
           </Dialog.Description>
           
           <div className="mt-6 flex justify-end gap-3">

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMetricTemplateStore } from '@/entities/metric';
-import { Plus, Save, Trash2, LayoutGrid, Columns } from 'lucide-react';
+import { Plus, Save, Trash2, LayoutGrid, Columns, AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Card } from '@/shared/ui/card';
@@ -156,7 +156,6 @@ export function DashboardBuilder({ dashboardId }: { dashboardId?: string }) {
 }
 
 function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, onRemove }: {
-  // Типизируем пропсы
   groupConfig: IndicatorGroupInDashboard;
   virtualMetrics: VirtualMetric[];
   allGroups: IndicatorGroup[];
@@ -165,13 +164,48 @@ function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, o
 }) {
   const fullGroup = allGroups.find((g) => g.id === groupConfig.groupId);
   const templates = useMetricTemplateStore(s => s.templates);
-  
-  if (!fullGroup) return null;
+  const isOrphaned = !fullGroup;
 
+  // ─── ORPHANED ГРУППА: показываем строку с предупреждением ───
+  if (isOrphaned) {
+    return (
+      <tr className="bg-rose-50/40 dark:bg-rose-950/20">
+        <td className="px-4 py-3 sticky left-0 bg-rose-50/80 dark:bg-rose-950/40 border-r dark:border-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+          <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+            <AlertTriangle size={14} className="shrink-0" />
+            <span className="text-sm font-medium">
+              Группа удалена
+            </span>
+          </div>
+          <span className="text-[10px] text-rose-400 dark:text-rose-500 font-mono">
+            ID: {groupConfig.groupId.slice(0, 12)}…
+          </span>
+        </td>
+        {virtualMetrics.map((vm) => (
+          <td key={vm.id} className="px-4 py-2">
+            <span className="text-xs text-rose-400 dark:text-rose-500 italic">—</span>
+          </td>
+        ))}
+        <td className="px-2 text-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-rose-500 hover:text-rose-700 hover:bg-rose-100 dark:hover:bg-rose-900/30"
+            onClick={onRemove}
+            title="Удалить привязку"
+          >
+            <Trash2 size={14} />
+          </Button>
+        </td>
+      </tr>
+    );
+  }
+
+  // ─── НОРМАЛЬНАЯ ГРУППА: существующий рендер ───
   return (
     <tr className="group hover:bg-slate-50 dark:hover:bg-slate-900/50">
       <td className="px-4 py-3 font-medium text-sm sticky left-0 bg-white dark:bg-slate-950 group-hover:bg-slate-50 dark:group-hover:bg-slate-900/50 border-r dark:border-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-        {fullGroup.name}
+        {fullGroup!.name}
       </td>
       {virtualMetrics.map((vm: VirtualMetric) => {
         const binding = groupConfig.virtualMetricBindings?.find((b) => b.virtualMetricId === vm.id);
@@ -188,7 +222,7 @@ function MappingRow({ groupConfig, virtualMetrics, allGroups, onUpdateBinding, o
               onChange={(e) => onUpdateBinding(groupConfig.groupId, vm.id, e.target.value)}
             >
               <SelectOption value="">—</SelectOption>
-              {fullGroup.metrics.map((metric) => {
+              {fullGroup!.metrics.map((metric) => {
                 const tpl = templates.find(t => t.id === metric.templateId);
                 return <SelectOption key={metric.id} value={metric.id}>{`${metric?.customName}(${tpl?.name})` || tpl?.name || 'Metric'}</SelectOption>;
               })}

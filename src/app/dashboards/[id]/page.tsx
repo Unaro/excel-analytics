@@ -20,6 +20,7 @@ import { refreshPgDataset } from '@/entities/dataset/model/sync-engine';
 import { DashboardMetricsTable } from '@/widgets/DashboardMetricsTable';
 import { useDashboardCalculation } from '@/features/computation/model/use-dashboard-calculation';
 import { useHierarchyTree } from '@/entities/hierarchy/lib/hooks/use-hierarchy-tree';
+import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 
 function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
   const { id: dashboardId } = use(params);
@@ -33,6 +34,29 @@ function DashboardContent({ params }: { params: Promise<{ id: string }> }) {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const switchDataset = useDatasetStore(s => s.switchDataset);
   const isSyncing = useDatasetStore(s => s.isSyncing);
+
+  // ─── АВТОЧИСТКА ORPHANED-ПРИВЯЗОК ПРИ ОТКРЫТИИ ДАШБОРДА ───
+  useEffect(() => {
+    if (!hydrated || !dashboard) return;
+    
+    const allGroups = useIndicatorGroupStore.getState().groups;
+    const validGroupIds = new Set(allGroups.map(g => g.id));
+    
+    const orphanedGroups = dashboard.indicatorGroups.filter(
+      g => !validGroupIds.has(g.groupId)
+    );
+    
+    if (orphanedGroups.length > 0) {
+      const { removeIndicatorGroup } = useDashboardStore.getState();
+      orphanedGroups.forEach(g => {
+        removeIndicatorGroup(dashboardId, g.groupId);
+      });
+      toast.warning(
+        `Удалено ${orphanedGroups.length} устаревш${orphanedGroups.length === 1 ? 'ая' : 'их'} привяз${orphanedGroups.length === 1 ? 'ка' : 'ки'} групп`,
+        { duration: 5000 }
+      );
+    }
+  }, [hydrated, dashboard, dashboardId]);
 
   useEffect(() => {
     if (!hydrated) return;

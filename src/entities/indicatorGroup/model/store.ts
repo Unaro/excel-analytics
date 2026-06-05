@@ -3,6 +3,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
 import { FieldBinding, GroupMetric, IndicatorGroup } from '@/entities/metric';
+import { useDashboardStore } from '@/entities/dashboard';
+import { useDatasetStore } from '@/entities/dataset';
+import { createComputationCache } from '@/lib/storage';
 
 interface IndicatorGroupState {
   groups: IndicatorGroup[];
@@ -65,11 +68,26 @@ export const useIndicatorGroupStore = create<IndicatorGroupState>()(
       },
       
       deleteGroup: (id) => {
+        // 1. Удаляем саму группу
         set((state) => ({
           groups: state.groups.filter((group) => group.id !== id),
         }));
+
+        // 2. Каскадная очистка ссылок во всех дашбордах
+        const { dashboards, removeIndicatorGroup } = useDashboardStore.getState();
+        dashboards.forEach(dashboard => {
+          if (dashboard.indicatorGroups.some(g => g.groupId === id)) {
+            removeIndicatorGroup(dashboard.id, id);
+          }
+        });
+
+        const datasets = useDatasetStore.getState().datasets;
+        Object.entries(datasets).forEach(([datasetId, ds]) => {
+          createComputationCache(ds.sourceType ?? 'file')
+            .clearByDashboard(datasetId, ds.id)
+            .catch(() => {});
+        });
       },
-      
       duplicateGroup: (id) => {
         const group = get().getGroup(id);
         if (!group) return null;
