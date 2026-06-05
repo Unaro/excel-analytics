@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  LayoutDashboard, Database, Calculator, Layers, GitMerge, 
-  LucideIcon, X, 
+import {
+  LayoutDashboard, Database, Calculator, Layers, GitMerge,
+  LucideIcon, X,
   Settings
 } from 'lucide-react';
 import { ThemeToggle } from '@/features/ThemeToggle';
@@ -23,7 +23,6 @@ interface SidebarProps {
 
 const SidebarComponent = ({ className, onClose }: SidebarProps) => {
   const pathname = usePathname();
-
   const isDashboardPage = /^\/dashboards\/[^/]+$/.test(pathname || '');
 
   const menuItems: MenuItem[] = [
@@ -43,7 +42,6 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
       "flex flex-col h-full bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 transition-colors duration-300",
       className
     )}>
-      {/* Логотип */} 
       <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center">
         <div className="flex items-center gap-3 font-bold text-xl text-gray-900 dark:text-white">
           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white shadow-lg shadow-indigo-500/30">
@@ -51,7 +49,6 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
           </div>
           <span className="tracking-tight">Urban<span className="text-indigo-600 dark:text-indigo-400">Analytics</span></span>
         </div>
-        
         {onClose && (
           <Button variant="ghost" size="icon" onClick={onClose} className="lg:hidden">
             <X size={20} />
@@ -59,21 +56,17 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
         )}
       </div>
 
-      {/* Статус файла (Hot Swap Zone) */}
       <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/30">
         <DatasetSwitcher isDisabled={isDashboardPage} />
       </div>
 
-      {/* Меню */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
         {menuItems.map((item, idx) => {
           if (item.type === 'divider') {
             return <div key={`div-${idx}`} className="h-px bg-gray-100 dark:bg-slate-800 my-4 mx-2" />;
           }
-
           const Icon = item.icon;
           const isActive = pathname.startsWith(item.href);
-
           return (
             <Link
               key={item.href}
@@ -81,8 +74,8 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
               onClick={onClose}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200",
-                isActive 
-                  ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 shadow-sm" 
+                isActive
+                  ? "bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 shadow-sm"
                   : "text-slate-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200"
               )}
             >
@@ -93,7 +86,6 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
         })}
       </nav>
 
-      {/* Футер */}
       <div className="p-4 border-t border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/50">
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-medium text-slate-400">Тема интерфейса</span>

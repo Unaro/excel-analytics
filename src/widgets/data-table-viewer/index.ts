@@ -1,1 +1,1 @@
-export * from './ui'
+export { DataTableViewer } from './ui/DataTableViewer';

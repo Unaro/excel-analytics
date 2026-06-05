@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMetricTemplateStore } from '@/entities/metric';
-import { Plus, Trash2, Calculator, FunctionSquare} from 'lucide-react';
+import { Plus, Trash2, Calculator, FunctionSquare } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { toast } from 'sonner';
@@ -46,24 +46,23 @@ export function TemplateManager() {
                 </div>
               </div>
             </div>
-            
+
             <div className="bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-lg p-3 mb-2">
               <code className="text-xs font-mono text-slate-700 dark:text-slate-300 break-all">
-                {template.type === 'aggregate' 
-                  ? `${template.aggregateFunction}(${template.aggregateField || 'x'})` 
+                {template.type === 'aggregate'
+                  ? `${template.aggregateFunction}(${template.aggregateField || 'x'})`
                   : template.formula}
               </code>
             </div>
 
             <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                 onClick={() => {
                   const isConfirmed = confirm(`Вы уверены, что хотите удалить шаблон "${template.name}"?`);
-
-                  if(isConfirmed) {
+                  if (isConfirmed) {
                     deleteTemplate(template.id);
                     toast.success('Шаблон удален');
                   }

@@ -1,2 +1,1 @@
-export * from './ui';
-
+export { TemplateManager } from './ui/TemplateManager';

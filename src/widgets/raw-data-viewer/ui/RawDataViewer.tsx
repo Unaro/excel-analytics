@@ -1,4 +1,5 @@
 'use client';
+
 import { useMemo } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { DataTableViewer } from '@/widgets/data-table-viewer';
@@ -20,7 +21,6 @@ export function RawDataViewer() {
   const isShowingPreview = isFileSource && rows.length < totalRows;
   const engineStatus = activeDataset.engineStatus;
 
-  // Состояние загрузки DuckDB
   if (isFileSource && engineStatus === 'loading') {
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-500 border rounded-xl bg-white dark:bg-slate-900">
@@ -30,7 +30,6 @@ export function RawDataViewer() {
     );
   }
 
-  // Ошибка DuckDB
   if (isFileSource && engineStatus === 'error') {
     return (
       <div className="flex flex-col items-center justify-center py-12 gap-3 text-red-500 border rounded-xl bg-red-50/30 dark:bg-red-900/10">
@@ -43,7 +42,6 @@ export function RawDataViewer() {
 
   return (
     <div className="space-y-3">
-      {/* Индикатор preview */}
       {isShowingPreview && rows.length > 0 && (
         <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <Info size={16} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />

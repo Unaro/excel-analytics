@@ -1,4 +1,5 @@
 'use client';
+
 import { memo, useState, useMemo, useCallback, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Check, Filter, X } from 'lucide-react';
 import { HierarchyLevel, HierarchyNode, useHierarchyStore } from '@/entities/hierarchy';
@@ -14,9 +15,6 @@ import { useHierarchyLevelNodes } from '@/entities/hierarchy/lib/hooks/use-hiera
 
 const EMPTY_PATH: HierarchyFilterValue[] = [];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ROOT COMPONENT
-// ─────────────────────────────────────────────────────────────────────────────
 export interface TreeProps {
   dashboardId?: string;
   currentFilters: HierarchyFilterValue[];
@@ -28,7 +26,7 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
   const levels = useHierarchyStore(useShallow(s => activeDatasetId ? s.getLevels(activeDatasetId) : []));
   const { resetAll } = useFilterActions(dashboardId || 'profile_mode');
   const hasData = useDatasetStore(s => s.hasData());
-  
+
   const structureKey = useMemo(() => levels.map((l: HierarchyLevel) => l.id).join('-'), [levels]);
 
   const handleReset = useCallback(() => {
@@ -38,7 +36,9 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
 
   useEffect(() => {
     if (currentFilters.length > 0 && levels.length > 0) {
-      const isConfigValid = currentFilters.every(filter => levels.some(l => l.id === filter.levelId));
+      const isConfigValid = currentFilters.every(filter =>
+        levels.some(l => l.id === filter.levelId)
+      );
       if (!isConfigValid) handleReset();
     }
   }, [currentFilters, levels, handleReset]);
@@ -81,9 +81,6 @@ export function HierarchyTree({ dashboardId, currentFilters, onFilterChange }: T
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TREE NODE (MEMOIZED)
-// ─────────────────────────────────────────────────────────────────────────────
 interface TreeNodeProps {
   dashboardId?: string;
   levelIndex: number;
@@ -104,7 +101,7 @@ const TreeNode = memo(function TreeNode({
   const currentLevel = levels[levelIndex];
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const setHierarchyFilters = useDashboardStore(s => s.setHierarchyFilters);
-  
+
   const columnClassification = useColumnConfigStore(s => {
     if (!activeDatasetId || !currentLevel) return 'categorical';
     const cfg = s.getConfigs(activeDatasetId).find(c => c.columnName === currentLevel.columnName);
@@ -112,7 +109,6 @@ const TreeNode = memo(function TreeNode({
   });
 
   const hasNextLevel = levelIndex + 1 < levels.length;
-  
   const { nodes, isLoading } = useHierarchyLevelNodes(currentLevel ?? null, parentPath, hasNextLevel);
 
   const activeFilterAtThisLevel = activeFilters.find(f => f.levelId === currentLevel?.id);
@@ -176,9 +172,6 @@ const TreeNode = memo(function TreeNode({
   );
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NODE ITEM (STRICTLY TYPED & ISOLATED)
-// ─────────────────────────────────────────────────────────────────────────────
 interface NodeItemProps {
   node: HierarchyNode;
   isSelected: boolean;
@@ -245,17 +238,22 @@ const NodeItem = memo(function NodeItem({
         >
           {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </div>
+
         <div className={cn("transition-colors shrink-0", isSelected ? 'text-indigo-500 dark:text-indigo-400' : 'text-slate-400 group-hover:text-slate-500')}>
           {isSelected ? <FolderOpen size={16} /> : <Folder size={16} />}
         </div>
+
         <span className="truncate flex-1">{node.displayValue}</span>
+
         {node.recordCount > 0 && (
           <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full transition-colors", isSelected ? "bg-indigo-100 dark:bg-indigo-500/30 text-indigo-600 dark:text-indigo-200" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-500 group-hover:bg-slate-200 dark:group-hover:bg-slate-700")}>
             {node.recordCount}
           </span>
         )}
+
         {isSelected && <Check size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />}
       </div>
+
       {showChevron && isExpanded && (
         <div className="pl-4 ml-2.5 border-l border-slate-100 dark:border-slate-800 my-1">
           <TreeNode

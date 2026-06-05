@@ -1,5 +1,5 @@
-// widgets/DataTableViewer/ui.tsx
 'use client';
+
 import { useState, useMemo } from 'react';
 import { ArrowLeft, ArrowRight, ChevronsLeft, ChevronsRight, Loader2, Database } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
@@ -48,7 +48,6 @@ export function DataTableViewer({
     return data.length ? Object.keys(data[0]) : [];
   }, [columns, data]);
 
-  // --- UI ---
   if (loading) {
     return (
       <div className={cn("flex flex-col items-center justify-center py-16 text-slate-400 gap-3 border rounded-xl bg-white dark:bg-slate-900 dark:border-slate-800", className)}>
@@ -69,7 +68,6 @@ export function DataTableViewer({
 
   return (
     <div className={cn("flex flex-col border rounded-xl bg-white dark:bg-slate-900 dark:border-slate-800 overflow-hidden shadow-sm", className)}>
-      {/* Хедер */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50">
         <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 truncate">
           {title || `Таблица данных (${data.length.toLocaleString()} строк)`}
@@ -77,7 +75,6 @@ export function DataTableViewer({
         <div className="flex items-center gap-2">{actions}</div>
       </div>
 
-      {/* Тело таблицы */}
       <div className="overflow-auto custom-scrollbar max-h-[550px]">
         {data.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-slate-400 gap-2">
@@ -104,20 +101,18 @@ export function DataTableViewer({
                       {(safePage - 1) * pageSize + idx + 1}
                     </td>
                   )}
-
                   {resolvedColumns.map(col => {
                     const cellValue = formatDataValue(row[col]);
-
                     return (
                       <td key={col} className={cn(
                         "p-3 max-w-[250px] truncate text-right transition-colors",
-                        typeof cellValue.type === 'number' 
-                          ? "text-slate-900 dark:text-slate-100 font-mono font-medium" 
+                        typeof cellValue.type === 'number'
+                          ? "text-slate-900 dark:text-slate-100 font-mono font-medium"
                           : "text-slate-600 dark:text-slate-400",
                         typeof cellValue.type === 'boolean' && "text-center",
                         cellValue.display === "—" && "text-slate-300 dark:text-slate-600 italic"
                       )}>
-                          {cellValue.display}
+                        {cellValue.display}
                       </td>
                     );
                   })}
@@ -128,7 +123,6 @@ export function DataTableViewer({
         )}
       </div>
 
-      {/* Футер пагинации */}
       {enablePagination && totalPages > 1 && (
         <div className="flex items-center justify-between px-4 py-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/30">
           <span className="text-xs text-slate-500 dark:text-slate-400">
