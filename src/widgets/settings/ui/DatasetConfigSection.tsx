@@ -1,16 +1,17 @@
 'use client';
-import { useRef } from 'react';
-import { useConfigPersistence } from '@/features/config-persistence/model/use-config-persistence';
+
 import { useDatasetStore } from '@/entities/dataset';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { Download, Upload, Database, AlertCircle } from 'lucide-react';
+import { useConfigPersistence } from '@/features/config-persistence';
+import { useSettingsActions } from '../model/use-settings-actions';
 
 export function DatasetConfigSection() {
-  const { exportDatasetConfig, importToDataset } = useConfigPersistence();
+  const { exportDatasetConfig } = useConfigPersistence();
+  const { handleImportConfig } = useSettingsActions();
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const activeDataset = useDatasetStore(s => activeDatasetId ? s.datasets[activeDatasetId] : null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!activeDatasetId) {
     return (
@@ -42,25 +43,12 @@ export function DatasetConfigSection() {
               <Upload size={16} className="mr-2" /> Экспорт конфига
             </Button>
             <Button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => handleImportConfig(activeDatasetId)}
               variant="default"
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               <Download size={16} className="mr-2" /> Импорт в текущий
             </Button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              className="hidden"
-              accept=".json"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file && activeDatasetId) {
-                  importToDataset(file, activeDatasetId);
-                  e.target.value = '';
-                }
-              }}
-            />
           </div>
         </div>
       </div>
