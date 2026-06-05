@@ -10,6 +10,7 @@ import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
 const EMPTY_COLUMNS: ColumnConfig[] = []
 
 export interface FormMetricState {
+  id: string;
   templateId: string;
   tempId: string;
   unit: string;
@@ -57,35 +58,38 @@ export function useGroupBuilder(existingGroupId?: string) {
       if (group) {
         setName((prev) => (prev !== group.name ? group.name : prev));
         
-        const restoredMetrics: FormMetricState[] = group.metrics.map(m => {
-          const template = templates.find(t => t.id === m.templateId);
-          const requiredVars = template?.formula
-            ? extractVariables(template.formula)
-            : (template?.aggregateField ? [template.aggregateField] : []);
-          
-          const bindings: Record<string, string> = {};
-          const variableTypes: Record<string, 'field' | 'metric'> = {};
-          
-          m.fieldBindings.forEach(fb => {
-            bindings[fb.fieldAlias] = fb.columnName;
-            variableTypes[fb.fieldAlias] = 'field';
-          });
-          m.metricBindings.forEach(mb => {
-            bindings[mb.metricAlias] = mb.metricId;
-            variableTypes[mb.metricAlias] = 'metric';
-          });
-          
-          return {
-            templateId: m.templateId,
-            tempId: nanoid(),
-            originalMetricId: m.id,
-            unit: m.unit || '',
-            customName: m.customName,
-            requiredVariables: requiredVars,
-            variableTypes,
-            bindings
-          };
+      const restoredMetrics: FormMetricState[] = group.metrics.map((m, index) => {
+        const template = templates.find(t => t.id === m.templateId);
+        const requiredVars = template?.formula
+          ? extractVariables(template.formula)
+          : (template?.aggregateField ? [template.aggregateField] : []);
+        
+        const bindings: Record<string, string> = {};
+        const variableTypes: Record<string, 'field' | 'metric'> = {};
+        
+        m.fieldBindings.forEach(fb => {
+          bindings[fb.fieldAlias] = fb.columnName;
+          variableTypes[fb.fieldAlias] = 'field';
         });
+        m.metricBindings.forEach(mb => {
+          bindings[mb.metricAlias] = mb.metricId;
+          variableTypes[mb.metricAlias] = 'metric';
+        });
+        
+        const metricId = nanoid();
+        
+        return {
+          id: metricId,
+          templateId: m.templateId,
+          tempId: metricId,
+          originalMetricId: m.id,
+          unit: m.unit || '',
+          customName: m.customName,
+          requiredVariables: requiredVars,
+          variableTypes,
+          bindings
+        };
+      });
         
         const idMap = new Map<string, string>();
         restoredMetrics.forEach(m => {
@@ -125,9 +129,12 @@ export function useGroupBuilder(existingGroupId?: string) {
     const variableTypes: Record<string, 'field' | 'metric'> = {};
     requiredVariables.forEach(v => variableTypes[v] = 'field');
     
+    const metricId = nanoid();
+    
     setSelectedMetrics(prev => [...prev, {
+      id: metricId,
+      tempId: metricId,
       templateId,
-      tempId: nanoid(),
       requiredVariables,
       unit: '',
       customName: '',
@@ -185,12 +192,15 @@ export function useGroupBuilder(existingGroupId?: string) {
     setSelectedMetrics(prev => prev.filter(m => m.tempId !== tempId));
   }, []);
 
+  const reorderMetrics = useCallback((newOrder: FormMetricState[]) => {
+    setSelectedMetrics(newOrder);
+  }, []);
+
   // --- 4. СОХРАНЕНИЕ ГРУППЫ ---
   const saveGroup = useCallback(() => {
     if (!name.trim()) throw new Error("Введите название группы");
-    
     if (!activeDatasetId) throw new Error("Не выбран датасет");
-
+    
     const allFieldMappings: FieldBinding[] = [];
     const uniqueColumnNames = new Set<string>();
     
@@ -207,7 +217,7 @@ export function useGroupBuilder(existingGroupId?: string) {
       });
     });
     
-    // Этап 1: Промежуточные ID
+    // Этап 1: Промежуточные ID — порядок берём из selectedMetrics (который может быть изменён drag-and-drop)
     const intermediateMetrics = selectedMetrics.map((m, index) => ({
       tempId: m.tempId,
       finalId: m.originalMetricId || nanoid(),
@@ -215,7 +225,7 @@ export function useGroupBuilder(existingGroupId?: string) {
       data: m
     }));
     
-    // Этап 2: Финальная сборка GroupMetric с customName
+    // Этап 2: Финальная сборка GroupMetric
     const finalMetrics: GroupMetric[] = intermediateMetrics.map(item => {
       const m = item.data;
       const fBindings: FieldBinding[] = [];
@@ -280,6 +290,7 @@ export function useGroupBuilder(existingGroupId?: string) {
     updateVariableType,
     updateBindingValue,
     removeMetric,
+    reorderMetrics, 
     saveGroup,
     availableTemplates: templates,
     availableColumns: filteredColumns,

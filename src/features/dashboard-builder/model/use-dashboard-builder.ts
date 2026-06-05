@@ -50,6 +50,11 @@ export function useDashboardBuilder(existingDashboardId?: string) {
     setVirtualMetrics(prev => prev.filter(vm => vm.id !== id));
   }, []);
 
+  const reorderVirtualMetrics = useCallback((newOrder: VirtualMetric[]) => {
+    const reordered = newOrder.map((vm, idx) => ({ ...vm, order: idx }));
+    setVirtualMetrics(reordered);
+  }, []);
+
   const addGroupToDashboard = useCallback((groupId: string) => {
     if (dashboardGroups.some(g => g.groupId === groupId)) return;
     const newGroupConfig: IndicatorGroupInDashboard = {
@@ -109,10 +114,11 @@ export function useDashboardBuilder(existingDashboardId?: string) {
     }
     return addDashboard(dashboardData, targetDatasetId);
   }, [name, description, virtualMetrics, dashboardGroups, existingDashboardId, existingDashboard, addDashboard, updateDashboard, activeDatasetId]);
+  
   return {
     name, setName,
     description, setDescription,
-    virtualMetrics, addVirtualMetric, removeVirtualMetric,
+    virtualMetrics, addVirtualMetric, removeVirtualMetric, reorderVirtualMetrics,
     dashboardGroups, addGroupToDashboard, removeGroupFromDashboard,
     updateBinding,
     saveDashboard,

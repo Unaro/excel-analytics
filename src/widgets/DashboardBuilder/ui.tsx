@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useMetricTemplateStore } from '@/entities/metric';
-import { Plus, Save, Trash2, LayoutGrid, Columns, AlertTriangle } from 'lucide-react';
+import { Plus, Save, Trash2, LayoutGrid, Columns, AlertTriangle, GripVertical } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Card } from '@/shared/ui/card';
@@ -12,12 +12,13 @@ import { toast } from 'sonner';
 import { cn } from '@/shared/lib/utils';
 import { useDashboardBuilder } from '@/features/dashboard-builder/model/use-dashboard-builder';
 import { IndicatorGroup, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
+import { DragDropList, RenderItemProps } from '@/shared/ui/drag-drop-list';
 
 export function DashboardBuilder({ dashboardId }: { dashboardId?: string }) {
   const router = useRouter();
   const {
     name, setName, description, setDescription,
-    virtualMetrics, addVirtualMetric, removeVirtualMetric,
+    virtualMetrics, addVirtualMetric, removeVirtualMetric, reorderVirtualMetrics,
     dashboardGroups, addGroupToDashboard, removeGroupFromDashboard, updateBinding,
     saveDashboard, availableGroups
   } = useDashboardBuilder(dashboardId);
@@ -34,6 +35,58 @@ export function DashboardBuilder({ dashboardId }: { dashboardId?: string }) {
       toast.error('Ошибка сохранения');
     }
   };
+
+  // ─────────────────────────────────────────────────────────────
+  // Рендер-функция для виртуальной метрики (колонки таблицы)
+  // Определена внутри компонента для доступа к removeVirtualMetric
+  // ─────────────────────────────────────────────────────────────
+  const renderVirtualMetric = ({
+    item: vm,
+    isDragging,
+    listeners,
+    attributes,
+  }: RenderItemProps<VirtualMetric>) => (
+    <div
+      {...attributes}
+      {...listeners}
+      className={cn(
+        'flex justify-between items-center bg-slate-50 dark:bg-slate-900 p-2.5 rounded-lg border',
+        'cursor-grab active:cursor-grabbing group transition-all',
+        isDragging
+          ? 'ring-2 ring-indigo-500 shadow-lg cursor-grabbing border-indigo-300 dark:border-indigo-700'
+          : 'border-slate-100 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-md'
+      )}
+    >
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        <div className={cn(
+          'text-slate-400 transition-colors shrink-0',
+          'group-hover:text-indigo-500',
+          isDragging && 'text-indigo-600'
+        )}>
+          <GripVertical size={14} />
+        </div>
+        <span className="font-medium text-sm truncate">{vm.name}</span>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn(
+          'h-6 w-6 text-slate-400 hover:text-red-500 shrink-0 transition-opacity',
+          'opacity-0 group-hover:opacity-100 focus:opacity-100'
+        )}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          removeVirtualMetric(vm.id);
+        }}
+        aria-label={`Удалить колонку "${vm.name}"`}
+      >
+        <Trash2 size={14} />
+      </Button>
+    </div>
+  );
 
   return (
     <div className="max-w-7xl mx-auto p-8 space-y-8">
@@ -80,17 +133,25 @@ export function DashboardBuilder({ dashboardId }: { dashboardId?: string }) {
               </Button>
             </div>
 
-            <div className="space-y-2">
-              {virtualMetrics.map(vm => (
-                <div key={vm.id} className="flex justify-between items-center bg-slate-50 dark:bg-slate-900 p-2.5 rounded-lg border border-slate-100 dark:border-slate-800">
-                  <span className="font-medium text-sm">{vm.name}</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400 hover:text-red-500" onClick={() => removeVirtualMetric(vm.id)}>
-                    <Trash2 size={14} />
-                  </Button>
+            {virtualMetrics.length === 0 ? (
+              <div className="text-xs text-slate-400 text-center py-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
+                Нет колонок
+              </div>
+            ) : (
+              <>
+                <DragDropList<VirtualMetric>
+                  items={virtualMetrics}
+                  onReorder={reorderVirtualMetrics}
+                  renderItem={renderVirtualMetric}
+                  className="space-y-2"
+                  dragDelay={0}
+                />
+                <div className="flex items-center justify-center gap-2 text-[10px] text-slate-400 mt-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <GripVertical size={10} />
+                  <span>Перетащите для изменения порядка колонок в таблице</span>
                 </div>
-              ))}
-              {virtualMetrics.length === 0 && <div className="text-xs text-slate-400 text-center py-4">Нет колонок</div>}
-            </div>
+              </>
+            )}
           </Card>
         </div>
 
