@@ -1,5 +1,4 @@
 'use client';
-
 import { memo, useMemo } from 'react';
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
@@ -46,7 +45,6 @@ export const GroupRadarChart = memo(function GroupRadarChart({
               tick={{ fontSize: 11, fill: '#94a3b8' }}
             />
             <PolarRadiusAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
-
             {groupedThresholds.map((group, gi) => {
               const thresholdKey = `__threshold_${gi}`;
               return (
@@ -66,12 +64,10 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                 />
               );
             })}
-
             {metricKeys.map((key, idx) => {
               const vm = metricConfigs?.find(v => v.id === key);
               const rules = vm?.colorConfig?.rules;
               const defaultColor = COLORS[idx % COLORS.length];
-
               return (
                 <Radar
                   key={key}
@@ -81,15 +77,12 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                   fill={defaultColor}
                   fillOpacity={0.3}
                   isAnimationActive={true}
-                  dot={(props: any) => {
-                    const { cx, cy, payload } = props;
-                    const value = payload?.[key];
-                    const conditionalColor = getColorForValue(
-                      typeof value === 'number' ? value : null,
-                      rules
-                    );
+                  dot={(props) => {
+                    const { cx = 0, cy = 0, payload } = props;
+                    const rawValue = payload?.[key];
+                    const numericValue = typeof rawValue === 'number' ? rawValue : null;
+                    const conditionalColor = getColorForValue(numericValue, rules);
                     const isHighlighted = !!conditionalColor;
-
                     return (
                       <circle
                         key={`dot-${key}-${cx}-${cy}`}
@@ -105,30 +98,28 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                 />
               );
             })}
-
             <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-
             <Tooltip
-              content={({ active, payload, label }) => {
+              content={(props) => {
+                const { active, payload, label } = props;
                 if (!active || !payload || !payload.length) return null;
-
-                const filtered = payload.filter((p: any) => {
+                const filtered = payload.filter((p) => {
                   const key = String(p.dataKey);
                   return !key.startsWith('__threshold_');
                 });
-
                 if (filtered.length === 0) return null;
-
                 return (
                   <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
                     <div className="font-bold text-slate-900 dark:text-white mb-2">{label}</div>
-                    {filtered.map((entry: any, i: number) => (
+                    {filtered.map((entry, i) => (
                       <div key={i} className="flex justify-between gap-3">
-                        <span style={{ color: entry.color }}>
-                          {metricNames[entry.dataKey as string]}
+                        <span style={{ color: entry.color ?? '#6366f1' }}>
+                          {metricNames[String(entry.dataKey)]}
                         </span>
                         <span className="font-mono font-bold">
-                          {entry.value?.toLocaleString('ru-RU')}
+                          {typeof entry.value === 'number'
+                            ? entry.value.toLocaleString('ru-RU')
+                            : String(entry.value ?? '—')}
                         </span>
                       </div>
                     ))}

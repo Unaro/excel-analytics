@@ -1,6 +1,6 @@
-import { ColumnConfig, DatasetRow } from '@/entities/dataset';
-import { ClientComputeParams } from '../types';
-import { DashboardComputationResult } from '@/entities/metric';
+import { ColumnConfig, DatasetRow } from "@/entities/dataset";
+import { ClientComputeParams } from "../types";
+import { DashboardComputationResult } from "@/entities/metric";
 
 // 1. Описываем результаты (Response), которые возвращает воркер
 export interface ImportExcelResult {
@@ -50,8 +50,9 @@ export class DuckDBWorkerManager {
   private worker: Worker | null = null;
   private messageCounter = 0;
   
+
   private callbacks = new Map<number, { 
-    resolve: (value: any) => void; 
+    resolve: (value: unknown) => void; 
     reject: (reason: Error) => void 
   }>();
 
@@ -79,7 +80,11 @@ export class DuckDBWorkerManager {
   ): Promise<WorkerEventMap[K]['response']> {
     return new Promise((resolve, reject) => {
       const id = ++this.messageCounter;
-      this.callbacks.set(id, { resolve, reject });
+      
+      this.callbacks.set(id, { 
+        resolve: (value: unknown) => resolve(value as WorkerEventMap[K]['response']), 
+        reject 
+      });
       
       this.getWorker().postMessage({ type, payload, id }, transfer);
     });

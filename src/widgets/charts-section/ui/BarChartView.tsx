@@ -1,5 +1,4 @@
 'use client';
-
 import { memo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -10,7 +9,7 @@ import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { ChartComponentProps } from '../model/types';
-import { CustomBarShapeProps } from '@/shared/lib/types/recharts';
+import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -40,9 +39,10 @@ export const BarChartView = memo(function BarChartView({
           tickFormatter={(val: number) => formatCompactNumber(val)}
         />
         <Tooltip
-          content={({ active, payload, label }) => {
+          content={(props) => {
+            const { active, payload, label } = props;
             if (!active || !payload?.length) return null;
-            const filtered = payload.filter(p => {
+            const filtered = payload.filter((p) => {
               const key = String(p.dataKey);
               return !key.startsWith('__threshold_');
             });
@@ -51,12 +51,17 @@ export const BarChartView = memo(function BarChartView({
                 <p className="font-bold text-slate-900 dark:text-white mb-2">{label}</p>
                 {filtered.map((entry, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: entry.color ?? '#6366f1' }}
+                    />
                     <span className="text-slate-500 dark:text-slate-400 text-xs">
-                      {metricNames[entry.dataKey as string]}:
+                      {metricNames[String(entry.dataKey)]}:
                     </span>
                     <span className="font-mono font-medium text-slate-900 dark:text-slate-200 ml-auto">
-                      {entry.value?.toLocaleString('ru-RU')}
+                      {typeof entry.value === 'number'
+                        ? entry.value.toLocaleString('ru-RU')
+                        : String(entry.value ?? '—')}
                     </span>
                   </div>
                 ))}
@@ -100,11 +105,9 @@ export const BarChartView = memo(function BarChartView({
               isAnimationActive={true}
               animationDuration={800}
               shape={(props: CustomBarShapeProps) => {
-                const { x, y, width, height, value, fill } = props;
-                const conditionalColor = getColorForValue(
-                  typeof value === 'number' ? value : null,
-                  rules
-                );
+                const { x = 0, y = 0, width = 0, height = 0, value, fill } = props;
+                const numericValue = typeof value === 'number' ? value : null;
+                const conditionalColor = getColorForValue(numericValue, rules);
                 const finalFill = conditionalColor || fill || defaultColor;
                 return (
                   <Rectangle

@@ -21,8 +21,6 @@ export const RadarChartView = memo(function RadarChartView({
         <PolarGrid stroke={axisColor} strokeOpacity={0.2} />
         <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: axisColor }} />
         <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={false} axisLine={false} />
-
-        {/* Пороговые полигоны (под основными) */}
         {groupedThresholds.map((group, gi) => {
           const thresholdKey = `__threshold_${gi}`;
           return (
@@ -42,13 +40,10 @@ export const RadarChartView = memo(function RadarChartView({
             />
           );
         })}
-
-        {/* Основные полигоны метрик */}
         {activeMetricIds.map((metricId, index) => {
           const vm = virtualMetrics.find(v => v.id === metricId);
           const rules = vm?.colorConfig?.rules;
           const color = COLORS[index % COLORS.length];
-
           return (
             <Radar
               key={metricId}
@@ -58,13 +53,11 @@ export const RadarChartView = memo(function RadarChartView({
               fill={color}
               fillOpacity={0.3}
               isAnimationActive={true}
-              dot={(props: any) => {
-                const { cx, cy, payload } = props;
-                const value = payload?.[metricId];
-                const conditionalColor = getColorForValue(
-                  typeof value === 'number' ? value : null,
-                  rules
-                );
+              dot={(props) => {
+                const { cx = 0, cy = 0, payload } = props;
+                const rawValue = payload?.[metricId];
+                const numericValue = typeof rawValue === 'number' ? rawValue : null;
+                const conditionalColor = getColorForValue(numericValue, rules);
                 const isHighlighted = !!conditionalColor;
                 return (
                   <circle
@@ -80,11 +73,11 @@ export const RadarChartView = memo(function RadarChartView({
             />
           );
         })}
-
         <Tooltip
-          content={({ active, payload, label }) => {
+          content={(props) => {
+            const { active, payload, label } = props;
             if (!active || !payload?.length) return null;
-            const filtered = payload.filter(p => {
+            const filtered = payload.filter((p) => {
               const key = String(p.dataKey);
               return !key.startsWith('__threshold_');
             });
@@ -94,12 +87,17 @@ export const RadarChartView = memo(function RadarChartView({
                 <p className="font-bold text-slate-900 dark:text-white mb-2">{label}</p>
                 {filtered.map((entry, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: entry.color ?? '#6366f1' }}
+                    />
                     <span className="text-slate-500 dark:text-slate-400 text-xs">
-                      {metricNames[entry.dataKey as string]}:
+                      {metricNames[String(entry.dataKey)]}:
                     </span>
                     <span className="font-mono font-medium text-slate-900 dark:text-slate-200 ml-auto">
-                      {entry.value?.toLocaleString('ru-RU')}
+                      {typeof entry.value === 'number'
+                        ? entry.value.toLocaleString('ru-RU')
+                        : String(entry.value ?? '—')}
                     </span>
                   </div>
                 ))}
@@ -107,7 +105,6 @@ export const RadarChartView = memo(function RadarChartView({
             );
           }}
         />
-
         <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
       </RadarChart>
     </ResponsiveContainer>

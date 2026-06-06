@@ -8,36 +8,57 @@ const PG_TTL = 5 * 60 * 1000;
 
 export class FileComputationCache implements IComputationCache {
   private prefix = 'comp:file:';
+  private memoryStore = new Map<string, CachedComputationEntry>();
 
-  async set(key: CacheKey, result: DashboardComputationResult, ttlMs = FILE_TTL): Promise<void> {
-    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}${key.configHash ? `:${key.configHash}` : ''}`;
+  async set(key: CacheKey, result: DashboardComputationResult, ttlMs = PG_TTL): Promise<void> {
+    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
     const meta: CacheMetadata = {
       storedAt: Date.now(),
       expiresAt: Date.now() + ttlMs,
-      sourceType: 'file',
+      sourceType: 'postgres',
       recordCount: result.totalRecords,
     };
+    const entry: CachedComputationEntry = { result, meta };
+    this.memoryStore.set(storageKey, entry);
     try {
-      await set(storageKey, { result, meta });
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'QuotaExceededError') {
-        console.warn('[FileCache] Quota exceeded. Clearing expired entries...');
-        await this.clear(key.datasetId);
-      } else {
-        console.error('[FileCache] Persistence error:', err);
-      }
+      sessionStorage.setItem(storageKey, JSON.stringify(entry));
+    } catch {
+      // Fallback to memory-only if sessionStorage quota exceeded
     }
   }
 
   async get(key: CacheKey): Promise<CachedComputationEntry | null> {
-    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}${key.configHash ? `:${key.configHash}` : ''}`;
-    const entry = await get(storageKey);
-    if (!entry) return null;
+    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
+
+    const raw = sessionStorage.getItem(storageKey) ?? this.memoryStore.get(storageKey) ?? null;
+    if (!raw) return null;
+
+    // Парсим только строку; объект из memoryStore уже типизирован
+    let entry: CachedComputationEntry;
+    if (typeof raw === 'string') {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (!isCachedComputationEntry(parsed)) return null;
+        entry = parsed;
+      } catch {
+        return null;
+      }
+    } else {
+      entry = raw;
+    }
+
     if (Date.now() > entry.meta.expiresAt) {
       await this.invalidate(key);
       return null;
     }
-    return entry as CachedComputationEntry;
+
+    const invalidatedAt = await get(`comp:file:invalidated:${key.datasetId}:${key.dashboardId}`) as number | undefined;
+    if (invalidatedAt && entry.meta.storedAt < invalidatedAt) {
+      await this.invalidate(key);
+      return null;
+    }
+
+    return entry;
   }
 
   async invalidate(key: CacheKey): Promise<void> {
@@ -121,4 +142,19 @@ export class PgComputationCache implements IComputationCache {
 
 export function createComputationCache(sourceType: 'file' | 'postgres'): IComputationCache {
   return sourceType === 'file' ? new FileComputationCache() : new PgComputationCache();
+}
+
+/**
+ * Type guard для проверки, что распарсенный объект — это CachedComputationEntry.
+ * Защита от повреждённых записей в sessionStorage.
+ */
+function isCachedComputationEntry(value: unknown): value is CachedComputationEntry {
+  if (typeof value !== 'object' || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return (
+    typeof obj.result === 'object' && obj.result !== null &&
+    typeof obj.meta === 'object' && obj.meta !== null &&
+    typeof (obj.meta as Record<string, unknown>).storedAt === 'number' &&
+    typeof (obj.meta as Record<string, unknown>).expiresAt === 'number'
+  );
 }

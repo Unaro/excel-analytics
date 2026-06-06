@@ -5,8 +5,8 @@ import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-
 import { getActiveFilter, formatValue } from '../utils';
 import { transliterate } from '@/shared/lib/utils/translit';
 import { aggregateProcessedRows } from '../aggregation';
-import { ClientComputeParams, CompiledQuery, MetricAggregationMeta } from '../types';
-import { parseExcelInWorker } from './excel-parser';
+import { ClientComputeParams } from '../types';
+import { convertExcelToCsvBuffer } from './excel-parser';
 import { buildTableName } from './table-name';
 
 // --- 1. ОПРЕДЕЛЯЕМ СТРОГИЕ ТИПЫ ДЛЯ СООБЩЕНИЙ ---
@@ -53,6 +53,21 @@ function toAbsoluteUrl(path: string): string {
   return new URL(path, self.location.origin).href;
 }
 
+/**
+ * Безопасное приведение значения из DuckDB к числу.
+ * DuckDB часто возвращает BigInt для COUNT(*) или SUM(), что ломает JS-математику.
+ */
+function toNumber(val: unknown): number | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'number') return isFinite(val) ? val : null;
+  if (typeof val === 'bigint') return Number(val);
+  if (typeof val === 'string') {
+    const num = Number(val);
+    return !isNaN(num) && isFinite(num) ? num : null;
+  }
+  return null;
+}
+
 // Конфигурация бандлов DuckDB
 const EH_BUNDLE = {
   mainModule: toAbsoluteUrl('/duckdb/duckdb-eh.wasm'),
@@ -68,7 +83,6 @@ let db: duckdb.AsyncDuckDB | null = null;
 let conn: duckdb.AsyncDuckDBConnection | null = null;
 
 async function loadWorkerScript(workerUrl: string): Promise<Worker> {
-  // Сначала пробуем создать worker напрямую
   try {
     return new Worker(workerUrl);
   } catch (directErr) {
@@ -87,7 +101,6 @@ async function loadWorkerScript(workerUrl: string): Promise<Worker> {
 let initPromise: Promise<void> | null = null;
 
 async function initDB(): Promise<void> {
-  // Если инициализация уже идёт или завершена — ждём тот же Promise
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
@@ -108,7 +121,7 @@ async function initDB(): Promise<void> {
         conn = await db.connect();
         console.log('[DuckDB] ✅ Initialized with MVP bundle (fallback)');
       } catch (mvpError) {
-        initPromise = null; // Сбрасываем, чтобы можно было попробовать снова
+        initPromise = null;
         throw new Error(
           `DuckDB initialization failed: ${mvpError instanceof Error ? mvpError.message : 'Unknown'}`
         );
@@ -117,33 +130,6 @@ async function initDB(): Promise<void> {
   })();
 
   return initPromise;
-}
-
-
-/**
- * Строит маппинг alias → тип агрегации из params.
- */
-function buildAggregateMetadataMap(
-  params: ClientComputeParams
-): Map<string, MetricAggregationMeta> {
-  const metadata = new Map<string, MetricAggregationMeta>();
-
-  for (const cfg of params.dashboardGroupsConfig) {
-    if (!cfg.enabled) continue;
-    const groupDef = params.groups.find(g => g.id === cfg.groupId);
-    if (!groupDef) continue;
-
-    for (const metric of groupDef.metrics) {
-      if (!metric.enabled) continue;
-      const tpl = params.metricTemplates.find(t => t.id === metric.templateId);
-      if (tpl?.type === 'aggregate' && tpl.aggregateFunction) {
-        const alias = `${cfg.groupId}__${metric.id}`;
-        metadata.set(alias, { aggregateFunction: tpl.aggregateFunction });
-      }
-    }
-  }
-
-  return metadata;
 }
 
 self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
@@ -221,9 +207,18 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
             .filter(item => item.label !== '')
             : undefined;
 
-          const summaryProcessed = groupByColumn
-            ? aggregateProcessedRows(processedRows, aggregateMetadata, formulas)
-            : processedRows[0] || {};
+            let summaryProcessed: Record<string, number | null>;
+
+            if (groupByColumn) {
+              // 1. Сначала агрегируем "сырые" числовые значения (SUM, AVG и т.д.) по всем строкам
+              const aggregatedRow = aggregateProcessedRows(processedRows, aggregateMetadata, formulas);
+              
+              // 2. Затем заново пересчитываем CALCULATED метрики (формулы) на основе новых итоговых данных
+              summaryProcessed = recalculateFormulasOnAggregated(aggregatedRow, formulas);
+            } else {
+              // Если группировки нет, SQL и так вернул нам одну агрегированную строку
+              summaryProcessed = processedRows[0] || {};
+            }
 
           const groupVirtualMetrics = virtualMetrics.map(vm => {
             const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
@@ -266,79 +261,86 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     
     if (type === 'IMPORT_EXCEL') {
       const { datasetId, fileName, buffer } = payload;
-      
-      // 1. Парсинг происходит в фоновом потоке, UI остается отзывчивым!
-      const sheets = parseExcelInWorker(buffer);
-      if (sheets.length === 0 || sheets[0].rows.length === 0) {
-        throw new Error('Файл пуст');
-      }
-
-      const flatRows = sheets
-        .flatMap(s => s.rows)
-        .filter(row => Object.values(row).some(v => v !== null && v !== ''));
-      
-      
-      if (flatRows.length === 0) {
-        throw new Error('После фильтрации пустых строк данных не осталось');
-      }
-
-      const headers = sheets[0].headers;
       const tableName = buildTableName(datasetId);
       
+      // Конвертируем Excel в CSV
+      const { csvBuffer, sheetNames } = convertExcelToCsvBuffer(buffer);
+      const csvFileName = `${datasetId}_import.csv`;
+      db!.registerFileBuffer(csvFileName, csvBuffer);
+      
       await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
-
-      // 2. Батчинг (Чанкование) для защиты оперативной памяти
-      const BATCH_SIZE = 15000;
-      await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
-
-      for (let i = 0; i < flatRows.length; i += BATCH_SIZE) {
-        const chunk = flatRows.slice(i, i + BATCH_SIZE);
-        const arrowTable = tableFromJSON(chunk);
-        const isFirstBatch = i === 0;
-
-        await conn!.insertArrowTable(arrowTable, {
-          name: tableName,
-          create: isFirstBatch,   // создаём только на первом батче
-        });
-        chunk.length = 0;
-      }
-
-      // 3. Формируем метаданные для Zustand (чтобы не гонять это в UI-потоке)
-      const sample = flatRows.slice(0, 100);
-      const configs = headers.map((col, idx) => {
-        const colSample = sample.map((r: any) => r[col]);
-        const valid = colSample.filter(v => v != null && v !== '');
-        const nums = valid.filter(v => typeof v === 'number');
-        const classification = valid.length === 0 ? 'ignore' : 
-          (nums.length / valid.length > 0.7 ? 'numeric' : 'categorical');
+      
+      await conn!.query(`
+        CREATE TABLE ${tableName} AS 
+        SELECT * FROM read_csv_auto(
+          '${csvFileName}',
+          sample_size = -1,              -- Сканировать весь файл для определения типов
+          auto_detect = true,            -- Включить автоопределение
+          ignore_errors = true,          -- Игнорировать проблемные строки
+          null_padding = true,           -- Заполнять пропуски NULL
+          all_varchar = false,           -- НЕ определять всё как строки
+          delim = ',',
+          quote = '"'
+        )
+      `);
+      
+      const schemaResult = await conn!.query(`DESCRIBE ${tableName}`);
+      const schemaRows = schemaResult.toArray() as Array<{
+        column_name: string;
+        column_type: string;
+        null: string;
+        key: string;
+        default: string;
+        extra: string;
+      }>;
+      
+      const configs = schemaRows.map((row, idx) => {
+        const duckType = row.column_type.toUpperCase();
+        let classification: 'numeric' | 'date' | 'categorical' = 'categorical';
+        
+        if (duckType.includes('INT') || 
+            duckType.includes('DECIMAL') || 
+            duckType.includes('FLOAT') || 
+            duckType.includes('DOUBLE') || 
+            duckType.includes('NUMERIC') ||
+            duckType.includes('HUGEINT')) {
+          classification = 'numeric';
+        } 
+        else if (duckType.includes('DATE') || 
+                duckType.includes('TIMESTAMP') || 
+                duckType.includes('TIME')) {
+          classification = 'date';
+        }
         
         return {
-          columnName: col, 
-          displayName: col, 
-          alias: transliterate(col) || `col_${idx}`,
-          classification, 
+          columnName: row.column_name,
+          displayName: row.column_name,
+          alias: transliterate(row.column_name) || `col_${idx}`,
+          classification,
           description: `Из файла ${fileName}`
         };
       });
-
-      self.postMessage({ 
-        id, 
-        success: true, 
-        result: { 
-          configs, 
-          totalRows: flatRows.length,
-          totalColumns: headers.length,
-          sheetNames: sheets.map(s => s.sheetName)
-        } 
+      
+      const countResult = await conn!.query(`SELECT COUNT(*) as cnt FROM ${tableName}`);
+      const totalRows = Number(toNumber((countResult.toArray()[0]).cnt) ?? 0);
+      
+      self.postMessage({
+        id,
+        success: true,
+        result: {
+          configs,
+          totalRows,
+          totalColumns: configs.length,
+          sheetNames
+        }
       });
     }
-
+    
     if (type === 'GET_PREVIEW') {
       const { datasetId, limit } = payload;
       const tableName = buildTableName(datasetId);
       
       try {
-        // Проверяем что таблица существует
         const checkTable = await conn!.query(`
           SELECT COUNT(*) as cnt 
           FROM information_schema.tables 
@@ -355,15 +357,12 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           return;
         }
         
-        // Безопасный limit
         const safeLimit = Math.max(1, Math.min(limit, 5000));
         const table = await conn!.query(`SELECT * FROM ${tableName} LIMIT ${safeLimit}`);
         
-        // Конвертация Arrow → JS objects
         const rows = table.toArray().map(row => {
           const obj: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(row)) {
-            // Arrow возвращает специальные типы, нормализуем к простым
             if (value === null || value === undefined) {
               obj[key] = null;
             } else if (typeof value === 'bigint') {
@@ -393,7 +392,6 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
       const tableName = buildTableName(datasetId);
       
       try {
-        // Проверяем что таблица существует
         const checkTable = await conn!.query(`
           SELECT COUNT(*) as cnt 
           FROM information_schema.tables 
@@ -405,14 +403,11 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           throw new Error(`Table ${tableName} does not exist`);
         }
         
-        // Экспортируем ВСЕ данные из таблицы в Arrow IPC format
         const table = await conn!.query(`SELECT * FROM ${tableName}`);
-        
-        // Конвертируем Arrow Table в IPC Stream (Uint8Array)
+
         const { tableToIPC } = await import('apache-arrow');
         const arrowBuffer = tableToIPC(table, 'stream');
         
-        // Передаём buffer как Transferable для zero-copy
         self.postMessage({ id, success: true, result: arrowBuffer });
       } catch (err) {
         console.error('[Worker] EXPORT_ARROW failed:', err);

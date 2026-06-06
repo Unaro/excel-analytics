@@ -155,3 +155,51 @@ export type GroupMetric = z.infer<typeof GroupMetricSchema>;
 
 export type FieldBinding = z.infer<typeof FieldBindingSchema>;
 export type MetricBinding = z.infer<typeof MetricBindingSchema>;
+
+
+/**
+ * Строгая Zod-схема для валидации JSON-файла конфигурации датасета.
+ *
+ * Используется в features/config-persistence вместо `as unknown as`.
+ * Даёт чёткие ошибки валидации при импорте повреждённых конфигов.
+ */
+export const DatasetConfigExportSchema = z.object({
+  version: z.union([z.literal(1), z.literal(2)]),
+  exportType: z.literal('dataset_config'),
+  exportedAt: z.number(),
+  sourceDatasetId: z.string(),
+  data: z.object({
+    dashboards: z.array(z.unknown()), // Dashboard — сложная схема, оставим unknown
+    indicatorGroups: z.array(IndicatorGroupSchema),
+    hierarchyLevels: z.array(z.object({
+      id: z.string(),
+      columnName: z.string(),
+      displayName: z.string(),
+      order: z.number(),
+    })),
+    columnConfigs: z.array(z.object({
+      columnName: z.string(),
+      classification: z.enum(['numeric', 'categorical', 'ignore', 'date']),
+      alias: z.string(),
+      displayName: z.string(),
+      description: z.string().optional(),
+    })),
+    metricTemplates: z.array(MetricTemplateSchema),
+    groupMetricConfigs: z.record(
+      z.string(),
+      z.record(z.string(), z.object({
+        colorConfig: z.object({
+          rules: z.array(z.object({
+            id: z.string(),
+            operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'between']),
+            value: z.number(),
+            value2: z.number().optional(),
+            color: z.enum(['emerald', 'rose', 'amber', 'blue', 'indigo', 'slate']),
+          })),
+        }).optional(),
+      }))
+    ).optional(),
+  }),
+});
+
+export type DatasetConfigExportParsed = z.infer<typeof DatasetConfigExportSchema>;
