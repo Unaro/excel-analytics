@@ -1,4 +1,6 @@
+// widgets/group-view/model/use-group-breakdown.ts
 'use client';
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { HierarchyLevel, useHierarchyStore } from '@/entities/hierarchy';
@@ -10,11 +12,10 @@ import { createComputationCache } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
 import { buildVmIdFromFields } from '@/shared/lib/utils/metric-ids';
 import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
-import { HierarchyFilterValue, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
+import { GroupMetric, HierarchyFilterValue, IndicatorGroupInDashboard, MetricTemplate, VirtualMetric } from '@/shared/lib/validators';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
 import type { ColumnConfig } from '@/entities/dataset';
-import type { MetricTemplate } from '@/entities/metric';
 
 const EMPTY_LEVELS: HierarchyLevel[] = [];
 const EMPTY_CONFIGS: ColumnConfig[] = [];
@@ -26,9 +27,7 @@ export interface GroupBreakdownResult {
   nextLevel: HierarchyLevel | null;
   summary: GroupComputationResult | null;
   breakdown: GroupComputationResult['breakdown'] | undefined;
-  /** С colorConfig — для чартов (пороги, окрашивание) */
   virtualMetrics: VirtualMetric[];
-  /** БЕЗ colorConfig — стабильная ссылка для memo-таблицы */
   baseVirtualMetrics: VirtualMetric[];
   isComputing: boolean;
   error: string | null;
@@ -37,92 +36,90 @@ export interface GroupBreakdownResult {
   resetAll: () => void;
 }
 
+/**
+ * Фабрика: строит VirtualMetric из GroupMetric с sourceMetricId.
+ */
+function buildVirtualMetric(
+  groupId: string,
+  metric: GroupMetric,
+  template: MetricTemplate | undefined,
+  order: number
+): VirtualMetric {
+  const name =
+    (metric.customName && `${metric.customName}(${template?.name})`) ||
+    metric.customName ||
+    template?.name ||
+    'Metric';
+  const displayFormat = template?.displayFormat || 'number';
+  const decimalPlaces = template?.decimalPlaces || 2;
+  const unit = template?.suffix || template?.prefix;
+
+  return {
+    id: buildVmIdFromFields(groupId, metric.id, name, displayFormat, decimalPlaces, unit),
+    name,
+    displayFormat,
+    decimalPlaces,
+    order: metric.order ?? order,
+    unit,
+    sourceMetricId: metric.id, // ✅ Связь с исходной GroupMetric
+  };
+}
+
 export function useGroupBreakdown(
   groupId: string,
   initialPath: HierarchyFilterValue[] = []
 ): GroupBreakdownResult {
-  // ─────────────────────────────────────────────────────────────
-  // 1. СОСТОЯНИЕ ПУТИ
-  // ─────────────────────────────────────────────────────────────
   const [currentPath, setCurrentPath] = useState<HierarchyFilterValue[]>(initialPath);
 
-  // ─────────────────────────────────────────────────────────────
-  // 2. СЕЛЕКТОРЫ СТОРОВ
-  // ─────────────────────────────────────────────────────────────
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
-  
   const sourceType = useDatasetStore(s => {
     const dataset = s.activeDatasetId ? s.datasets[s.activeDatasetId] : undefined;
     return dataset?.sourceType ?? 'file';
   });
-  
   const encryptedConnection = useDatasetStore(s => {
     const dataset = s.activeDatasetId ? s.datasets[s.activeDatasetId] : undefined;
     return dataset?.pgConfig?.encryptedConnection;
   });
-  
   const isSyncing = useDatasetStore(s => s.isSyncing);
-  
   const group = useIndicatorGroupStore(s => s.getGroup(groupId));
-  
   const templates = useMetricTemplateStore(useShallow(s => s.templates)) ?? EMPTY_TEMPLATES;
-  
   const levels = useHierarchyStore(useShallow(s =>
     activeDatasetId ? s.getLevels(activeDatasetId) : EMPTY_LEVELS
   ));
-
-
   const columnConfigs = useColumnConfigStore(s =>
     activeDatasetId
       ? (s.configsByDataset[activeDatasetId] ?? EMPTY_CONFIGS)
       : EMPTY_CONFIGS
   );
-
   const validColumns = useMemo(() =>
     columnConfigs.filter(c => c.classification !== 'ignore').map(c => c.columnName),
     [columnConfigs]
   );
-
   const groupMetricConfigs = useGroupMetricConfigStore(
     (s) => s.configsByGroup[groupId]
   );
 
-  // ─────────────────────────────────────────────────────────────
-  // 3. СЛЕДУЮЩИЙ УРОВЕНЬ И ВИРТУАЛЬНЫЕ МЕТРИКИ
-  // ─────────────────────────────────────────────────────────────
   const nextLevel = useMemo<HierarchyLevel | null>(() => {
     return levels[currentPath.length] ?? null;
   }, [levels, currentPath.length]);
 
-  // Базовые метрики (стабильные) — для SQL и configHash
   const virtualMetrics = useMemo<VirtualMetric[]>(() => {
     if (!group) return [];
     return group.metrics.map((m, idx) => {
       const tpl = templates.find(t => t.id === m.templateId);
-      const name = m.customName && `${m.customName}(${tpl?.name})` || m.customName || tpl?.name || 'Metric';
-      const displayFormat = tpl?.displayFormat || 'number';
-      const decimalPlaces = tpl?.decimalPlaces || 2;
-      const unit = tpl?.suffix || tpl?.prefix;
-      return {
-        id: buildVmIdFromFields(group.id, m.id, name, displayFormat, decimalPlaces, unit),
-        name,
-        displayFormat,
-        decimalPlaces,
-        order: m.order ?? idx,
-        unit,
-      };
+      return buildVirtualMetric(group.id, m, tpl, idx);
     });
   }, [group, templates]);
 
-  // UI-версия с colorConfig — только для рендера (не идёт в SQL)
   const virtualMetricsForUI = useMemo<VirtualMetric[]>(() => {
     if (!group) return [];
-    return virtualMetrics.map((vm, idx) => {
-      const groupMetric = group.metrics[idx];
-      const colorConfig = groupMetricConfigs?.[groupMetric.id]?.colorConfig;
+    return virtualMetrics.map((vm) => {
+      const colorConfig = vm.sourceMetricId
+        ? groupMetricConfigs?.[vm.sourceMetricId]?.colorConfig
+        : undefined;
       return { ...vm, colorConfig };
     });
-  }, [virtualMetrics, group, groupMetricConfigs]);
+  }, [virtualMetrics, groupMetricConfigs]);
 
   const dashboardGroupsConfig = useMemo<IndicatorGroupInDashboard[]>(() => {
     if (!group) return [];
@@ -130,34 +127,27 @@ export function useGroupBreakdown(
       groupId: group.id,
       enabled: true,
       order: 0,
-      virtualMetricBindings: group.metrics.map(m => {
+      virtualMetricBindings: group.metrics.map((m, idx) => {
         const tpl = templates.find(t => t.id === m.templateId);
-        const name = m.customName && `${m.customName}(${tpl?.name})` || m.customName || tpl?.name || 'Metric';
-        const displayFormat = tpl?.displayFormat || 'number';
-        const decimalPlaces = tpl?.decimalPlaces || 2;
-        const unit = tpl?.suffix || tpl?.prefix;
+        const vm = buildVirtualMetric(group.id, m, tpl, idx);
         return {
-          virtualMetricId: buildVmIdFromFields(group.id, m.id, name, displayFormat, decimalPlaces, unit),
+          virtualMetricId: vm.id,
           metricId: m.id,
         };
       }),
     }];
   }, [group, templates]);
 
-  // ─────────────────────────────────────────────────────────────
-  // 4. СОСТОЯНИЕ ВЫЧИСЛЕНИЙ
-  // ─────────────────────────────────────────────────────────────
   const [summary, setSummary] = useState<GroupComputationResult | null>(null);
   const [breakdown, setBreakdown] = useState<GroupComputationResult['breakdown'] | undefined>(undefined);
   const [isComputing, setIsComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const engine = useMemo(() => createComputeEngine(sourceType), [sourceType]);
   const cache = useMemo(() => createComputationCache(sourceType), [sourceType]);
-  
   const filtersHash = useMemo(() => generateFiltersHash(currentPath), [currentPath]);
   const groupByColumn = nextLevel?.columnName;
-  
+
   const configHash = useMemo(() => {
     return generateConfigHash({
       groups: group ? [group] : [],
@@ -167,27 +157,25 @@ export function useGroupBreakdown(
     }) + (groupByColumn ? `:gb:${groupByColumn}` : '');
   }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn]);
 
-  // ─────────────────────────────────────────────────────────────
-  // 5. ЯДРО ВЫЧИСЛЕНИЙ
-  // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!activeDatasetId || !group || isSyncing) {
       setSummary(null);
       setBreakdown(undefined);
       return;
     }
-    
+
     let cancelled = false;
+
     const compute = async () => {
       setIsComputing(true);
       setError(null);
-      
+
       const cacheKey = {
         datasetId: activeDatasetId,
         dashboardId: `group:${groupId}`,
         filtersHash: `${filtersHash}:${configHash}`,
       };
-      
+
       const cached = await cache.get(cacheKey);
       if (cached && !cancelled) {
         const res = cached.result as DashboardComputationResult;
@@ -196,7 +184,7 @@ export function useGroupBreakdown(
         setIsComputing(false);
         return;
       }
-      
+
       try {
         const params: ClientComputeParams = {
           datasetId: activeDatasetId,
@@ -211,12 +199,12 @@ export function useGroupBreakdown(
           groupByColumn: groupByColumn ?? undefined,
           validColumns,
         };
-        
+
         await engine.initialize(activeDatasetId);
         const result = await engine.compute(params);
-        
+
         if (cancelled) return;
-        
+
         setSummary(result.groups[0] || null);
         setBreakdown(result.groups[0]?.breakdown);
         await cache.set(cacheKey, result);
@@ -229,7 +217,7 @@ export function useGroupBreakdown(
         if (!cancelled) setIsComputing(false);
       }
     };
-    
+
     compute();
     return () => { cancelled = true; };
   }, [
@@ -238,9 +226,6 @@ export function useGroupBreakdown(
     engine, cache, encryptedConnection, validColumns
   ]);
 
-  // ─────────────────────────────────────────────────────────────
-  // 6. НАВИГАЦИЯ DRILL-DOWN
-  // ─────────────────────────────────────────────────────────────
   const drillDown = useCallback((label: string) => {
     if (!nextLevel) return;
     const newFilter: HierarchyFilterValue = {

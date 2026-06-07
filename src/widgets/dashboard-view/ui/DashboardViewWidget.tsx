@@ -3,6 +3,7 @@
 import { ClientOnly } from '@/shared/lib/hydration';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { DashboardViewContent } from './DashboardViewContent';
+import { EngineGate } from '@/shared/ui/engine-gate';
 
 interface DashboardViewWidgetProps {
   params: Promise<{ id: string }>;
@@ -21,7 +22,9 @@ interface DashboardViewWidgetProps {
 export function DashboardViewWidget({ params }: DashboardViewWidgetProps) {
   return (
     <ClientOnly fallback={<LoadingScreen message="Загрузка дашборда..." />}>
-      <DashboardViewContent params={params} />
+      <EngineGate fallbackHref="/setup">
+        <DashboardViewContent params={params} />
+      </EngineGate>
     </ClientOnly>
   );
 }

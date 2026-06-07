@@ -138,7 +138,7 @@ export const useDatasetStore = create<DatasetState>()(
           persisted[id] = {
             ...entry,
             rows: null,
-            pgStatus: 'unknown',      
+            pgStatus: 'unknown',
             engineStatus: undefined,
             lastAccessedAt: entry.lastAccessedAt
           };

@@ -18,6 +18,7 @@ import { useDashboardDatasetSync } from '../model';
 import { useDashboardComputation } from '../model';
 import { useDashboardViewState } from '../model';
 import { flattenDashboardResult } from '@/entities/metric/lib/flatten-dashboard-result';
+import { Loader2 } from 'lucide-react';
 
 interface DashboardViewContentProps {
   params: Promise<{ id: string }>;
@@ -89,7 +90,15 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   }
 
   // Edge case: датасет недоступен
-  if (!hasData && dashboard.datasetId) {
+  if (!boundDataset && dashboard.datasetId) {
+    return <DatasetUnavailable dashboardName={dashboard.name} />;
+  }
+
+  if (boundDataset?.sourceType === 'file' && boundDataset.engineStatus === 'error') {
+    return <DatasetUnavailable dashboardName={dashboard.name} />;
+  }
+
+  if (boundDataset?.sourceType === 'postgres' && !hasData) {
     return <DatasetUnavailable dashboardName={dashboard.name} />;
   }
 

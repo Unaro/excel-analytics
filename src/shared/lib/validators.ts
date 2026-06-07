@@ -23,6 +23,7 @@ export const VirtualMetricSchema = z.object({
   displayFormat: z.enum(['number', 'decimal', 'percent', 'currency', 'scientific']),
   decimalPlaces: z.number().int().min(0).max(10),
   order: z.number().int(),
+  sourceMetricId: z.string().optional(),
   colorConfig: z.object({
     rules: z.array(z.object({
       id: z.string().min(1),

@@ -16,7 +16,7 @@ export const RadarChartView = memo(function RadarChartView({
   const { groupedThresholds } = useThresholdGrouping(virtualMetrics, activeMetricIds);
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={300}>
       <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
         <PolarGrid stroke={axisColor} strokeOpacity={0.2} />
         <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: axisColor }} />

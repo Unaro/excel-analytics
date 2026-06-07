@@ -1,4 +1,6 @@
+// widgets/dashboard-view/model/use-dashboard-dataset-sync.ts
 'use client';
+
 import { useEffect, useState, useCallback } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
@@ -6,10 +8,6 @@ import { refreshPgDataset } from '@/entities/dataset/model/sync-engine';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
-/**
- * Автоматическое переключение датасета на привязанный к дашборду.
- * Возвращает информацию о связанном датасете и функцию обновления (для PG).
- */
 export function useDashboardDatasetSync(dashboardId: string) {
   const router = useRouter();
   const dashboard = useDashboardStore(s => s.getDashboard(dashboardId));
@@ -54,7 +52,16 @@ export function useDashboardDatasetSync(dashboardId: string) {
     }
   }, [dashboardDatasetId, isPgSource, router]);
 
-  const hasData = !!boundDataset?.rows && boundDataset.rows.length > 0;
+  // ✅ ПРОСТАЯ ЛОГИКА hasData:
+  //  - File: данные есть когда Worker готов (engineStatus === 'ready')
+  //  - PG: данные есть когда rows загружены
+  const hasData = (() => {
+    if (!boundDataset) return false;
+    if (boundDataset.sourceType === 'file') {
+      return boundDataset.engineStatus === 'ready';
+    }
+    return !!boundDataset.rows && boundDataset.rows.length > 0;
+  })();
 
   return {
     boundDataset,

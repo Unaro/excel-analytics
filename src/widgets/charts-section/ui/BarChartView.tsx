@@ -19,7 +19,7 @@ export const BarChartView = memo(function BarChartView({
   const { groupedThresholds } = useThresholdGrouping(virtualMetrics, activeMetricIds);
 
   return (
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={300}>
       <BarChart data={data} margin={{ top: 20, right: 60, left: 20, bottom: 70 }}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={axisColor} strokeOpacity={0.2} />
         <XAxis
