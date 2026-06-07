@@ -274,11 +274,11 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         CREATE TABLE ${tableName} AS 
         SELECT * FROM read_csv_auto(
           '${csvFileName}',
-          sample_size = -1,              -- Сканировать весь файл для определения типов
-          auto_detect = true,            -- Включить автоопределение
-          ignore_errors = true,          -- Игнорировать проблемные строки
-          null_padding = true,           -- Заполнять пропуски NULL
-          all_varchar = false,           -- НЕ определять всё как строки
+          sample_size = -1,
+          auto_detect = true,
+          ignore_errors = true,
+          null_padding = true,
+          all_varchar = false,
           delim = ',',
           quote = '"'
         )
@@ -293,22 +293,24 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         default: string;
         extra: string;
       }>;
-      
+
+      for (const row of schemaRows) {
+        const duckType = row.column_type.toUpperCase();
+        if (duckType === 'TIME' || duckType === 'TIME WITH TIME ZONE') {
+          await conn!.query(`ALTER TABLE ${tableName} ALTER COLUMN "${row.column_name}" TYPE VARCHAR`);
+          row.column_type = 'VARCHAR';
+        }
+      }
+
       const configs = schemaRows.map((row, idx) => {
         const duckType = row.column_type.toUpperCase();
         let classification: 'numeric' | 'date' | 'categorical' = 'categorical';
         
-        if (duckType.includes('INT') || 
-            duckType.includes('DECIMAL') || 
-            duckType.includes('FLOAT') || 
-            duckType.includes('DOUBLE') || 
-            duckType.includes('NUMERIC') ||
-            duckType.includes('HUGEINT')) {
+        // Числовые типы
+        if (duckType.includes('INT') || duckType.includes('DECIMAL') || duckType.includes('FLOAT') || duckType.includes('DOUBLE') || duckType.includes('NUMERIC') || duckType.includes('HUGEINT')) {
           classification = 'numeric';
         } 
-        else if (duckType.includes('DATE') || 
-                duckType.includes('TIMESTAMP') || 
-                duckType.includes('TIME')) {
+        else if (duckType.includes('DATE') || duckType.includes('TIMESTAMP')) {
           classification = 'date';
         }
         

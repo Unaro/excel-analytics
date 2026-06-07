@@ -13,10 +13,10 @@ import { DashboardHeader } from './DashboardHeader';
 import { DashboardStats } from './DashboardStats';
 import { DashboardNotFound } from './DashboardNotFound';
 import { DatasetUnavailable } from './DatasetUnavailable';
-import { useDashboardOrphanCleanup } from '../model/use-dashboard-orphan-cleanup';
-import { useDashboardDatasetSync } from '../model/use-dashboard-dataset-sync';
-import { useDashboardComputation } from '../model/use-dashboard-computation';
-import { useDashboardViewState } from '../model/use-dashboard-view-state';
+import { useDashboardOrphanCleanup } from '../model';
+import { useDashboardDatasetSync } from '../model';
+import { useDashboardComputation } from '../model';
+import { useDashboardViewState } from '../model';
 import { flattenDashboardResult } from '@/entities/metric/lib/flatten-dashboard-result';
 
 interface DashboardViewContentProps {
@@ -27,7 +27,7 @@ interface DashboardViewContentProps {
  * Приватный оркестратор страницы просмотра дашборда.
  *
  * Отвечает за:
- *  1. Парсинг `params` (Next.js 15 async params через `use()`)
+ *  1. Парсинг `params`
  *  2. Вызов features-хуков (computation, dataset-sync, orphan-cleanup)
  *  3. Чтение данных дашборда из store
  *  4. Управление UI-состоянием через `useDashboardViewState`

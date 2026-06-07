@@ -1,1 +1,1 @@
-export { DashboardViewWidget } from './ui/DashboardViewWidget';
+export { DashboardViewWidget } from './ui';

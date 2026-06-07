@@ -12,13 +12,36 @@ export function convertExcelToCsvBuffer(fileBuffer: ArrayBuffer): {
   
   const firstSheetName = workbook.SheetNames[0];
   const worksheet = workbook.Sheets[firstSheetName];
+
+  for (const cellRef in worksheet) {
+    if (cellRef.startsWith('!')) continue;
+    const cell = worksheet[cellRef];
+    
+    if (cell.v instanceof Date) {
+      const year = cell.v.getUTCFullYear();
+      if (year === 1899) {
+        let timeStr = cell.w;
+        
+        if (!timeStr) {
+          const iso = cell.v.toISOString(); // "1899-12-31T01:01:00.000Z"
+          const timePart = iso.split('T')[1].replace('.000Z', ''); // "01:01:00"
+          timeStr = timePart.endsWith(':00') ? timePart.slice(0, -3) : timePart;
+        }
+        
+        cell.t = 's';
+        cell.v = timeStr;
+        delete cell.w;
+        delete cell.z;
+      }
+    }
+  }
   
   const csvString = XLSX.utils.sheet_to_csv(worksheet, {
-    FS: ',',              // Разделитель полей
-    RS: '\n',             // Разделитель строк
-    blankrows: false,     // Игнорируем пустые строки
-    strip: true,          // Убираем пробелы
-    dateNF: 'yyyy-mm-dd'  // Формат дат в CSV
+    FS: ',',
+    RS: '\n',
+    blankrows: false,
+    strip: true,
+    dateNF: 'yyyy-mm-dd'
   });
   
   return {

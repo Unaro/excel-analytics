@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { ArrowLeft, Edit, RotateCw, Loader2 } from 'lucide-react';
-import { Button } from '@/shared/ui/button';
 import { AddKPIDialog } from '@/features/AddKpiWidget';
 import type { Dashboard } from '@/entities/dashboard';
 import { DatasetStatusBadge, type DatasetStatus } from './DatasetStatusBadge';
