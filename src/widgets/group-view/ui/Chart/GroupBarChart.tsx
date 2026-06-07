@@ -40,7 +40,7 @@ export const GroupBarChart = memo(function GroupBarChart({
     <Card className="p-6">
       <h3 className="font-bold text-slate-900 dark:text-white mb-4">{title}</h3>
       <div className="h-[400px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={300}>
           <BarChart data={data} margin={{ top: 20, left: 20, right: 60, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} vertical={false} />
             <XAxis

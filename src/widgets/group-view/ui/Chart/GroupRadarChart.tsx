@@ -37,7 +37,7 @@ export const GroupRadarChart = memo(function GroupRadarChart({
     <Card className="p-6">
       <h3 className="font-bold text-slate-900 dark:text-white mb-4">{title}</h3>
       <div className="h-[400px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={300}>
           <RadarChart data={data} cx="50%" cy="50%" outerRadius="75%">
             <PolarGrid stroke="#94a3b8" strokeOpacity={0.3} />
             <PolarAngleAxis

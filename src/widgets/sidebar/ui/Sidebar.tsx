@@ -5,14 +5,17 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Database, Calculator, Layers, GitMerge,
   LucideIcon, X,
-  Settings
+  Settings,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import DatasetSwitcher from '@/widgets/dataset-switcher';
 import { ThemeToggle } from '@/shared/ui/theme-toggle';
+import { useEngineStatus } from '@/shared/lib/hooks/use-engine-status';
 
-type MenuItemLink = { type: 'link'; href: string; label: string; icon: LucideIcon; };
+type MenuItemLink = { type: 'link'; href: string; label: string; icon: LucideIcon; disabled?: boolean };
 type MenuItemDivider = { type: 'divider'; };
 type MenuItem = MenuItemLink | MenuItemDivider;
 
@@ -25,10 +28,27 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
   const pathname = usePathname();
   const isDashboardPage = /^\/dashboards\/[^/]+$/.test(pathname || '');
 
+  const { status } = useEngineStatus();
+
+  const isEngineBroken = status === 'disconnected' || status === 'error' || status === 'no-data';
+
+
   const menuItems: MenuItem[] = [
-    { type: 'link', href: '/dashboards', label: 'Дашборды', icon: LayoutDashboard },
+    { 
+      type: 'link', 
+      href: '/dashboards', 
+      label: 'Дашборды', 
+      icon: LayoutDashboard,
+      disabled: isEngineBroken,
+    },
     { type: 'divider' },
-    { type: 'link', href: '/groups', label: 'Группы показателей', icon: Layers },
+    { 
+      type: 'link', 
+      href: '/groups', 
+      label: 'Группы показателей', 
+      icon: Layers,
+      disabled: isEngineBroken,
+    },
     { type: 'link', href: '/metrics', label: 'Метрики (Правила)', icon: Calculator },
     { type: 'divider' },
     { type: 'link', href: '/setup', label: 'Данные и Колонки', icon: Database },
@@ -66,7 +86,22 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
             return <div key={`div-${idx}`} className="h-px bg-gray-100 dark:bg-slate-800 my-4 mx-2" />;
           }
           const Icon = item.icon;
-          const isActive = pathname.startsWith(item.href);
+          const isActive = pathname?.startsWith(item.href);
+          const isDisabled = item.disabled;
+          
+          if (isDisabled) {
+            return (
+              <div
+                key={item.href}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50"
+                title="Требуется загрузить данные"
+              >
+                <Icon size={18} className="opacity-50" />
+                {item.label}
+              </div>
+            );
+          }
+          
           return (
             <Link
               key={item.href}
@@ -90,6 +125,36 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-medium text-slate-400">Тема интерфейса</span>
         </div>
+        {status !== 'ready' && status !== 'no-data' && (
+          <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+            <div className="flex items-center gap-2 text-xs">
+              {status === 'disconnected' && (
+                <>
+                  <AlertCircle size={14} className="text-amber-600 dark:text-amber-400" />
+                  <span className="text-amber-700 dark:text-amber-300 font-medium">
+                    Движок отключён
+                  </span>
+                </>
+              )}
+              {status === 'error' && (
+                <>
+                  <AlertCircle size={14} className="text-rose-600 dark:text-rose-400" />
+                  <span className="text-rose-700 dark:text-rose-300 font-medium">
+                    Файл утерян
+                  </span>
+                </>
+              )}
+              {status === 'loading' && (
+                <>
+                  <Loader2 size={14} className="animate-spin text-indigo-500" />
+                  <span className="text-indigo-700 dark:text-indigo-300 font-medium">
+                    Восстановление...
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
         <ThemeToggle />
       </div>
     </div>

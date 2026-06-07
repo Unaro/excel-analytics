@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { Search, ChevronRight, Layers } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
@@ -50,18 +50,25 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
 
   const sortedBreakdown = useMemo(() => {
     let items = [...breakdown];
-
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       items = items.filter(item => item.label.toLowerCase().includes(q));
     }
-
     if (sortConfig) {
       items = sortBreakdownItems(items, sortConfig.key, sortConfig.direction);
     }
-
     return items;
   }, [breakdown, searchQuery, sortConfig]);
+
+  const vmIdToGroupMetricId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const vm of metricMetas) {
+      if (vm.sourceMetricId) {
+        map.set(vm.id, vm.sourceMetricId);
+      }
+    }
+    return map;
+  }, [metricMetas]);
 
   const toggleSort = (key: string) => {
     onSortChange({
@@ -120,12 +127,9 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                   <SortIcon active={sortConfig?.key === 'label'} direction={sortConfig?.direction ?? 'desc'} />
                 </div>
               </th>
-
               {visibleMetrics.map(vm => {
-                const vmIndex = virtualMetrics.findIndex(v => v.virtualMetricId === vm.virtualMetricId);
-                const groupMetricId = vmIndex >= 0 ? groupMetricIds[vmIndex] : null;
+                const groupMetricId = vmIdToGroupMetricId.get(vm.virtualMetricId) ?? null;
                 const metricConfig = metricMetas.find(c => c.id === vm.virtualMetricId);
-
                 return (
                   <th
                     key={vm.virtualMetricId}
@@ -154,7 +158,6 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                   </th>
                 );
               })}
-
               <th
                 scope="col"
                 className="px-6 py-3 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 select-none"
@@ -165,11 +168,9 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                   <SortIcon active={sortConfig?.key === 'recordCount'} direction={sortConfig?.direction ?? 'desc'} />
                 </div>
               </th>
-
               {nextLevel && <th scope="col" className="w-10"></th>}
             </tr>
           </thead>
-
           <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800/50">
             {sortedBreakdown.map((item) => (
               <tr
@@ -188,13 +189,10 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                     )}
                   </div>
                 </td>
-
-                {visibleMetrics.map((vm, vmIdx) => {
+                {visibleMetrics.map((vm) => {
                   const val = item.virtualMetrics.find(m => m.virtualMetricId === vm.virtualMetricId);
                   const meta = metricMetas.find(c => c.id === vm.virtualMetricId);
-                  const originalIdx = virtualMetrics.findIndex(v => v.virtualMetricId === vm.virtualMetricId);
-                  const groupMetricId = originalIdx >= 0 ? groupMetricIds[originalIdx] : null;
-
+                  const groupMetricId = vmIdToGroupMetricId.get(vm.virtualMetricId) ?? null;
                   return (
                     <td key={vm.virtualMetricId} className="px-6 py-3 text-sm text-right">
                       {val && meta && groupMetricId ? (
@@ -213,24 +211,19 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                     </td>
                   );
                 })}
-
                 <td className="px-6 py-3 text-sm text-right text-slate-500 dark:text-slate-400 font-mono">
-                  {item.recordCount.toLocaleString('ru-RU')}
+                  {/* ✅ ИСПРАВЛЕНИЕ: защита от null/undefined */}
+                  {(item.recordCount ?? 0).toLocaleString('ru-RU')}
                 </td>
-
                 {nextLevel && <td />}
               </tr>
             ))}
-
             {summary && (
               <tr className="bg-slate-50/50 dark:bg-slate-800/20 font-semibold">
                 <td className="px-6 py-3 text-sm text-slate-700 dark:text-slate-200">Итого</td>
-
                 {visibleMetrics.map(vm => {
                   const meta = metricMetas.find(c => c.id === vm.virtualMetricId);
-                  const originalIdx = virtualMetrics.findIndex(v => v.virtualMetricId === vm.virtualMetricId);
-                  const groupMetricId = originalIdx >= 0 ? groupMetricIds[originalIdx] : null;
-
+                  const groupMetricId = vmIdToGroupMetricId.get(vm.virtualMetricId) ?? null;
                   return (
                     <td key={vm.virtualMetricId} className="px-6 py-3 text-sm text-right">
                       {meta && groupMetricId ? (
@@ -251,11 +244,9 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                     </td>
                   );
                 })}
-
                 <td className="px-6 py-3 text-sm text-right text-slate-500 dark:text-slate-400 font-mono">
-                  {summary.recordCount.toLocaleString('ru-RU')}
+                  {(summary.recordCount ?? 0).toLocaleString('ru-RU')}
                 </td>
-
                 {nextLevel && <td />}
               </tr>
             )}
