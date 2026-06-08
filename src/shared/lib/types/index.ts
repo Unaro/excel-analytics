@@ -1,7 +1,6 @@
-// entities/metric/model/computed-types.ts
+// shared/lib/types/index.ts
 // ─────────────────────────────────────────────────────────────
-// Реэкспорт типов вычислений из shared для обратной совместимости.
-// Все потребители внутри entities продолжают работать без изменений.
+// Barrel-экспорт всех shared-типов.
 // ─────────────────────────────────────────────────────────────
 
 export type {
@@ -13,4 +12,15 @@ export type {
   ActiveHierarchyFilter,
   DashboardComputationResult,
   MetricCache,
-} from '@/shared/lib/types/computation';
+} from './computation';
+
+export type {
+  DatasetRow,
+  ColumnClassification,
+  ColumnConfig,
+  ColumnStatistics,
+} from './dataset';
+
+export type { KPIWidget } from './dashboard';
+
+export type { HierarchyFilterValue } from './hierarchy';

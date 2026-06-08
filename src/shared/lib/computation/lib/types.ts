@@ -1,11 +1,25 @@
-import { DashboardComputationResult } from "@/entities/metric";
-import { HierarchyFilterValue, IndicatorGroup, IndicatorGroupInDashboard, MetricTemplate, VirtualMetric } from "@/shared/lib/validators";
+import type { DashboardComputationResult } from '@/shared/lib/types/computation';
+import type {
+  HierarchyFilterValue,
+  IndicatorGroup,
+  IndicatorGroupInDashboard,
+  MetricTemplate,
+  VirtualMetric,
+} from '@/shared/lib/validators';
 
 export type ComputeDialect = 'duckdb' | 'postgres';
 export type QueryParam = string | number | boolean | null;
 
 export interface MetricAggregationMeta {
-  aggregateFunction: 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT' | 'COUNT_DISTINCT' | 'MEDIAN' | 'PERCENTILE';
+  aggregateFunction:
+    | 'SUM'
+    | 'AVG'
+    | 'MIN'
+    | 'MAX'
+    | 'COUNT'
+    | 'COUNT_DISTINCT'
+    | 'MEDIAN'
+    | 'PERCENTILE';
 }
 
 export interface ClientComputeParams {
@@ -20,26 +34,42 @@ export interface ClientComputeParams {
   virtualMetrics: VirtualMetric[];
   groupByColumn?: string;
   validColumns?: string[];
+
+  /**
+   * PostgreSQL schema (для sourceType === 'postgres').
+   * Передаётся вызывающим кодом из entities/dataset store.
+   * Engine не должен сам читать из UI-сторов.
+   */
+  pgSchema?: string;
+
+  /**
+   * PostgreSQL table (для sourceType === 'postgres').
+   * Передаётся вызывающим кодом из entities/dataset store.
+   */
+  pgTable?: string;
 }
 
 export interface CompiledQuery {
   sql: string;
   params?: QueryParam[];
-  formulas: Map<string, {
-    groupId: string;
-    metricId: string;
-    templateId: string;
-    formula: string;
-    fieldDependencies: {
-      alias: string;
-      columnName: string;
-      aggregateFn: string;
-    }[];
-    metricDependencies: {
-      alias: string;
+  formulas: Map<
+    string,
+    {
+      groupId: string;
       metricId: string;
-    }[];
-  }>;
+      templateId: string;
+      formula: string;
+      fieldDependencies: {
+        alias: string;
+        columnName: string;
+        aggregateFn: string;
+      }[];
+      metricDependencies: {
+        alias: string;
+        metricId: string;
+      }[];
+    }
+  >;
   aggregateMetadata: Map<string, MetricAggregationMeta>;
 }
 

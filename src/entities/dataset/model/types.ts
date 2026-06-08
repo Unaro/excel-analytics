@@ -1,14 +1,20 @@
+// entities/dataset/model/types.ts
+import type { DatasetRow, ColumnStatistics } from '@/shared/lib/types/dataset';
+
 export type DatasetSourceType = 'file' | 'postgres' | null;
 
-/**
- * Универсальная строка датасета
- */
-export interface DatasetRow {
-  [columnName: string]: string | number | boolean | null;
-}
+// ─────────────────────────────────────────────────────────────
+// Реэкспорт универсальных типов из shared
+// ─────────────────────────────────────────────────────────────
+export type {
+  DatasetRow,
+  ColumnClassification,
+  ColumnConfig,
+  ColumnStatistics,
+} from '@/shared/lib/types/dataset';
 
 /**
- * Метаданные загруженного датасета
+ * Метаданные загруженного датасета.
  */
 export interface DatasetMetadata {
   sourceName: string;
@@ -20,7 +26,7 @@ export interface DatasetMetadata {
 }
 
 /**
- * Конфигурация PostgreSQL-подключения
+ * Конфигурация PostgreSQL-подключения.
  */
 export interface PgSyncConfig {
   schema: string;
@@ -30,7 +36,7 @@ export interface PgSyncConfig {
 }
 
 /**
- * Запись одного датасета в мульти-хранилище
+ * Запись одного датасета в мульти-хранилище.
  */
 export interface DatasetEntry {
   id: string;
@@ -45,55 +51,15 @@ export interface DatasetEntry {
 }
 
 /**
- * Статистика по колонке
+ * Тип данных колонки (авто-определяемый системой).
  */
-export interface ColumnStatistics {
-  columnName: string;
-  totalValues: number;
-  nullCount: number;
-  uniqueCount: number;
-  numericCount: number;
-  textCount: number;
-  booleanCount: number;
-  dateCount: number;
-  sampleValues: (string | number | boolean | null)[];
-  min?: number;
-  max?: number;
-  avg?: number;
-  sum?: number;
-  median?: number;
-}
-
-/**
- * Тип данных колонки (авто-определяемый системой)
- */
-export type ColumnDataType = 
-  | 'numeric'      // Числовые данные (можно суммировать, агрегировать)
-  | 'categorical'  // Категориальные данные (для группировки, фильтрации)
-  | 'text'         // Текстовые данные (описания, комментарии)
-  | 'date'         // Даты
-  | 'boolean'      // Логические значения
-  | 'mixed';       // Смешанный тип
-
-/**
- * Пользовательская классификация колонки
- */
-export type ColumnClassification = 
-  | 'numeric'      // Использовать для вычислений
-  | 'categorical'  // Использовать для группировки
-  | 'ignore'      // Игнорировать колонку
-  | 'date';      // Использовать как дату
-
-/**
- * Конфигурация одной колонки (устанавливается пользователем)
- */
-export interface ColumnConfig {
-  columnName: string;                    // Оригинальное название из Excel
-  classification: ColumnClassification;  // Как использовать колонку
-  alias: string;                         // Алиас для использования в формулах
-  displayName: string;                   // Название для отображения в UI
-  description?: string;                  // Описание колонки
-}
+export type ColumnDataType =
+  | 'numeric'
+  | 'categorical'
+  | 'text'
+  | 'date'
+  | 'boolean'
+  | 'mixed';
 
 export interface ReplaceFileResult {
   success: boolean;

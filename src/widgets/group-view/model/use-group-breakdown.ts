@@ -8,7 +8,7 @@ import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { DashboardComputationResult, GroupComputationResult, IndicatorGroup, useMetricTemplateStore } from '@/entities/metric';
 import { useShallow } from 'zustand/react/shallow';
 import { createComputeEngine } from '@/shared/lib/computation/lib/engine-factory';
-import { createComputationCache } from '@/shared/lib/storage';
+import { CacheKey, createComputationCache } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
 import { buildVmIdFromFields } from '@/shared/lib/utils/metric-ids';
 import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
@@ -16,6 +16,8 @@ import { GroupMetric, HierarchyFilterValue, IndicatorGroupInDashboard, MetricTem
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
 import type { ColumnConfig } from '@/entities/dataset';
+import { useComputation } from '@/widgets/shared/model/use-computation';
+
 
 const EMPTY_LEVELS: HierarchyLevel[] = [];
 const EMPTY_CONFIGS: ColumnConfig[] = [];
@@ -138,13 +140,6 @@ export function useGroupBreakdown(
     }];
   }, [group, templates]);
 
-  const [summary, setSummary] = useState<GroupComputationResult | null>(null);
-  const [breakdown, setBreakdown] = useState<GroupComputationResult['breakdown'] | undefined>(undefined);
-  const [isComputing, setIsComputing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const engine = useMemo(() => createComputeEngine(sourceType), [sourceType]);
-  const cache = useMemo(() => createComputationCache(sourceType), [sourceType]);
   const filtersHash = useMemo(() => generateFiltersHash(currentPath), [currentPath]);
   const groupByColumn = nextLevel?.columnName;
 
@@ -157,74 +152,57 @@ export function useGroupBreakdown(
     }) + (groupByColumn ? `:gb:${groupByColumn}` : '');
   }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn]);
 
-  useEffect(() => {
-    if (!activeDatasetId || !group || isSyncing) {
-      setSummary(null);
-      setBreakdown(undefined);
-      return;
-    }
-
-    let cancelled = false;
-
-    const compute = async () => {
-      setIsComputing(true);
-      setError(null);
-
-      const cacheKey = {
-        datasetId: activeDatasetId,
-        dashboardId: `group:${groupId}`,
-        filtersHash: `${filtersHash}:${configHash}`,
-      };
-
-      const cached = await cache.get(cacheKey);
-      if (cached && !cancelled) {
-        const res = cached.result as DashboardComputationResult;
-        setSummary(res.groups[0] || null);
-        setBreakdown(res.groups[0]?.breakdown);
-        setIsComputing(false);
-        return;
-      }
-
-      try {
-        const params: ClientComputeParams = {
-          datasetId: activeDatasetId,
-          dashboardId: `group:${groupId}`,
-          tableName: 'placeholder',
-          encryptedConfig: encryptedConnection,
-          filters: currentPath,
-          groups: [group],
-          dashboardGroupsConfig,
-          metricTemplates: templates,
-          virtualMetrics,
-          groupByColumn: groupByColumn ?? undefined,
-          validColumns,
-        };
-
-        await engine.initialize(activeDatasetId);
-        const result = await engine.compute(params);
-
-        if (cancelled) return;
-
-        setSummary(result.groups[0] || null);
-        setBreakdown(result.groups[0]?.breakdown);
-        await cache.set(cacheKey, result);
-      } catch (err) {
-        if (!cancelled) {
-          console.error('[GroupBreakdown] Compute failed:', err);
-          setError(err instanceof Error ? err.message : 'Ошибка вычисления');
-        }
-      } finally {
-        if (!cancelled) setIsComputing(false);
-      }
+  const buildParams = useCallback((): ClientComputeParams | null => {
+    if (!activeDatasetId || !group) return null;
+    return {
+      datasetId: activeDatasetId,
+      dashboardId: `group:${groupId}`,
+      tableName: 'placeholder',
+      encryptedConfig: encryptedConnection,
+      filters: currentPath,
+      groups: [group],
+      dashboardGroupsConfig,
+      metricTemplates: templates,
+      virtualMetrics,
+      groupByColumn: groupByColumn ?? undefined,
+      validColumns,
+      pgSchema: useDatasetStore.getState().datasets[activeDatasetId]?.pgConfig?.schema,
+      pgTable: useDatasetStore.getState().datasets[activeDatasetId]?.pgConfig?.table,
     };
-
-    compute();
-    return () => { cancelled = true; };
   }, [
-    activeDatasetId, groupId, group, isSyncing, filtersHash, configHash,
-    currentPath, dashboardGroupsConfig, templates, virtualMetrics, groupByColumn,
-    engine, cache, encryptedConnection, validColumns
+    activeDatasetId,
+    group,
+    groupId,
+    encryptedConnection,
+    currentPath,
+    dashboardGroupsConfig,
+    templates,
+    virtualMetrics,
+    groupByColumn,
+    validColumns,
   ]);
+
+  const buildCacheKey = useCallback((): CacheKey | null => {
+    if (!activeDatasetId || !group) return null;
+    return {
+      datasetId: activeDatasetId,
+      dashboardId: `group:${groupId}`,
+      filtersHash: `${filtersHash}:${configHash}`,
+    };
+  }, [activeDatasetId, group, groupId, filtersHash, configHash]);
+
+  const { result: computeResult, isComputing, error } = useComputation({
+    activeDatasetId,
+    sourceType,
+    isSyncing,
+    buildParams,
+    buildCacheKey,
+    deps: [filtersHash, configHash, currentPath, group?.id],
+  });
+
+  const summary = computeResult?.groups[0] ?? null;
+  const breakdown = computeResult?.groups[0]?.breakdown;
+
 
   const drillDown = useCallback((label: string) => {
     if (!nextLevel) return;

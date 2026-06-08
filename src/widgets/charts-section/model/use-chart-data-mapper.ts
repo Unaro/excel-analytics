@@ -19,19 +19,18 @@ export function useChartDataMapper(
   const chartData = useMemo<DataItem[]>(() => {
     return breakdown.map(item => {
       const row: DataItem = { name: item.label };
-
-      // Реальные значения метрик
-      activeMetricIds.forEach(vmId => {
-        const vm = item.virtualMetrics?.find(v => v.virtualMetricId === vmId);
+      
+      const vmMap = new Map(item.virtualMetrics?.map(vm => [vm.virtualMetricId, vm]));
+      
+      for (const vmId of activeMetricIds) {
+        const vm = vmMap.get(vmId);
         row[vmId] = vm?.value ?? 0;
-        row[`${vmId}_formatted`] = vm?.formattedValue ?? '—';
-      });
-
-      // Пороговые значения для радар-полигонов
+      }
+      
       groupedThresholds.forEach((group, gi) => {
         row[`__threshold_${gi}`] = group.y;
       });
-
+      
       return row;
     });
   }, [breakdown, activeMetricIds, groupedThresholds]);

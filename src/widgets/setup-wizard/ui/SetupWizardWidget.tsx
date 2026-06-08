@@ -1,8 +1,8 @@
 'use client';
 
-import { ClientOnly } from '@/shared/lib/hydration';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { SetupWizardContent } from './SetupWizardContent';
+import { ClientOnly } from '@/shared/ui/client-only';
 
 /**
  * Публичная точка входа мастера настройки.

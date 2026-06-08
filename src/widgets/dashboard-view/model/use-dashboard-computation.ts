@@ -1,14 +1,13 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import { DatasetState, useDatasetStore } from '@/entities/dataset';
+
+import { useCallback, useMemo } from 'react';
+import { useDatasetStore } from '@/entities/dataset';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useComputedMetricsStore } from '@/entities/metric';
-import { createComputationCache } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
-import { createComputeEngine } from '@/shared/lib/computation/lib/engine-factory';
-import { ClientComputeParams } from '@/shared/lib/computation/lib/types';
+import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { useShallow } from 'zustand/react/shallow';
 import type { MetricTemplate } from '@/entities/metric';
 import type { DashboardComputationResult } from '@/entities/metric';
@@ -18,7 +17,9 @@ import type {
   IndicatorGroupInDashboard,
   VirtualMetric,
 } from '@/shared/lib/validators';
-import { Dashboard } from '@/entities/dashboard';
+import type { Dashboard } from '@/entities/dashboard';
+import type { CacheKey } from '@/shared/lib/storage';
+import { useComputation } from '@/widgets/shared/model/use-computation';
 
 const EMPTY_FILTERS: HierarchyFilterValue[] = [];
 const EMPTY_DASHBOARD_GROUPS: IndicatorGroupInDashboard[] = [];
@@ -26,109 +27,105 @@ const EMPTY_VIRTUAL_METRICS: VirtualMetric[] = [];
 const EMPTY_GROUPS: IndicatorGroup[] = [];
 const EMPTY_TEMPLATES: MetricTemplate[] = [];
 
-const selectActiveDatasetId = (s: DatasetState) => s.activeDatasetId;
-const selectIsSyncing = (s: DatasetState) => s.isSyncing;
-const selectActiveDataset = (s: DatasetState) =>
-  s.activeDatasetId ? s.datasets[s.activeDatasetId] ?? null : null;
-const selectGroups = (s: { groups: IndicatorGroup[] }) => s.groups;
-const selectTemplates = (s: { templates: MetricTemplate[] }) => s.templates;
-const selectIsComputing = (s: { isComputing: boolean }) => s.isComputing;
-const selectComputationError = (s: { computationError: string | null }) => s.computationError;
-
 export function useDashboardComputation(dashboardId: string) {
-  const activeDatasetId = useDatasetStore(selectActiveDatasetId);
-  const dataset = useDatasetStore(selectActiveDataset);
+  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
+  const dataset = useDatasetStore(s =>
+    s.activeDatasetId ? s.datasets[s.activeDatasetId] ?? null : null
+  );
   const sourceType = dataset?.sourceType ?? 'file';
-  const isSyncing = useDatasetStore(selectIsSyncing);
+  const isSyncing = useDatasetStore(s => s.isSyncing);
 
   const selectDashboard = useCallback(
-    (s: { dashboards: Dashboard[] }) => s.dashboards.find((d) => d.id === dashboardId),
+    (s: { dashboards: Dashboard[] }) => s.dashboards.find(d => d.id === dashboardId),
     [dashboardId]
   );
   const dashboard = useDashboardStore(useShallow(selectDashboard));
+
   const hierarchyFilters = dashboard?.hierarchyFilters ?? EMPTY_FILTERS;
   const dashboardGroupsConfig = dashboard?.indicatorGroups ?? EMPTY_DASHBOARD_GROUPS;
   const virtualMetrics = dashboard?.virtualMetrics ?? EMPTY_VIRTUAL_METRICS;
-  const groups = useIndicatorGroupStore(useShallow(selectGroups)) ?? EMPTY_GROUPS;
-  const metricTemplates = useMetricTemplateStore(useShallow(selectTemplates)) ?? EMPTY_TEMPLATES;
-  const isComputing = useComputedMetricsStore(selectIsComputing);
-  const computationError = useComputedMetricsStore(selectComputationError);
 
-  const selectResult = useCallback(
-    (s: { dashboardResults: Map<string, DashboardComputationResult> }) =>
-      s.dashboardResults.get(dashboardId) ?? null,
-    [dashboardId]
+  const groups = useIndicatorGroupStore(useShallow(s => s.groups)) ?? EMPTY_GROUPS;
+  const metricTemplates =
+    useMetricTemplateStore(useShallow(s => s.templates)) ?? EMPTY_TEMPLATES;
+
+  const filtersHash = useMemo(
+    () => generateFiltersHash(hierarchyFilters),
+    [hierarchyFilters]
   );
-  const result = useComputedMetricsStore(selectResult);
-
-  const engine = useMemo(() => createComputeEngine(sourceType), [sourceType]);
-  const cache = useMemo(() => createComputationCache(sourceType), [sourceType]);
-
-  const filtersHash = useMemo(() => generateFiltersHash(hierarchyFilters), [hierarchyFilters]);
   const configHash = useMemo(
-    () => generateConfigHash({ groups, metricTemplates, dashboardGroupsConfig, virtualMetrics }),
+    () =>
+      generateConfigHash({
+        groups,
+        metricTemplates,
+        dashboardGroupsConfig,
+        virtualMetrics,
+      }),
     [groups, metricTemplates, dashboardGroupsConfig, virtualMetrics]
   );
   const compositeHash = `${filtersHash}:${configHash}`;
 
-  const performCalculation = useCallback(
-    async (force = false) => {
-      if (!dashboard || !activeDatasetId || isSyncing) return;
-      const store = useComputedMetricsStore.getState();
-      const cacheKey = { datasetId: activeDatasetId, dashboardId, filtersHash: compositeHash };
-      if (!force) {
-        const cached = await cache.get(cacheKey);
-        if (cached) {
-          store.setDashboardResult(dashboardId, cached.result);
-          store.setComputingState(false, null);
-          return;
-        }
-      }
-      store.setComputingState(true, null);
-      try {
-        const params: ClientComputeParams = {
-          datasetId: activeDatasetId,
-          dashboardId,
-          encryptedConfig: dataset?.pgConfig?.encryptedConnection,
-          tableName: 'placeholder',
-          filters: hierarchyFilters,
-          groups,
-          dashboardGroupsConfig,
-          metricTemplates,
-          virtualMetrics,
-        };
-        await engine.initialize(activeDatasetId);
-        const calcResult = await engine.compute(params);
-        store.setDashboardResult(dashboardId, calcResult);
-        store.setComputingState(false, null);
-        await cache.set(cacheKey, calcResult);
-      } catch (err) {
-        console.error('[DashboardCalculation] Error:', err);
-        store.setComputingState(false, err instanceof Error ? err.message : 'Ошибка вычисления');
-      }
-    },
-    [dashboard, activeDatasetId, isSyncing, cache, engine, compositeHash, dashboardId, dataset?.pgConfig?.encryptedConnection, hierarchyFilters, groups, dashboardGroupsConfig, metricTemplates, virtualMetrics]
-  );
+  // ✅ Функция построения params
+  const buildParams = useCallback((): ClientComputeParams | null => {
+    if (!dashboard || !activeDatasetId) return null;
+    return {
+      datasetId: activeDatasetId,
+      dashboardId,
+      encryptedConfig: dataset?.pgConfig?.encryptedConnection,
+      tableName: 'placeholder',
+      filters: hierarchyFilters,
+      groups,
+      dashboardGroupsConfig,
+      metricTemplates,
+      virtualMetrics,
+      pgSchema: dataset?.pgConfig?.schema,
+      pgTable: dataset?.pgConfig?.table,
+    };
+  }, [
+    dashboard,
+    activeDatasetId,
+    dashboardId,
+    dataset?.pgConfig,
+    hierarchyFilters,
+    groups,
+    dashboardGroupsConfig,
+    metricTemplates,
+    virtualMetrics,
+  ]);
 
-  const lastHashRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!dashboard || isSyncing) return;
-    if (lastHashRef.current !== compositeHash) {
-      lastHashRef.current = compositeHash;
-      performCalculation(false);
-    }
-  }, [compositeHash, dashboard?.id, isSyncing, performCalculation]);
+  const buildCacheKey = useCallback((): CacheKey | null => {
+    if (!activeDatasetId || !dashboard) return null;
+    return {
+      datasetId: activeDatasetId,
+      dashboardId,
+      filtersHash: compositeHash,
+    };
+  }, [activeDatasetId, dashboard, dashboardId, compositeHash]);
 
-  const recalculate = useCallback(async () => {
-    if (activeDatasetId) {
-      await cache.clearByDashboard(activeDatasetId, dashboardId);
-    }
-    await performCalculation(true);
-  }, [cache, activeDatasetId, dashboardId, performCalculation]);
+  const { result, isComputing, error, recalculate } = useComputation({
+    activeDatasetId,
+    sourceType,
+    isSyncing,
+    buildParams,
+    buildCacheKey,
+    deps: [compositeHash, dashboard?.id],
+  });
+
+  const storeSetResult = useComputedMetricsStore(s => s.setDashboardResult);
+  const storeSetComputing = useComputedMetricsStore(s => s.setComputingState);
+
+  useMemo(() => {
+    if (result) storeSetResult(dashboardId, result);
+  }, [result, dashboardId, storeSetResult]);
+
+  useMemo(() => {
+    storeSetComputing(isComputing, error);
+  }, [isComputing, error, storeSetComputing]);
 
   const mergedResult = useMemo<DashboardComputationResult | null>(() => {
     if (!result) return null;
     if (virtualMetrics.length === 0) return result;
+
     const updatedGroups = result.groups.map(group => ({
       ...group,
       virtualMetrics: group.virtualMetrics.map(vm => {
@@ -145,8 +142,14 @@ export function useDashboardComputation(dashboardId: string) {
         }),
       })),
     }));
+
     return { ...result, virtualMetrics, groups: updatedGroups };
   }, [result, virtualMetrics]);
 
-  return { result: mergedResult, isComputing, error: computationError, recalculate };
+  return {
+    result: mergedResult,
+    isComputing,
+    error,
+    recalculate,
+  };
 }

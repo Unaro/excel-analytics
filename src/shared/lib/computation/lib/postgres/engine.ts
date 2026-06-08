@@ -1,13 +1,20 @@
-import type { ClientComputeParams, CompiledQuery, IComputeEngine, MetricAggregationMeta } from '../types';
+import type {
+  ClientComputeParams,
+  IComputeEngine,
+  MetricAggregationMeta,
+} from '../types';
 import { compileQuery } from '../query-compiler';
 import { getActiveFilter, formatValue } from '../utils';
-import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
-import { useDatasetStore } from '@/entities/dataset';
+import { postProcessAggregates } from '../post-process';
 import { decryptConfig } from '@/shared/lib/utils/crypto';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
-import { DashboardComputationResult, GroupComputationResult, VirtualMetricValue } from '@/entities/metric';
+import type {
+  DashboardComputationResult,
+  GroupComputationResult,
+  VirtualMetricValue,
+} from '@/shared/lib/types/computation';
 import { computePgMetrics } from '@/shared/api/server-actions';
-import { aggregateProcessedRows, type AggregatedSummary } from '../aggregation';
+import { aggregateProcessedRows } from '../aggregation';
 
 /**
  * Безопасное экранирование SQL-идентификаторов.
@@ -36,16 +43,6 @@ function buildAggregateMetadataMap(
   return metadata;
 }
 
-/**
- * Безопасно извлекает _record_count из строки SQL-результата.
- */
-function extractRecordCount(row: Record<string, unknown>): number {
-  const rc = row['_record_count'];
-  if (typeof rc === 'number' && isFinite(rc)) return rc;
-  if (typeof rc === 'bigint') return Number(rc);
-  return 0;
-}
-
 export class PgEngine implements IComputeEngine {
   async initialize(): Promise<void> {
     // PG не требует инициализации
@@ -59,19 +56,24 @@ export class PgEngine implements IComputeEngine {
       virtualMetrics,
       filters,
       datasetId,
-      groupByColumn
+      groupByColumn,
+      pgSchema,
+      pgTable,
     } = params;
 
     if (!encryptedConfig) {
       throw new Error('Missing encryptedConfig for PostgreSQL');
     }
 
-    const dataset = useDatasetStore.getState().datasets[datasetId];
-    if (!dataset?.pgConfig?.schema || !dataset.pgConfig.table) {
-      throw new Error(`PostgreSQL dataset ${datasetId} missing schema/table config`);
+    // ✅ Читаем schema/table ИЗ params, а НЕ из useDatasetStore
+    if (!pgSchema || !pgTable) {
+      throw new Error(
+        `PostgreSQL dataset ${datasetId} missing pgSchema/pgTable in params. ` +
+        `Caller must pass these from entities/dataset store.`
+      );
     }
 
-    const realTableName = `${quoteIdent(dataset.pgConfig.schema)}.${quoteIdent(dataset.pgConfig.table)}`;
+    const realTableName = `${quoteIdent(pgSchema)}.${quoteIdent(pgTable)}`;
     const start = Date.now();
 
     const decryptedConfig = await decryptConfig<PgConnectionConfig>(encryptedConfig);
@@ -108,26 +110,36 @@ export class PgEngine implements IComputeEngine {
       .map(cfg => {
         const groupDef = params.groups.find(g => g.id === cfg.groupId);
 
-        const buildVirtualMetrics = (processed: Record<string, number | null>): VirtualMetricValue[] => {
+        const buildVirtualMetrics = (
+          processed: Record<string, number | null>
+        ): VirtualMetricValue[] => {
           return virtualMetrics.map(vm => {
-            const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
+            const binding = cfg.virtualMetricBindings?.find(
+              b => b.virtualMetricId === vm.id
+            );
             if (!binding) {
               return {
                 virtualMetricId: vm.id,
                 virtualMetricName: vm.name,
                 value: null,
                 formattedValue: '—',
-                sourceMetricId: ''
+                sourceMetricId: '',
               };
             }
             const alias = `${cfg.groupId}__${binding.metricId}`;
-            const numericValue = typeof processed[alias] === 'number' ? processed[alias] : null;
+            const numericValue =
+              typeof processed[alias] === 'number' ? processed[alias] : null;
             return {
               virtualMetricId: vm.id,
               virtualMetricName: vm.name,
               value: numericValue,
-              formattedValue: formatValue(numericValue, vm.displayFormat, vm.decimalPlaces, vm.unit),
-              sourceMetricId: binding.metricId
+              formattedValue: formatValue(
+                numericValue,
+                vm.displayFormat,
+                vm.decimalPlaces,
+                vm.unit
+              ),
+              sourceMetricId: binding.metricId,
             };
           });
         };
@@ -136,15 +148,17 @@ export class PgEngine implements IComputeEngine {
           ? processedRows
               .map((processed, idx) => {
                 const rawLabel = rows[idx]['_group_label'];
-                const label = rawLabel === null || rawLabel === undefined
-                  ? ''
-                  : String(rawLabel).trim();
+                const label =
+                  rawLabel === null || rawLabel === undefined
+                    ? ''
+                    : String(rawLabel).trim();
                 const rowRc = rows[idx]['_record_count'];
-                const recordCount = typeof rowRc === 'number'
-                  ? rowRc
-                  : typeof rowRc === 'bigint'
-                  ? Number(rowRc)
-                  : 0;
+                const recordCount =
+                  typeof rowRc === 'number'
+                    ? rowRc
+                    : typeof rowRc === 'bigint'
+                    ? Number(rowRc)
+                    : 0;
                 return {
                   label,
                   recordCount,
@@ -156,7 +170,7 @@ export class PgEngine implements IComputeEngine {
 
         const summaryProcessed = groupByColumn
           ? aggregateProcessedRows(processedRows, aggregateMetadata, formulas)
-          : (processedRows[0] || {});
+          : processedRows[0] || {};
 
         return {
           groupId: cfg.groupId,
@@ -164,7 +178,7 @@ export class PgEngine implements IComputeEngine {
           virtualMetrics: buildVirtualMetrics(summaryProcessed),
           breakdown,
           recordCount: totalRecords,
-          computedAt: Date.now()
+          computedAt: Date.now(),
         };
       });
 
@@ -176,7 +190,7 @@ export class PgEngine implements IComputeEngine {
       groups,
       totalRecords,
       computedAt: Date.now(),
-      computationTime: Date.now() - start
+      computationTime: Date.now() - start,
     };
   }
 

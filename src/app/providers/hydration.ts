@@ -1,4 +1,16 @@
-// shared/lib/hydration.ts
+// app/providers/hydration.ts
+// ─────────────────────────────────────────────────────────────
+// Application-level bootstrapper для восстановления состояния.
+//
+// Этот файл ИМЕЕТ ПРАВО импортировать entities, потому что:
+// - Живёт в app/ слое (оркестратор всего приложения)
+// - Отвечает за глобальную инициализацию при старте
+// - Связывает между собой все доменные слои
+//
+// НЕ должен находиться в shared/, т.к. shared должен быть
+// переиспользуемым без привязки к конкретному application.
+// ─────────────────────────────────────────────────────────────
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -12,6 +24,7 @@ import { get, set } from 'idb-keyval';
 import { rowsToArrowBuffer } from '@/shared/lib/computation/lib/duckdb/arrow-converter';
 import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';
 import { toast } from '@/shared/ui/toast';
+import type { DatasetEntry } from '@/entities/dataset';
 
 // Защита от повторного запуска
 let globalHydrationStarted = false;
@@ -25,6 +38,15 @@ const STORES_TO_HYDRATE = [
   useDatasetStore,
 ] as const;
 
+/**
+ * Глобальный хук гидрации Zustand-сторов из IndexedDB.
+ * Вызывается ОДИН РАЗ при монтировании корневого layout.
+ *
+ * Отвечает за:
+ * 1. Ожидание завершения гидрации всех сторов
+ * 2. Параллельное восстановление file-датасетов из Arrow buffer
+ * 3. Уведомление пользователя о проблемах восстановления
+ */
 export function useStoreHydration() {
   const [hydrated, setHydrated] = useState(false);
   const localStartedRef = useRef(false);
@@ -35,6 +57,7 @@ export function useStoreHydration() {
       if (useDatasetStore.persist.hasHydrated()) setHydrated(true);
       return () => unsub();
     }
+
     globalHydrationStarted = true;
     localStartedRef.current = true;
 
@@ -98,6 +121,7 @@ export function useStoreHydration() {
     };
 
     runHydration();
+
     return () => { cancelled = true; };
   }, []);
 
@@ -105,8 +129,7 @@ export function useStoreHydration() {
 }
 
 /**
- * Восстанавливает один file-датасет из Arrow buffer.
- *
+ * Восстанавливает один file-датасет из Arrow buffer в IndexedDB.
  * Использует ТОЛЬКО `registerArrowBuffer` — это сообщение есть
  * в любой версии worker.ts, поэтому работает всегда.
  */
@@ -198,14 +221,4 @@ async function restoreFileDataset(id: string, ds: DatasetEntry): Promise<boolean
     datasetStore.updateDataset(id, { engineStatus: 'error' });
     return false;
   }
-}
-
-// Импорт типа
-import type { DatasetEntry } from '@/entities/dataset';
-
-export function ClientOnly({ children, fallback = null }: { children: React.ReactNode; fallback?: React.ReactNode }) {
-  const [isMounted, setIsMounted] = useState(false);
-  useEffect(() => setIsMounted(true), []);
-  if (!isMounted) return fallback;
-  return children;
 }

@@ -1,5 +1,5 @@
-// lib/logic/postgres-client.ts
-import { DatasetRow } from '@/entities/dataset';
+// shared/api/postgres/client.ts
+import type { DatasetRow } from '@/shared/lib/types/dataset';
 import postgres from 'postgres';
 
 export interface PgConnectionConfig {
@@ -11,9 +11,6 @@ export interface PgConnectionConfig {
   ssl?: boolean;
 }
 
-/**
- * Преобразует строку в число с поддержкой float
- */
 function tryParseFloat(val: string): number | null {
   const normalized = val.replace(/\s/g, '').replace(',', '.');
   if (/^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(normalized)) {
@@ -62,6 +59,6 @@ export function createPgClient(config: PgConnectionConfig) {
     connect_timeout: 20,
     timeout: 10,
     onnotice: () => {},
-    transform: { undefined: null }
+    transform: { undefined: null },
   });
 }

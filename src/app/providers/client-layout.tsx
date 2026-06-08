@@ -6,9 +6,11 @@ import { ThemeProvider } from '@/app/providers';
 import { Toaster } from 'sonner';
 import { useEffect } from 'react';
 import { toast } from '@/shared/ui/toast';
+import { useStoreHydration } from './hydration'; // ← ИЗМЕНЕНО: импортируем из app/
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
-
+  // Глобальная гидрация Zustand-сторов
+  useStoreHydration();
 
   useEffect(() => {
     const warned = sessionStorage.getItem('crypto_warning_shown');

@@ -1,15 +1,21 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
-import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
-import { DashboardComputationResult, useMetricTemplateStore } from '@/entities/metric';
-import { createComputeEngine } from '@/shared/lib/computation/lib/engine-factory';
-import { compileKPIsToComputeParams, KPI_VIRTUAL_GROUP_ID } from '@/shared/lib/computation/lib/kpi-compiler';
-import { createComputationCache } from '@/shared/lib/storage';
+
+import { useCallback, useMemo } from 'react';
+import { useDatasetStore } from '@/entities/dataset';
+import { useMetricTemplateStore } from '@/entities/metric';
+import {
+  compileKPIsToComputeParams,
+  KPI_VIRTUAL_GROUP_ID,
+} from '@/shared/lib/computation/lib/kpi-compiler';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
 import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
-import { HierarchyFilterValue, MetricTemplate } from '@/shared/lib/validators';
-import { KPIWidget } from '@/entities/dashboard';
+import type { HierarchyFilterValue, MetricTemplate } from '@/shared/lib/validators';
+import type { KPIWidget } from '@/entities/dashboard';
+import type { DashboardComputationResult } from '@/entities/metric';
 import { useColumnConfigStore } from '@/entities/columnConfig';
+import type { ColumnConfig } from '@/entities/dataset';
+import type { CacheKey } from '@/shared/lib/storage';
+import { useComputation } from '@/widgets/shared/model/use-computation';
 
 export interface KPIResult {
   widget: KPIWidget;
@@ -32,136 +38,128 @@ export function useKPICalculation(
   const sourceType = dataset?.sourceType ?? 'file';
   const isSyncing = useDatasetStore(s => s.isSyncing);
   const templates = useMetricTemplateStore(s => s.templates);
-
-  const [results, setResults] = useState<KPIResult[]>(EMPTY_RESULT);
-
   const columnConfigs = useColumnConfigStore(s =>
     activeDatasetId ? s.configsByDataset[activeDatasetId] : EMPTY_CONFIG
   );
 
-  const validColumns = useMemo(() =>
-    columnConfigs.filter(c => c.classification !== 'ignore').map(c => c.columnName),
+  const validColumns = useMemo(
+    () =>
+      columnConfigs
+        .filter(c => c.classification !== 'ignore')
+        .map(c => c.columnName),
     [columnConfigs]
   );
 
-  const engine = useMemo(() => createComputeEngine(sourceType), [sourceType]);
-  const cache = useMemo(() => createComputationCache(sourceType), [sourceType]);
-
   const filtersHash = useMemo(() => generateFiltersHash(filters), [filters]);
+
+  const compiled = useMemo(
+    () => compileKPIsToComputeParams(widgets, templates),
+    [widgets, templates]
+  );
 
   const configHash = useMemo(() => {
     return generateConfigHash({
-      groups: [{
-        id: KPI_VIRTUAL_GROUP_ID,
-        name: 'KPI',
-        fieldMappings: [],
-        metrics: widgets.map((w, idx) => ({
-          id: `kpi_m_${w.id}`,
-          templateId: w.templateId,
-          fieldBindings: Object.entries(w.bindings).map(([alias, columnName]) => ({
-            id: `fb_${w.id}_${alias}`,
-            fieldAlias: alias,
-            columnName,
+      groups: [
+        {
+          id: KPI_VIRTUAL_GROUP_ID,
+          name: 'KPI',
+          fieldMappings: [],
+          metrics: widgets.map((w, idx) => ({
+            id: `kpi_m_${w.id}`,
+            templateId: w.templateId,
+            fieldBindings: Object.entries(w.bindings).map(([alias, columnName]) => ({
+              id: `fb_${w.id}_${alias}`,
+              fieldAlias: alias,
+              columnName,
+            })),
+            metricBindings: [],
+            enabled: true,
+            order: idx,
           })),
-          metricBindings: [],
-          enabled: true,
-          order: idx,
-        })),
-        order: 0,
-        createdAt: 0,
-        updatedAt: 0,
-      }],
+          order: 0,
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
       metricTemplates: templates,
-      dashboardGroupsConfig: [{
-        groupId: KPI_VIRTUAL_GROUP_ID,
-        enabled: true,
-        order: 0,
-        virtualMetricBindings: widgets.map(w => ({
-          virtualMetricId: `kpi_vm_${w.id}`,
-          metricId: `kpi_m_${w.id}`,
-        })),
-      }],
+      dashboardGroupsConfig: [
+        {
+          groupId: KPI_VIRTUAL_GROUP_ID,
+          enabled: true,
+          order: 0,
+          virtualMetricBindings: widgets.map(w => ({
+            virtualMetricId: `kpi_vm_${w.id}`,
+            metricId: `kpi_m_${w.id}`,
+          })),
+        },
+      ],
       virtualMetrics: widgets.map((w, idx) => ({
         id: `kpi_vm_${w.id}`,
-        name: w.customName || templates.find(t => t.id === w.templateId)?.name || 'KPI',
-        displayFormat: templates.find(t => t.id === w.templateId)?.displayFormat || 'number',
-        decimalPlaces: templates.find(t => t.id === w.templateId)?.decimalPlaces || 2,
+        name:
+          w.customName ||
+          templates.find(t => t.id === w.templateId)?.name ||
+          'KPI',
+        displayFormat:
+          templates.find(t => t.id === w.templateId)?.displayFormat || 'number',
+        decimalPlaces:
+          templates.find(t => t.id === w.templateId)?.decimalPlaces ?? 2,
         order: idx,
         unit: templates.find(t => t.id === w.templateId)?.suffix,
       })),
     });
   }, [widgets, templates]);
 
-  useEffect(() => {
-    if (!activeDatasetId || !dashboardId || widgets.length === 0 || isSyncing) {
-      setResults(EMPTY_RESULT);
-      return;
+  const buildParams = useCallback((): ClientComputeParams | null => {
+    if (!activeDatasetId || !dashboardId || compiled.groups[0].metrics.length === 0) {
+      return null;
     }
-
-    let cancelled = false;
-
-    const compute = async () => {
-      try {
-        const compiled = compileKPIsToComputeParams(widgets, templates);
-
-        if (compiled.groups[0].metrics.length === 0) {
-          setResults(EMPTY_RESULT);
-          return;
-        }
-
-        const cacheKey = {
-          datasetId: activeDatasetId,
-          dashboardId: dashboardId,
-          filtersHash,
-          configHash,
-        };
-
-        const cached = await cache.get(cacheKey);
-        if (cached && !cancelled) {
-          setResults(mapResultsToKPI(cached.result, widgets, templates, compiled.widgetToVmMap));
-          return;
-        }
-
-        const params: ClientComputeParams = {
-          datasetId: activeDatasetId,
-          dashboardId: dashboardId,
-          tableName: 'placeholder',
-          encryptedConfig: dataset?.pgConfig?.encryptedConnection,
-          filters,
-          groups: compiled.groups,
-          dashboardGroupsConfig: compiled.dashboardGroupsConfig,
-          metricTemplates: templates,
-          virtualMetrics: compiled.virtualMetrics,
-          validColumns
-        };
-
-        await engine.initialize(activeDatasetId);
-        const result: DashboardComputationResult = await engine.compute(params);
-
-        if (cancelled) return;
-
-        await cache.set(cacheKey, result);
-        setResults(mapResultsToKPI(result, widgets, templates, compiled.widgetToVmMap));
-      } catch (err) {
-        console.error('[KPICalculation] Compute failed:', err);
-        if (!cancelled) {
-          setResults(widgets.map(w => ({
-            widget: w,
-            template: templates.find(t => t.id === w.templateId)!,
-            value: 0,
-            formattedValue: 'Error',
-            error: err instanceof Error ? err.message : 'Error',
-          })));
-        }
-      }
+    return {
+      datasetId: activeDatasetId,
+      dashboardId: dashboardId,
+      tableName: 'placeholder',
+      encryptedConfig: dataset?.pgConfig?.encryptedConnection,
+      filters,
+      groups: compiled.groups,
+      dashboardGroupsConfig: compiled.dashboardGroupsConfig,
+      metricTemplates: templates,
+      virtualMetrics: compiled.virtualMetrics,
+      validColumns,
+      pgSchema: dataset?.pgConfig?.schema,
+      pgTable: dataset?.pgConfig?.table,
     };
+  }, [
+    activeDatasetId,
+    dashboardId,
+    compiled,
+    dataset?.pgConfig,
+    filters,
+    templates,
+    validColumns,
+  ]);
 
-    compute();
+  const buildCacheKey = useCallback((): CacheKey | null => {
+    if (!activeDatasetId || !dashboardId) return null;
+    return {
+      datasetId: activeDatasetId,
+      dashboardId,
+      filtersHash,
+      configHash,
+    };
+  }, [activeDatasetId, dashboardId, filtersHash, configHash]);
 
-    return () => { cancelled = true; };
-  }, [activeDatasetId, dashboardId, configHash, filtersHash, sourceType, engine, cache, templates, dataset, widgets, filters, isSyncing]);
+  const { result } = useComputation({
+    activeDatasetId,
+    sourceType,
+    isSyncing,
+    buildParams,
+    buildCacheKey,
+    deps: [configHash, filtersHash, widgets.length],
+  });
 
-  return results;
+  return useMemo(() => {
+    if (!result) return EMPTY_RESULT;
+    return mapResultsToKPI(result, widgets, templates, compiled.widgetToVmMap);
+  }, [result, widgets, templates, compiled.widgetToVmMap]);
 }
 
 function mapResultsToKPI(
@@ -176,8 +174,9 @@ function mapResultsToKPI(
   return widgets.map(widget => {
     const template = templates.find(t => t.id === widget.templateId)!;
     const vmId = widgetToVmMap.get(widget.id);
-    const vmResult = kpiGroup.virtualMetrics.find(vm => vm.virtualMetricId === vmId);
-
+    const vmResult = kpiGroup.virtualMetrics.find(
+      vm => vm.virtualMetricId === vmId
+    );
     return {
       widget,
       template,

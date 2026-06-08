@@ -1,5 +1,5 @@
 'use client';
-import { ClientOnly } from '@/shared/lib/hydration';
+import { ClientOnly } from '@/shared/ui/client-only';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { TemplateManager } from '@/widgets/template-manager';
 

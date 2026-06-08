@@ -1,6 +1,6 @@
 // lib/logic/type-mapper.ts
+import { ColumnClassification, ColumnConfig } from '@/shared/lib/types/dataset';
 import { transliterate } from '@/shared/lib/utils/translit';
-import { ColumnClassification, ColumnConfig } from '../model/types';
 
 /**
  * Маппинг PostgreSQL data_type → ColumnClassification

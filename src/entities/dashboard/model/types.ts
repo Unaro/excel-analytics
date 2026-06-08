@@ -1,10 +1,10 @@
 
 import type { 
   VirtualMetric, 
-  IndicatorGroupInDashboard 
+  IndicatorGroupInDashboard, 
+  HierarchyFilterValue
 } from '@/shared/lib/validators';
 
-import type { HierarchyFilterValue } from '@/entities/hierarchy/model/types';
 import type { DisplayFormat } from '@/entities/metric/model/types';
 import { FormattingRule } from '@/shared/lib/utils/fortmating-rules';
 import { MetricColor } from '@/shared/lib/utils/metric-colors';

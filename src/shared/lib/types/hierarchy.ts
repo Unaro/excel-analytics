@@ -1,13 +1,7 @@
-// entities/columnConfig/model/types.ts
-import type { DatasetRow } from '@/shared/lib/types/dataset';
-
+// shared/lib/types/hierarchy.ts
 // ─────────────────────────────────────────────────────────────
-// Реэкспорт ColumnStatistics из shared
+// Универсальные типы иерархии, используемые в shared и entities.
+// Реэкспортируем тип из Zod-схемы как single source of truth.
 // ─────────────────────────────────────────────────────────────
-export type { ColumnStatistics } from '@/shared/lib/types/dataset';
 
-export interface SheetData {
-  sheetName: string;
-  headers: string[];
-  rows: DatasetRow[];
-}
+export type { HierarchyFilterValue } from '@/shared/lib/validators';

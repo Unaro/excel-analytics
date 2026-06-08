@@ -1,4 +1,5 @@
-import { DashboardComputationResult } from "@/entities/metric";
+// shared/lib/storage/types.ts
+import type { DashboardComputationResult } from '@/shared/lib/types/computation';
 
 export interface CacheKey {
   datasetId: string;
@@ -20,7 +21,11 @@ export interface CachedComputationEntry {
 }
 
 export interface IComputationCache {
-  set(key: CacheKey, result: DashboardComputationResult, ttlMs?: number): Promise<void>;
+  set(
+    key: CacheKey,
+    result: DashboardComputationResult,
+    ttlMs?: number
+  ): Promise<void>;
   get(key: CacheKey): Promise<CachedComputationEntry | null>;
   invalidate(key: CacheKey): Promise<void>;
   clear(datasetId?: string): Promise<void>;

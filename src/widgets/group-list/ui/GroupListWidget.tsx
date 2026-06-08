@@ -3,12 +3,12 @@ import Link from 'next/link';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
 import { useDatasetStore } from '@/entities/dataset';
 import { useDeleteGroup } from '@/features/delete-group';
-import { ClientOnly } from '@/shared/lib/hydration';
 import { Plus, Layers, Edit, Trash2, Database } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
+import { ClientOnly } from '@/shared/ui/client-only';
 
 export function GroupListWidget() {
   return (

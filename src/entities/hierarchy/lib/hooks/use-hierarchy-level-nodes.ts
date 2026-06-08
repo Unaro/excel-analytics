@@ -148,6 +148,8 @@ export function useHierarchyLevelNodes(
           virtualMetrics,
           groupByColumn: columnName,
           validColumns,
+          pgSchema: dataset?.pgConfig?.schema,
+          pgTable: dataset?.pgConfig?.table,
         };
 
         await engine.initialize(activeDatasetId);

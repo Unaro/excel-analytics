@@ -1,4 +1,5 @@
-import { DashboardComputationResult } from '@/entities/metric';
+// shared/lib/computation/lib/duckdb/engine.ts
+import type { DashboardComputationResult } from '@/shared/lib/types/computation';
 import type { ClientComputeParams, IComputeEngine } from '../types';
 import { duckdbManager } from './manager';
 import { buildTableName } from './table-name';

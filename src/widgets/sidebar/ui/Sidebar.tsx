@@ -13,7 +13,7 @@ import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import DatasetSwitcher from '@/widgets/dataset-switcher';
 import { ThemeToggle } from '@/shared/ui/theme-toggle';
-import { useEngineStatus } from '@/shared/lib/hooks/use-engine-status';
+import { useEngineStatus } from '@/widgets/shared/model';
 
 type MenuItemLink = { type: 'link'; href: string; label: string; icon: LucideIcon; disabled?: boolean };
 type MenuItemDivider = { type: 'divider'; };

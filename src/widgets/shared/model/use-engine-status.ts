@@ -18,38 +18,39 @@ export interface EngineStatusState {
 
 /**
  * Отслеживает состояние DuckDB Worker'а в реальном времени.
- * 
+ *
  * Для file-датасетов:
- *   - 'ready' — Worker жив, SQL-запросы работают
- *   - 'disconnected' — Worker упал, нужна перезагрузка
- *   - 'loading' — идёт восстановление
- *   - 'error' — не удалось восстановить (нет Arrow buffer в IDB)
- *   - 'no-data' — нет активных file-датасетов
- * 
+ *   'ready'        — Worker жив, SQL-запросы работают
+ *   'disconnected' — Worker упал, нужна перезагрузка
+ *   'loading'      — идёт восстановление
+ *   'error'        — не удалось восстановить (нет Arrow buffer в IDB)
+ *   'no-data'      — нет активных file-датасетов
+ *
  * Для postgres-датасетов всегда возвращает 'ready'
  * (PG-запросы идут через Server Actions, Worker не нужен).
+ *
+ * Widget-level хук (зависит от entities/dataset).
  */
 export function useEngineStatus(): EngineStatusState {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
-  const activeDataset = useDatasetStore(s => 
+  const activeDataset = useDatasetStore(s =>
     activeDatasetId ? s.datasets[activeDatasetId] : null
   );
   const sourceType = activeDataset?.sourceType ?? 'file';
-  
+
   const [status, setStatus] = useState<DuckDBEngineStatus>(duckdbManager.status);
   const [isReloading, setIsReloading] = useState(false);
-  
+
   // Подписка на изменения статуса
   useEffect(() => {
     if (sourceType !== 'file') {
-      // PG-source не зависит от Worker'а
       setStatus('ready');
       return;
     }
-    
+
     const unsubscribe = duckdbManager.subscribe(setStatus);
-    
-    // При монтировании — делаем ping для актуального статуса
+
+    // При монтировании — ping для актуального статуса
     duckdbManager.ping().then(result => {
       if (!result) {
         setStatus('disconnected');
@@ -59,27 +60,25 @@ export function useEngineStatus(): EngineStatusState {
         setStatus('ready');
       }
     });
-    
+
     return unsubscribe;
   }, [sourceType]);
-  
+
   const reload = useCallback(async (): Promise<boolean> => {
     if (sourceType !== 'file' || !activeDatasetId) {
       return true;
     }
-    
+
     setIsReloading(true);
     try {
-      // 1. Достаём Arrow buffer из IndexedDB
-      const arrowBuffer = await get(`arrow:${activeDatasetId}`);
-      
+      const arrowBuffer = await get<Uint8Array>(`arrow:${activeDatasetId}`);
+
       if (!(arrowBuffer instanceof Uint8Array) || arrowBuffer.byteLength === 0) {
         console.error('[useEngineStatus] No Arrow buffer in IDB for', activeDatasetId);
         setStatus('error');
         return false;
       }
-      
-      // 2. Делегируем восстановление менеджеру
+
       const success = await duckdbManager.ensureReady(activeDatasetId, arrowBuffer);
       return success;
     } catch (err) {
@@ -90,7 +89,7 @@ export function useEngineStatus(): EngineStatusState {
       setIsReloading(false);
     }
   }, [sourceType, activeDatasetId]);
-  
+
   return {
     status: sourceType === 'file' ? status : 'ready',
     activeFileDatasetId: sourceType === 'file' ? activeDatasetId : null,

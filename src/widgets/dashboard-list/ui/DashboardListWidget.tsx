@@ -3,12 +3,12 @@ import Link from 'next/link';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
 import { useDeleteDashboard } from '@/features/delete-dashboard';
-import { ClientOnly } from '@/shared/lib/hydration';
 import { Plus, LayoutDashboard, ArrowRight, Trash2, Settings, Database } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
+import { ClientOnly } from '@/shared/ui/client-only';
 
 export function DashboardListWidget() {
   return (

@@ -1,21 +1,29 @@
+// shared/lib/storage/computation-cache.ts
 import { get, set, del, clear as clearDB } from 'idb-keyval';
-import type { IComputationCache, CacheKey, CachedComputationEntry, CacheMetadata } from './types';
-import { DashboardComputationResult } from '@/entities/metric';
+import type {
+  IComputationCache,
+  CacheKey,
+  CachedComputationEntry,
+} from './types';
+import type { DashboardComputationResult } from '@/shared/lib/types/computation';
 
 const FILE_TTL = 24 * 60 * 60 * 1000;
 const PG_TTL = 5 * 60 * 1000;
-
 
 export class FileComputationCache implements IComputationCache {
   private prefix = 'comp:file:';
   private memoryStore = new Map<string, CachedComputationEntry>();
 
-  async set(key: CacheKey, result: DashboardComputationResult, ttlMs = PG_TTL): Promise<void> {
+  async set(
+    key: CacheKey,
+    result: DashboardComputationResult,
+    ttlMs = PG_TTL
+  ): Promise<void> {
     const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
-    const meta: CacheMetadata = {
+    const meta = {
       storedAt: Date.now(),
       expiresAt: Date.now() + ttlMs,
-      sourceType: 'postgres',
+      sourceType: 'postgres' as const,
       recordCount: result.totalRecords,
     };
     const entry: CachedComputationEntry = { result, meta };
@@ -23,17 +31,16 @@ export class FileComputationCache implements IComputationCache {
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(entry));
     } catch {
-      // Fallback to memory-only if sessionStorage quota exceeded
+      // Fallback to memory-only
     }
   }
 
   async get(key: CacheKey): Promise<CachedComputationEntry | null> {
     const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
-
-    const raw = sessionStorage.getItem(storageKey) ?? this.memoryStore.get(storageKey) ?? null;
+    const raw =
+      sessionStorage.getItem(storageKey) ?? this.memoryStore.get(storageKey) ?? null;
     if (!raw) return null;
 
-    // Парсим только строку; объект из memoryStore уже типизирован
     let entry: CachedComputationEntry;
     if (typeof raw === 'string') {
       try {
@@ -52,7 +59,9 @@ export class FileComputationCache implements IComputationCache {
       return null;
     }
 
-    const invalidatedAt = await get(`comp:file:invalidated:${key.datasetId}:${key.dashboardId}`) as number | undefined;
+    const invalidatedAt = (await get(
+      `comp:file:invalidated:${key.datasetId}:${key.dashboardId}`
+    )) as number | undefined;
     if (invalidatedAt && entry.meta.storedAt < invalidatedAt) {
       await this.invalidate(key);
       return null;
@@ -62,7 +71,11 @@ export class FileComputationCache implements IComputationCache {
   }
 
   async invalidate(key: CacheKey): Promise<void> {
-    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}${key.configHash ? `:${key.configHash}` : ''}`;
+    const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${
+      key.filtersHash
+    }${key.configHash ? `:${key.configHash}` : ''}`;
+    sessionStorage.removeItem(storageKey);
+    this.memoryStore.delete(storageKey);
     await del(storageKey);
   }
 
@@ -74,8 +87,14 @@ export class FileComputationCache implements IComputationCache {
     }
   }
 
-  async clearByDashboard(datasetId: string, dashboardId: string): Promise<void> {
-    await set(`comp:file:invalidated:${datasetId}:${dashboardId}`, Date.now());
+  async clearByDashboard(
+    datasetId: string,
+    dashboardId: string
+  ): Promise<void> {
+    await set(
+      `comp:file:invalidated:${datasetId}:${dashboardId}`,
+      Date.now()
+    );
   }
 }
 
@@ -83,34 +102,36 @@ export class PgComputationCache implements IComputationCache {
   private prefix = 'comp:pg:';
   private memoryStore = new Map<string, CachedComputationEntry>();
 
-  async set(key: CacheKey, result: DashboardComputationResult, ttlMs = PG_TTL): Promise<void> {
+  async set(
+    key: CacheKey,
+    result: DashboardComputationResult,
+    ttlMs = PG_TTL
+  ): Promise<void> {
     const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
-    const meta: CacheMetadata = {
+    const meta = {
       storedAt: Date.now(),
       expiresAt: Date.now() + ttlMs,
-      sourceType: 'postgres',
+      sourceType: 'postgres' as const,
       recordCount: result.totalRecords,
     };
-    const entry = { result, meta };
+    const entry: CachedComputationEntry = { result, meta };
     this.memoryStore.set(storageKey, entry);
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(entry));
     } catch {
-      // Fallback to memory-only if sessionStorage quota exceeded
+      // Fallback to memory-only
     }
   }
 
   async get(key: CacheKey): Promise<CachedComputationEntry | null> {
     const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
-    const raw = sessionStorage.getItem(storageKey) || this.memoryStore.get(storageKey);
+    const raw =
+      sessionStorage.getItem(storageKey) || this.memoryStore.get(storageKey);
     if (!raw) return null;
-    const entry: CachedComputationEntry = typeof raw === 'string' ? JSON.parse(raw) : raw;
+
+    const entry: CachedComputationEntry =
+      typeof raw === 'string' ? JSON.parse(raw) : raw;
     if (Date.now() > entry.meta.expiresAt) {
-      await this.invalidate(key);
-      return null;
-    }
-    const invalidatedAt = await get(`comp:file:invalidated:${key.datasetId}:${key.dashboardId}`) as number | undefined;
-    if (invalidatedAt && entry.meta.storedAt < invalidatedAt) {
       await this.invalidate(key);
       return null;
     }
@@ -128,7 +149,10 @@ export class PgComputationCache implements IComputationCache {
     sessionStorage.clear();
   }
 
-  async clearByDashboard(datasetId: string, dashboardId: string): Promise<void> {
+  async clearByDashboard(
+    datasetId: string,
+    dashboardId: string
+  ): Promise<void> {
     const prefix = `${this.prefix}${datasetId}:${dashboardId}:`;
     for (const key of this.memoryStore.keys()) {
       if (key.startsWith(prefix)) this.memoryStore.delete(key);
@@ -140,20 +164,22 @@ export class PgComputationCache implements IComputationCache {
   }
 }
 
-export function createComputationCache(sourceType: 'file' | 'postgres'): IComputationCache {
-  return sourceType === 'file' ? new FileComputationCache() : new PgComputationCache();
+export function createComputationCache(
+  sourceType: 'file' | 'postgres'
+): IComputationCache {
+  return sourceType === 'file'
+    ? new FileComputationCache()
+    : new PgComputationCache();
 }
 
-/**
- * Type guard для проверки, что распарсенный объект — это CachedComputationEntry.
- * Защита от повреждённых записей в sessionStorage.
- */
 function isCachedComputationEntry(value: unknown): value is CachedComputationEntry {
   if (typeof value !== 'object' || value === null) return false;
   const obj = value as Record<string, unknown>;
   return (
-    typeof obj.result === 'object' && obj.result !== null &&
-    typeof obj.meta === 'object' && obj.meta !== null &&
+    typeof obj.result === 'object' &&
+    obj.result !== null &&
+    typeof obj.meta === 'object' &&
+    obj.meta !== null &&
     typeof (obj.meta as Record<string, unknown>).storedAt === 'number' &&
     typeof (obj.meta as Record<string, unknown>).expiresAt === 'number'
   );

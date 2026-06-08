@@ -1,8 +1,8 @@
 'use client';
 
-import { ClientOnly } from '@/shared/lib/hydration';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { HierarchyBuilder } from './HierarchyBuilder';
+import { ClientOnly } from '@/shared/ui/client-only';
 
 export function HierarchyBuilderWidget() {
   return (
