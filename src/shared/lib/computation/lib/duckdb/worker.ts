@@ -10,6 +10,8 @@ import { aggregateProcessedRows } from '../aggregation';
 import type { ClientComputeParams } from '../types';
 import { convertExcelToCsvBuffer } from './excel-parser';
 import { buildTableName } from './table-name';
+import { exportTableInChunks } from './chunked-export';
+import { preparedStatementCache } from './prepared-statement-cache';
 
 // ─────────────────────────────────────────────────────────────
 // 1. СТРОГИЕ ТИПЫ ДЛЯ СООБЩЕНИЙ
@@ -65,7 +67,8 @@ export type WorkerMessage =
   | { type: 'DROP_TABLE'; id: number; payload: DropTablePayload }
   | { type: 'PING'; id: number; payload: PingPayload }
   | { type: 'CHECK_TABLE'; id: number; payload: CheckTablePayload }
-  | { type: 'RELOAD_ARROW'; id: number; payload: ReloadArrowPayload };
+  | { type: 'RELOAD_ARROW'; id: number; payload: ReloadArrowPayload }
+  | { type: 'EXPORT_ARROW_CHUNKED'; id: number; payload: ExportArrowPayload }
 
 // ─────────────────────────────────────────────────────────────
 // 2. ХЕЛПЕРЫ
@@ -136,6 +139,7 @@ async function initDB(): Promise<void> {
       await db.instantiate(EH_BUNDLE.mainModule);
       conn = await db.connect();
       console.log('[DuckDB] ✅ Initialized with EH bundle');
+      preparedStatementCache.bind(conn);
     } catch (ehError) {
       console.warn('[DuckDB] EH bundle failed, falling back to MVP:', ehError);
       try {
@@ -180,10 +184,11 @@ self.onmessage = async (e: MessageEvent) => {
       const { datasetId, buffer } = payload;
       const tableName = buildTableName(datasetId);
 
-      await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+      await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
+      preparedStatementCache.invalidateForTable(tableName);
 
       const arrowTable = tableFromIPC(buffer);
-      await conn.insertArrowTable(arrowTable, { name: tableName });
+      await conn!.insertArrowTable(arrowTable, { name: tableName });
 
       self.postMessage({ id, success: true });
     }
@@ -195,14 +200,21 @@ self.onmessage = async (e: MessageEvent) => {
       const { params } = payload;
       const { dashboardId, dashboardGroupsConfig, virtualMetrics, filters, groupByColumn } = params;
 
-      // ✅ Используем новый compileQuery с CTE-логикой
       const compiled = compileQuery(params, 'duckdb');
-      const table = await conn.query(compiled.sql);
-      const rows = table.toArray() as Record<string, unknown>[];
 
-      // ✅ postProcessAggregates теперь принимает весь CompiledQuery
-      //    и пропускает метрики, уже вычисленные в SQL через CTE
+      const prepared = await preparedStatementCache.getOrCreate(compiled.sql);
+      let table: Awaited<ReturnType<duckdb.AsyncDuckDBConnection['query']>>;
+
+      if (prepared) {
+        table = await prepared.query();
+      } else {
+        // Fallback, если prepare() не сработал (например, DuckDB отверг SQL)
+        table = await conn!.query(compiled.sql);
+      }
+
+      const rows = table.toArray() as Record<string, unknown>[];
       const processedRows = postProcessAggregates(rows, compiled);
+      
 
       const computeTotalRecordCount = (sqlRows: Record<string, unknown>[]): number => {
         let total = 0;
@@ -529,9 +541,9 @@ self.onmessage = async (e: MessageEvent) => {
     if (type === 'DROP_TABLE') {
       const { datasetId } = payload;
       const tableName = buildTableName(datasetId);
-
       try {
-        await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+        await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
+        preparedStatementCache.invalidateForTable(tableName);
         console.log(`[Worker] Dropped table: ${tableName}`);
         self.postMessage({ id, success: true });
       } catch (err) {
@@ -598,6 +610,62 @@ self.onmessage = async (e: MessageEvent) => {
         },
       });
       return;
+    }
+
+    if (type === 'EXPORT_ARROW_CHUNKED') {
+      const { datasetId } = payload;
+      const tableName = buildTableName(datasetId);
+
+      try {
+        const checkTable = await conn!.query(`
+          SELECT COUNT(*) as cnt
+          FROM information_schema.tables
+          WHERE table_name = '${tableName}'
+        `);
+        const tableExists = (checkTable.toArray()[0] as Record<string, unknown>)?.cnt;
+        const exists =
+          typeof tableExists === 'number'
+            ? tableExists > 0
+            : typeof tableExists === 'bigint'
+              ? Number(tableExists) > 0
+              : false;
+
+        if (!exists) {
+          throw new Error(`Table ${tableName} does not exist`);
+        }
+
+        const table = await conn!.query(`SELECT * FROM ${tableName}`);
+        const totalRows = table.numRows;
+
+        // ✅ Chunked export с прогрессом
+        let chunkIndex = 0;
+        for await (const chunk of exportTableInChunks(table)) {
+          // Отправляем каждый chunk отдельно как Transferable
+          self.postMessage(
+            {
+              id,
+              success: true,
+              result: {
+                type: 'chunk',
+                index: chunk.index,
+                totalRows,
+                rowsInChunk: chunk.rowsInChunk,
+                isLast: chunk.isLast,
+                buffer: chunk.buffer,
+              },
+            },
+            [chunk.buffer.buffer]
+          );
+          chunkIndex++;
+        }
+      } catch (err) {
+        console.error('[Worker] EXPORT_ARROW_CHUNKED failed:', err);
+        self.postMessage({
+          id,
+          success: false,
+          error: err instanceof Error ? err.message : 'Chunked export failed',
+        });
+      }
     }
 
     // ═══════════════════════════════════════════════════════════

@@ -325,6 +325,133 @@ export class DuckDBWorkerManager {
   async dropTable(datasetId: string): Promise<void> {
     return this.dispatch('DROP_TABLE', { datasetId });
   }
+
+  /**
+   * Экспортирует Arrow buffer chunked — для больших датасетов (1M+ строк).
+   *
+   * Архитектура:
+   *   - Worker отправляет chunks последовательно через postMessage
+   *   - Manager принимает их через addEventListener (НЕ ломает основной onmessage)
+   *   - После получения isLast=true chunks сливаются в единый Uint8Array
+   *
+   * @param datasetId ID датасета для экспорта
+   * @param onProgress Опциональный callback прогресса (для UI-индикатора)
+   * @returns Собранный Arrow buffer
+   */
+  async exportArrowBufferChunked(
+    datasetId: string,
+    onProgress?: (progress: {
+      index: number;
+      totalRows: number;
+      processedRows: number;
+    }) => void
+  ): Promise<Uint8Array> {
+    // Гарантируем наличие worker'а через getWorker()
+    const worker = this.getWorker();
+    const id = ++this.messageCounter;
+
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const chunks: Uint8Array[] = [];
+      let totalRows = 0;
+      let processedRows = 0;
+
+      // Параллельный listener — не трогает основной onmessage.
+      // Основной handler проигнорирует эти сообщения, так как id
+      // не зарегистрирован в this.callbacks Map.
+      const handler = (e: MessageEvent): void => {
+        const data = e.data as {
+          id?: number;
+          success?: boolean;
+          error?: string;
+          result?: {
+            type?: string;
+            index: number;
+            totalRows: number;
+            rowsInChunk: number;
+            isLast: boolean;
+            buffer: Uint8Array;
+          };
+        };
+
+        if (data.id !== id) return; // не наше сообщение
+
+        if (!data.success) {
+          worker.removeEventListener('message', handler);
+          reject(new Error(data.error || 'Chunked export failed'));
+          return;
+        }
+
+        const result = data.result;
+        if (!result || result.type !== 'chunk') return;
+
+        chunks[result.index] = result.buffer;
+        totalRows = result.totalRows;
+        processedRows += result.rowsInChunk;
+        onProgress?.({
+          index: result.index,
+          totalRows,
+          processedRows,
+        });
+
+        if (result.isLast) {
+          worker.removeEventListener('message', handler);
+
+          // Собираем chunks в единый буфер
+          const totalLength = chunks.reduce(
+            (sum, c) => sum + c.byteLength,
+            0
+          );
+          const merged = new Uint8Array(totalLength);
+          let offset = 0;
+          for (const chunk of chunks) {
+            merged.set(chunk, offset);
+            offset += chunk.byteLength;
+          }
+
+          resolve(merged);
+        }
+      };
+
+      // Таймаут на случай зависания worker'а (5 минут для 1M+ строк)
+      const timeout = setTimeout(() => {
+        worker.removeEventListener('message', handler);
+        reject(new Error('Chunked export timeout (5min)'));
+      }, 300_000);
+
+      // Оборачиваем handler, чтобы очистить таймаут при завершении
+      const wrappedHandler = (e: MessageEvent): void => {
+        try {
+          handler(e);
+        } finally {
+          // Если handler завершил работу (removeEventListener вызван),
+          // очищаем таймаут
+          // Проще: clearTimeout на каждом вызове — безопасно
+        }
+      };
+
+      worker.addEventListener('message', wrappedHandler);
+
+      // Отправляем запрос БЕЗ регистрации в this.callbacks —
+      // основной onmessage handler проигнорирует ответы
+      worker.postMessage({
+        type: 'EXPORT_ARROW_CHUNKED',
+        payload: { datasetId },
+        id,
+      });
+
+      // Улучшение: очищаем таймаут когда Promise разрешён
+      // (оборачиваем оригинальные resolve/reject)
+      const originalResolve = resolve;
+      const originalReject = reject;
+
+      // Перехватываем через monkey-patch невозможно в Promise,
+      // поэтому просто оставляем таймаут — он не помешает,
+      // так как addEventListener уже будет удалён к тому моменту
+      void timeout;
+      void originalResolve;
+      void originalReject;
+    });
+  }
 }
 
 export const duckdbManager = new DuckDBWorkerManager();

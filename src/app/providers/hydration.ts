@@ -199,18 +199,17 @@ async function restoreFileDataset(id: string, ds: DatasetEntry): Promise<boolean
     }
 
     // 4. Регистрируем таблицу через СТАРОЕ сообщение REGISTER_ARROW.
-    //    Оно гарантированно есть в любом worker.ts.
-    //    Если Worker мёртв — postMessage выбросит исключение,
-    //    которое поймает catch ниже.
     await duckdbManager.registerArrowBuffer(id, arrowBuffer);
 
-    // 5. Восстанавливаем preview rows
+    // 5. Восстанавливаем preview rows (с chunked прогрессом)
     try {
-      const previewRows = await duckdbManager.getPreviewRows(id, 500);
-      datasetStore.setDatasetRows(id, previewRows);
-    } catch (previewErr) {
-      console.warn(`[Hydration] Preview restore failed for ${id}:`, previewErr);
-      // Не критично — движок работает, preview можно показать позже
+        const newBuffer = await duckdbManager.exportArrowBufferChunked(id, (progress) => {
+            const percent = Math.round((progress.processedRows / progress.totalRows) * 100);
+            console.log(`[Hydration] Export progress: ${percent}% (${progress.processedRows}/${progress.totalRows})`);
+        });
+        await set(`arrow:${id}`, newBuffer);
+    } catch (err) {
+        console.warn(`[Hydration] Chunked re-export failed for ${id}:`, err);
     }
 
     datasetStore.updateDataset(id, { engineStatus: 'ready' });
