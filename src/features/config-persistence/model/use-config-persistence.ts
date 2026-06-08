@@ -1,265 +1,180 @@
+// features/config-persistence/model/use-config-persistence.ts
+// ─────────────────────────────────────────────────────────────
+// Тонкий React-хук — UI-обёртка над чистыми сервисами.
+//
+// Обязанности:
+//   1. Читать данные из Zustand-сторов (это ОК для feature)
+//   2. Делегировать бизнес-логику в shared/lib/services/
+//   3. Выполнять side-effects: download, запись в сторы, toast, router
+// ─────────────────────────────────────────────────────────────
+
 'use client';
+
 import { useCallback } from 'react';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useHierarchyStore } from '@/entities/hierarchy';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
-import { Dashboard, useDashboardStore } from '@/entities/dashboard';
+import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
-import { createComputationCache } from '@/shared/lib/storage'; // ← ОБНОВЛЁННЫЙ ИМПОРТ
+import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
+import { createComputationCache } from '@/shared/lib/storage';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
-import { DatasetConfigExport } from '@/entities/exportPackage/types';
-import { vmDedupeKey, buildDeterministicVmId } from '@/shared/lib/utils/metric-ids';
 import {
-  DatasetConfigExportSchema,
-  HierarchyFilterValue,
-  IndicatorGroup,
-  IndicatorGroupInDashboard,
-  VirtualMetric,
-  VirtualMetricBindingInDashboard,
-} from '@/shared/lib/validators';
-import { GroupMetricConfig, useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
+  buildConfigExportPayload,
+  processConfigImport,
+  ConfigImportError,
+} from '@/shared/lib/services';
 
 export function useConfigPersistence() {
   const router = useRouter();
 
+  // ───────────────────────────────────────────────────────────
+  // EXPORT
+  // ───────────────────────────────────────────────────────────
   const exportDatasetConfig = useCallback((datasetId: string) => {
-    const allDashboards = useDashboardStore.getState().dashboards;
-    const allGroups = useIndicatorGroupStore.getState().groups;
+    // 1. Собираем контекст из сторов
     const activeDatasetId = useDatasetStore.getState().activeDatasetId;
+    const context = {
+      datasetId,
+      dashboards: useDashboardStore.getState().dashboards,
+      indicatorGroups: useIndicatorGroupStore.getState().groups,
+      hierarchyLevels:
+        useHierarchyStore.getState().levelsByDataset[datasetId] || [],
+      columnConfigs:
+        useColumnConfigStore.getState().configsByDataset[datasetId] || [],
+      metricTemplates: useMetricTemplateStore.getState().templates,
+      groupMetricConfigs: useGroupMetricConfigStore.getState().configsByGroup,
+    };
 
-    const belongsToDataset = (entityDatasetId: string | undefined) =>
-      entityDatasetId === datasetId || (!entityDatasetId && activeDatasetId === datasetId);
+    // 2. Делегируем логику в чистый сервис
+    const result = buildConfigExportPayload(context, activeDatasetId);
 
-    const dashboards = allDashboards
-      .filter(d => belongsToDataset(d.datasetId))
-      .map(d => ({ ...d, hierarchyFilters: [] as HierarchyFilterValue[] }));
-
-    const indicatorGroups = allGroups.filter(g => belongsToDataset(g.datasetId));
-
-    if (dashboards.length === 0 && indicatorGroups.length === 0) {
+    // 3. Проверяем, есть ли что экспортировать
+    if (result.stats.dashboardsCount === 0 && result.stats.groupsCount === 0) {
       toast.warning('Нечего экспортировать');
       return;
     }
 
-    const datasetGroupIds = new Set(indicatorGroups.map(g => g.id));
-    const allGroupConfigs = useGroupMetricConfigStore.getState().configsByGroup;
-    const groupMetricConfigs: Record<string, Record<string, GroupMetricConfig>> = {};
-    for (const [groupId, metricConfigs] of Object.entries(allGroupConfigs)) {
-      if (datasetGroupIds.has(groupId) && Object.keys(metricConfigs).length > 0) {
-        groupMetricConfigs[groupId] = metricConfigs;
-      }
-    }
-
-    const payload: DatasetConfigExport = {
-      version: 2,
-      exportType: 'dataset_config',
-      exportedAt: Date.now(),
-      sourceDatasetId: datasetId,
-      data: {
-        dashboards,
-        indicatorGroups,
-        hierarchyLevels: useHierarchyStore.getState().levelsByDataset[datasetId] || [],
-        columnConfigs: useColumnConfigStore.getState().configsByDataset[datasetId] || [],
-        metricTemplates: useMetricTemplateStore.getState().templates,
-        groupMetricConfigs: Object.keys(groupMetricConfigs).length > 0
-          ? groupMetricConfigs
-          : undefined,
-      },
-    };
-
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `config-${datasetId.slice(0, 8)}-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // 4. Скачиваем файл
+    const url = URL.createObjectURL(result.blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = result.suggestedFileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
     URL.revokeObjectURL(url);
 
+    // 5. Уведомляем пользователя
+    const { dashboardsCount, groupsCount, groupConfigsWithColors } = result.stats;
     toast.success(
-      `Экспортировано: ${dashboards.length} дашбордов, ${indicatorGroups.length} групп` +
-      (Object.keys(groupMetricConfigs).length > 0
-        ? `, ${Object.keys(groupMetricConfigs).length} групп с настройками цвета`
-        : '')
+      `Экспортировано: ${dashboardsCount} дашбордов, ${groupsCount} групп` +
+        (groupConfigsWithColors > 0
+          ? `, ${groupConfigsWithColors} групп с настройками цвета`
+          : '')
     );
   }, []);
 
-  const importToDataset = useCallback(async (file: File, targetDatasetId: string) => {
-    try {
-      const text = await file.text();
-
-      // ─── Безопасный парсинг JSON ───
-      let raw: unknown;
+  // ───────────────────────────────────────────────────────────
+  // IMPORT
+  // ───────────────────────────────────────────────────────────
+  const importToDataset = useCallback(
+    async (file: File, targetDatasetId: string) => {
       try {
-        raw = JSON.parse(text);
-      } catch {
-        throw new Error('Файл не является валидным JSON');
-      }
+        // 1. Читаем файл
+        const fileContent = await file.text();
 
-      // ─── Базовая проверка структуры ───
-      if (typeof raw !== 'object' || raw === null) {
-        throw new Error('Неверный формат файла: ожидается JSON-объект');
-      }
+        // 2. Собираем контекст для дедупликации
+        const context = {
+          targetDatasetId,
+          existingMetricTemplates: useMetricTemplateStore.getState().templates,
+          existingIndicatorGroups: useIndicatorGroupStore.getState().groups,
+          existingDashboards: useDashboardStore.getState().dashboards,
+        };
 
-      const parseResult = DatasetConfigExportSchema.safeParse(raw);
-      if (!parseResult.success) {
-        const firstIssue = parseResult.error.issues[0];
-        const path = firstIssue.path.length > 0 ? ` в поле "${firstIssue.path.join('.')}"` : '';
-        throw new Error(
-          `Невалидный формат конфига${path}: ${firstIssue.message}`
-        );
-      }
-      const config = parseResult.data;
-      const { data } = config;
+        // 3. Делегируем логику в чистый сервис
+        const result = processConfigImport(fileContent, context);
 
-      // ─── 1. Metric templates ───
-      const currentTemplates = useMetricTemplateStore.getState().templates;
-      const existingTemplateIds = new Set(currentTemplates.map(t => t.id));
-      const newTemplates = (data.metricTemplates || []).filter(
-        t => !existingTemplateIds.has(t.id)
-      );
-      if (newTemplates.length > 0) {
-        useMetricTemplateStore.setState({
-          templates: [...currentTemplates, ...newTemplates],
-        });
-      }
-      const allTemplates = useMetricTemplateStore.getState().templates;
-
-      // ─── 2. Hierarchy levels ───
-      useHierarchyStore
-        .getState()
-        .setDatasetLevels(targetDatasetId, data.hierarchyLevels || []);
-
-      // ─── 3. Column configs ───
-      useColumnConfigStore
-        .getState()
-        .setDatasetConfigs(targetDatasetId, data.columnConfigs || []);
-
-      // ─── 4. Indicator groups ───
-      const currentGroups = useIndicatorGroupStore.getState().groups;
-      const otherGroups = currentGroups.filter(g => g.datasetId !== targetDatasetId);
-      const importedGroups: IndicatorGroup[] = (data.indicatorGroups || []).map(g => ({
-        ...g,
-        datasetId: targetDatasetId,
-      }));
-      useIndicatorGroupStore.setState({
-        groups: [...otherGroups, ...importedGroups],
-      });
-      const groupMap = new Map<string, IndicatorGroup>(
-        importedGroups.map(g => [g.id, g])
-      );
-
-      // ─── 5. Dashboards: дедупликация виртуальных метрик ───
-      const currentDashboards = useDashboardStore.getState().dashboards;
-      const otherDashboards = currentDashboards.filter(
-        d => d.datasetId !== targetDatasetId
-      );
-      const importedDashboards = (data.dashboards || []).map(d => {
-        const dash = d as Record<string, unknown>;
-        const vmByKey = new Map<string, VirtualMetric>();
-        const rebuiltGroupConfigs: IndicatorGroupInDashboard[] = [];
-        const dashboardGroupConfigs = (dash.indicatorGroups as IndicatorGroupInDashboard[]) || [];
-
-        for (const dgConfig of dashboardGroupConfigs) {
-          const group = groupMap.get(dgConfig.groupId);
-          if (!group) continue;
-          const newBindings: VirtualMetricBindingInDashboard[] = [];
-
-          for (const metric of group.metrics) {
-            if (!metric.enabled) continue;
-            const template = allTemplates.find(t => t.id === metric.templateId);
-            const name = metric.customName && `${metric.customName}(${template?.name})` || metric.customName || template?.name || 'Metric';
-            const displayFormat = metric.customDisplayFormat || template?.displayFormat || 'number';
-            const decimalPlaces = metric.customDecimalPlaces ?? template?.decimalPlaces ?? 2;
-            const unit = metric.unit || template?.suffix || template?.prefix;
-            const semanticKey = `${name}::${displayFormat}::${decimalPlaces}::${unit ?? ''}`;
-
-            if (!vmByKey.has(semanticKey)) {
-              const originalVms = (dash.virtualMetrics as VirtualMetric[]) || [];
-              const originalVm = originalVms.find(vm =>
-                vm.name === name &&
-                vm.displayFormat === displayFormat &&
-                vm.decimalPlaces === decimalPlaces &&
-                vm.unit === unit
-              );
-              vmByKey.set(semanticKey, {
-                id: buildDeterministicVmId(semanticKey),
-                name,
-                displayFormat,
-                decimalPlaces,
-                order: vmByKey.size,
-                unit,
-                colorConfig: originalVm?.colorConfig
-                  || originalVms.find(vm => vm.id === metric.id)?.colorConfig
-              });
-            }
-            const vm = vmByKey.get(semanticKey)!;
-            newBindings.push({
-              virtualMetricId: vm.id,
-              metricId: metric.id,
-            });
-          }
-
-          rebuiltGroupConfigs.push({
-            groupId: dgConfig.groupId,
-            enabled: dgConfig.enabled,
-            order: dgConfig.order,
-            virtualMetricBindings: newBindings,
-          });
+        // 4. Применяем результат к сторам
+        if (result.newMetricTemplates.length > 0) {
+          useMetricTemplateStore.setState((state) => ({
+            templates: [...state.templates, ...result.newMetricTemplates],
+          }));
         }
 
-        const rebuiltVirtualMetrics = Array.from(vmByKey.values());
-        return {
-          ...(dash as object),
-          datasetId: targetDatasetId,
-          virtualMetrics: rebuiltVirtualMetrics,
-          indicatorGroups: rebuiltGroupConfigs,
-          hierarchyFilters: [] as HierarchyFilterValue[],
-        } as Dashboard;
-      });
+        useHierarchyStore
+          .getState()
+          .setDatasetLevels(targetDatasetId, result.hierarchyLevels);
 
-      useDashboardStore.setState({
-        dashboards: [...otherDashboards, ...importedDashboards],
-      });
+        useColumnConfigStore
+          .getState()
+          .setDatasetConfigs(targetDatasetId, result.columnConfigs);
 
-      // ─── 5.5. UI-настройки метрик групп ───
-      const importedGroupConfigs = data.groupMetricConfigs;
-      if (importedGroupConfigs && Object.keys(importedGroupConfigs).length > 0) {
-        useGroupMetricConfigStore.getState().importConfigs(importedGroupConfigs);
+        useIndicatorGroupStore.setState({
+          groups: result.mergedIndicatorGroups,
+        });
+
+        useDashboardStore.setState({
+          dashboards: result.mergedDashboards,
+        });
+
+        if (
+          result.importedGroupMetricConfigs &&
+          Object.keys(result.importedGroupMetricConfigs).length > 0
+        ) {
+          useGroupMetricConfigStore
+            .getState()
+            .importConfigs(result.importedGroupMetricConfigs);
+        }
+
+        // 5. Инвалидируем кэш вычислений
+        await invalidateComputationCache(targetDatasetId);
+
+        // 6. Уведомляем и обновляем UI
+        const { stats } = result;
+        toast.success(
+          `Конфиг применён: ${stats.dashboardsImported} дашбордов, ` +
+            `${stats.groupsImported} групп, ${stats.hierarchyLevelsImported} уровней` +
+            (stats.groupConfigsWithColors > 0
+              ? `, ${stats.groupConfigsWithColors} групп с настройками цвета`
+              : '')
+        );
+        router.refresh();
+      } catch (error) {
+        console.error('[ConfigImport] Error:', error);
+
+        const message =
+          error instanceof ConfigImportError
+            ? error.message
+            : error instanceof Error
+              ? error.message
+              : 'Ошибка импорта';
+
+        toast.error(message);
       }
-
-      // ─── 6. Инвалидация кэша ───
-      try {
-        const fileCache = createComputationCache('file');
-        await fileCache.clear(targetDatasetId);
-      } catch (err) {
-        console.warn('[ConfigImport] File cache invalidation failed:', err);
-      }
-      try {
-        const pgCache = createComputationCache('postgres');
-        await pgCache.clear(targetDatasetId);
-      } catch (err) {
-        console.warn('[ConfigImport] PG cache invalidation failed:', err);
-      }
-
-      const importedGroupConfigsCount = data.groupMetricConfigs
-        ? Object.keys(data.groupMetricConfigs).length
-        : 0;
-
-      toast.success(
-        `Конфиг применён: ${importedDashboards.length} дашбордов, ` +
-        `${importedGroups.length} групп, ${data.hierarchyLevels?.length || 0} уровней` +
-        (importedGroupConfigsCount > 0 ? `, ${importedGroupConfigsCount} групп с настройками цвета` : '')
-      );
-      router.refresh();
-    } catch (e) {
-      console.error('[ConfigImport] Error:', e);
-      toast.error(e instanceof Error ? e.message : 'Ошибка импорта');
-    }
-  }, [router]);
+    },
+    [router]
+  );
 
   return { exportDatasetConfig, importToDataset };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Вспомогательная функция — инвалидация кэша
+// ─────────────────────────────────────────────────────────────
+async function invalidateComputationCache(datasetId: string): Promise<void> {
+  try {
+    const fileCache = createComputationCache('file');
+    await fileCache.clear(datasetId);
+  } catch (err) {
+    console.warn('[ConfigImport] File cache invalidation failed:', err);
+  }
+  try {
+    const pgCache = createComputationCache('postgres');
+    await pgCache.clear(datasetId);
+  } catch (err) {
+    console.warn('[ConfigImport] PG cache invalidation failed:', err);
+  }
 }
