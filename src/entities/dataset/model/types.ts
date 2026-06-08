@@ -3,16 +3,6 @@ import type { DatasetRow, ColumnStatistics } from '@/shared/lib/types/dataset';
 
 export type DatasetSourceType = 'file' | 'postgres' | null;
 
-// ─────────────────────────────────────────────────────────────
-// Реэкспорт универсальных типов из shared
-// ─────────────────────────────────────────────────────────────
-export type {
-  DatasetRow,
-  ColumnClassification,
-  ColumnConfig,
-  ColumnStatistics,
-} from '@/shared/lib/types/dataset';
-
 /**
  * Метаданные загруженного датасета.
  */

@@ -13,9 +13,9 @@ import type { HierarchyFilterValue, MetricTemplate } from '@/shared/lib/validato
 import type { KPIWidget } from '@/entities/dashboard';
 import type { DashboardComputationResult } from '@/entities/metric';
 import { useColumnConfigStore } from '@/entities/columnConfig';
-import type { ColumnConfig } from '@/entities/dataset';
 import type { CacheKey } from '@/shared/lib/storage';
 import { useComputation } from '@/widgets/shared/model/use-computation';
+import type { ColumnConfig } from '@/shared/lib/types';
 
 export interface KPIResult {
   widget: KPIWidget;

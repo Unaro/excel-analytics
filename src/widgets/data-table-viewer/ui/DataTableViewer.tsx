@@ -5,7 +5,8 @@ import { ArrowLeft, ArrowRight, ChevronsLeft, ChevronsRight, Loader2, Database }
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
 import { formatDataValue } from '@/shared/lib/utils/format';
-import { DatasetRow } from '@/entities/dataset';
+import type { DatasetRow } from '@/shared/lib/types';
+
 
 interface DataTableViewerProps {
   data: DatasetRow[];

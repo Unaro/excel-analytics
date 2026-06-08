@@ -1,7 +1,8 @@
 'use client';
 
 import { useColumnConfigStore } from '@/entities/columnConfig';
-import { ColumnClassification, ColumnConfig, useDatasetStore } from '@/entities/dataset';
+import { useDatasetStore } from '@/entities/dataset';
+import { ColumnClassification, ColumnConfig } from '@/shared/lib/types';
 import { cn } from '@/shared/lib/utils';
 import { useShallow } from 'zustand/react/shallow';
 

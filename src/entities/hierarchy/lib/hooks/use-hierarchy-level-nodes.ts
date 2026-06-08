@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useMemo } from 'react';
-import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
+import { useDatasetStore } from '@/entities/dataset';
 import { createComputeEngine } from '@/shared/lib/computation/lib/engine-factory';
 import { createComputationCache } from '@/shared/lib/storage'; // ← ОБНОВЛЁННЫЙ ИМПОРТ
 import { generateFiltersHash } from '@/shared/lib/utils/hash';
@@ -8,6 +8,7 @@ import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { HierarchyFilterValue, IndicatorGroup, IndicatorGroupInDashboard, MetricTemplate, GroupMetric, VirtualMetric } from '@/shared/lib/validators';
 import { HierarchyNode, HierarchyLevel } from '@/entities/hierarchy/model/types';
 import { useColumnConfigStore } from '@/entities/columnConfig';
+import { ColumnConfig } from '@/shared/lib/types';
 
 const EMPTY_CONFIGS: ColumnConfig[] = [];
 const TPL_ID = '__hierarchy_count_tpl__';

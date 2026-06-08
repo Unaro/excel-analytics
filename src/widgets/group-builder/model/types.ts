@@ -1,8 +1,8 @@
 import type { DraggableAttributes } from '@dnd-kit/core';
 import type { SyntheticListenerMap } from '@dnd-kit/core/dist/hooks/utilities';
 import type { MetricTemplate } from '@/shared/lib/validators';
-import type { ColumnConfig } from '@/entities/dataset';
 import type { useGroupBuilder } from './use-group-builder';
+import type { ColumnConfig } from '@/shared/lib/types';
 
 export interface FormMetricState {
   id: string;

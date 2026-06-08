@@ -5,8 +5,9 @@ import { FieldBinding, GroupMetric, MetricBinding, useMetricTemplateStore } from
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { nanoid } from 'nanoid';
 import { extractVariables } from '@/shared/lib/utils/formula';
-import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
+import { useDatasetStore } from '@/entities/dataset';
 import { FormMetricState } from './types';
+import type { ColumnConfig } from '@/shared/lib/types';
 
 const EMPTY_COLUMNS: ColumnConfig[] = []
 

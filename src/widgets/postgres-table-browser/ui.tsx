@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { DatasetRow, syncFromPostgres } from '@/entities/dataset';
+import { syncFromPostgres } from '@/entities/dataset';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { Table, Loader2, Check, Database, AlertCircle } from 'lucide-react';
@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { DataTableViewer } from '@/widgets/data-table-viewer';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
 import { fetchPgTableData, getPgSchema } from '@/shared/api/server-actions';
+import type { DatasetRow } from '@/shared/lib/types';
 
 interface PostgresTableBrowserProps {
   config: PgConnectionConfig | null;

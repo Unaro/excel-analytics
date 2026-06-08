@@ -1,4 +1,4 @@
-import { DatasetRow } from "@/entities/dataset";
+import { DatasetRow } from "@/shared/lib/types";
 import { HierarchyLevel, HierarchyNode } from "../model/types";
 import { HierarchyFilterValue } from "@/shared/lib/validators";
 

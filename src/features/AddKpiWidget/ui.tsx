@@ -8,8 +8,9 @@ import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { SearchableSelect } from '@/shared/ui/searchable-select';
-import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
+import { useDatasetStore } from '@/entities/dataset';
 import { useShallow } from 'zustand/react/shallow';
+import { ColumnConfig } from '@/shared/lib/types';
 
 interface AddKPIDialogProps {
   dashboardId: string;

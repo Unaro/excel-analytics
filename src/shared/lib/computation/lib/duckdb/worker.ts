@@ -8,10 +8,70 @@ import { getActiveFilter, formatValue } from '../utils';
 import { transliterate } from '@/shared/lib/utils/translit';
 import { aggregateProcessedRows } from '../aggregation';
 import type { ClientComputeParams } from '../types';
-import { convertExcelToCsvBuffer } from './excel-parser';
 import { buildTableName } from './table-name';
 import { exportTableInChunks } from './chunked-export';
 import { preparedStatementCache } from './prepared-statement-cache';
+import { parseExcelToJson, classifyColumn } from './excel-parser';
+import { DatasetRow } from '@/shared/lib/types';
+
+/**
+ * Отдаёт управление event loop.
+ * Критично для длительных операций в Worker'е:
+ *   - Позволяет обработать входящие сообщения (PING)
+ *   - Даёт V8 возможность запустить GC
+ *   - Предотвращает "Worker timeout" в Manager
+ */
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Собирает сэмпл значений по каждой колонке для классификации.
+ */
+function buildClassificationSample(
+  headers: string[],
+  rows: DatasetRow[]
+): Record<string, unknown[]> {
+  const sample: Record<string, unknown[]> = {};
+  for (const h of headers) sample[h] = [];
+  for (const row of rows) {
+    for (const h of headers) {
+      sample[h].push(row[h]);
+    }
+  }
+  return sample;
+}
+
+/**
+ * Конвертирует DatasetRow[] в CSV-буфер (для маленьких файлов).
+ * Простая реализация без внешних зависимостей.
+ */
+function rowsToCsvBuffer(
+  rows: DatasetRow[],
+  headers: string[]
+): Uint8Array {
+  const lines: string[] = [];
+  // Header
+  lines.push(headers.map(escapeCsvField).join(','));
+  // Rows
+  for (const row of rows) {
+    const values = headers.map((h) => {
+      const v = row[h];
+      if (v === null || v === undefined) return '';
+      return escapeCsvField(String(v));
+    });
+    lines.push(values.join(','));
+  }
+  return new TextEncoder().encode(lines.join('\n'));
+}
+
+function escapeCsvField(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
 
 // ─────────────────────────────────────────────────────────────
 // 1. СТРОГИЕ ТИПЫ ДЛЯ СООБЩЕНИЙ
@@ -354,86 +414,203 @@ self.onmessage = async (e: MessageEvent) => {
       self.postMessage({ id, success: true, result });
     }
 
-    // ═══════════════════════════════════════════════════════════
-    // IMPORT_EXCEL
-    // ═══════════════════════════════════════════════════════════
     if (type === 'IMPORT_EXCEL') {
       const { datasetId, fileName, buffer } = payload;
       const tableName = buildTableName(datasetId);
 
-      const { csvBuffer, sheetNames } = convertExcelToCsvBuffer(buffer);
-      const csvFileName = `${datasetId}_import.csv`;
+      try {
+        // ─── ЭТАП 1: Парсинг Excel в JSON ───────────────────────
+        // Отдаём управление event loop перед тяжёлой операцией
+        await yieldToEventLoop();
 
-      db!.registerFileBuffer(csvFileName, csvBuffer);
+        const { flatRows, sheetNames, headers } = parseExcelToJson(buffer);
 
-      await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
-      await conn.query(`
-        CREATE TABLE ${tableName} AS
-        SELECT * FROM read_csv_auto(
-          '${csvFileName}',
-          sample_size = -1,
-          auto_detect = true,
-          ignore_errors = true,
-          null_padding = true,
-          all_varchar = false,
-          delim = ',',
-          quote = '"'
-        )
-      `);
-
-      // Приведение TIME-типов к VARCHAR (защита от ошибок парсинга)
-      const schemaResult = await conn.query(`DESCRIBE ${tableName}`);
-      const schemaRows = schemaResult.toArray() as Array<{
-        column_name: string;
-        column_type: string;
-        null: string;
-        key: string;
-        default: string;
-        extra: string;
-      }>;
-
-      for (const row of schemaRows) {
-        const duckType = row.column_type.toUpperCase();
-        if (duckType === 'TIME' || duckType === 'TIME WITH TIME ZONE') {
-          await conn.query(`ALTER TABLE ${tableName} ALTER COLUMN "${row.column_name}" TYPE VARCHAR`);
-          row.column_type = 'VARCHAR';
+        if (flatRows.length === 0) {
+          throw new Error('Файл пуст или не содержит валидных данных');
         }
+
+        console.log(
+          `[Worker] 📄 Parsed ${flatRows.length} rows, ${headers.length} columns from ${fileName}`
+        );
+
+        // ─── ЭТАП 2: Выбор стратегии импорта ────────────────────
+        // Порог: если больше 50k строк — используем batched Arrow insert
+        // (экономит RAM, не требует read_csv_auto, работает для 1M+ строк)
+        const BATCH_THRESHOLD = 50_000;
+        const useBatchedInsert = flatRows.length > BATCH_THRESHOLD;
+
+        await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+
+        let classificationSample: Record<string, unknown[]> = {};
+
+        if (useBatchedInsert) {
+          // ═══════════════════════════════════════════════════════
+          // СТРАТЕГИЯ A: Batched Arrow insert (для больших файлов)
+          // ═══════════════════════════════════════════════════════
+          const BATCH_SIZE = 25_000;
+          const totalBatches = Math.ceil(flatRows.length / BATCH_SIZE);
+
+          for (let i = 0; i < flatRows.length; i += BATCH_SIZE) {
+            const chunk = flatRows.slice(i, i + BATCH_SIZE);
+            const isFirstBatch = i === 0;
+            const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
+
+            const arrowTable = tableFromJSON(chunk);
+            await conn.insertArrowTable(arrowTable, {
+              name: tableName,
+              create: isFirstBatch,
+            });
+
+            // Отдаём управление event loop между батчами:
+            //   - Worker остаётся responsive (ping не таймаутит)
+            //   - V8 может запустить GC и освободить память
+            await yieldToEventLoop();
+
+            // Прогресс-репорт в UI (каждые 10% или каждый 5-й батч)
+            if (batchIndex % 5 === 0 || batchIndex === totalBatches) {
+              self.postMessage({
+                id,
+                type: 'PROGRESS',
+                progress: {
+                  phase: 'import',
+                  current: i + chunk.length,
+                  total: flatRows.length,
+                  percent: Math.round(((i + chunk.length) / flatRows.length) * 100),
+                },
+              });
+            }
+          }
+
+          console.log(
+            `[Worker] ✅ Batched insert completed: ${totalBatches} batches`
+          );
+
+          // Сэмпл для классификации — из первых 100 строк
+          const sampleRows = flatRows.slice(0, 100);
+          classificationSample = buildClassificationSample(headers, sampleRows);
+        } else {
+          // ═══════════════════════════════════════════════════════
+          // СТРАТЕГИЯ B: CSV через read_csv_auto (для маленьких файлов)
+          // ═══════════════════════════════════════════════════════
+          const csvBuffer = rowsToCsvBuffer(flatRows, headers);
+          const csvFileName = `${datasetId}_import.csv`;
+          db!.registerFileBuffer(csvFileName, csvBuffer);
+
+          // sample_size = 20000 вместо -1:
+          //   - Достаточно для точного авто-детекта типов
+          //   - Не сканирует весь файл (быстрее в 10-100× для больших файлов)
+          await conn.query(`
+            CREATE TABLE ${tableName} AS
+            SELECT * FROM read_csv_auto(
+              '${csvFileName}',
+              sample_size = 20000,
+              auto_detect = true,
+              ignore_errors = true,
+              null_padding = true,
+              all_varchar = false,
+              delim = ',',
+              quote = '"'
+            )
+          `);
+
+          // Приведение TIME-типов к VARCHAR
+          const schemaResult = await conn.query(`DESCRIBE ${tableName}`);
+          const schemaRows = schemaResult.toArray() as Array<{
+            column_name: string;
+            column_type: string;
+          }>;
+          for (const row of schemaRows) {
+            const duckType = row.column_type.toUpperCase();
+            if (duckType === 'TIME' || duckType === 'TIME WITH TIME ZONE') {
+              await conn.query(
+                `ALTER TABLE ${tableName} ALTER COLUMN "${row.column_name}" TYPE VARCHAR`
+              );
+            }
+          }
+
+          // DuckDB уже определил типы через read_csv_auto —
+          // берём их из схемы для конфигов
+          const descResult = await conn.query(`DESCRIBE ${tableName}`);
+          const finalSchema = descResult.toArray() as Array<{
+            column_name: string;
+            column_type: string;
+          }>;
+
+          const configs = finalSchema.map((row, idx) => {
+            const duckType = row.column_type.toUpperCase();
+            let classification: 'numeric' | 'date' | 'categorical' = 'categorical';
+            if (
+              duckType.includes('INT') ||
+              duckType.includes('DECIMAL') ||
+              duckType.includes('FLOAT') ||
+              duckType.includes('DOUBLE') ||
+              duckType.includes('NUMERIC') ||
+              duckType.includes('HUGEINT')
+            ) {
+              classification = 'numeric';
+            } else if (duckType.includes('DATE') || duckType.includes('TIMESTAMP')) {
+              classification = 'date';
+            }
+            return {
+              columnName: row.column_name,
+              displayName: row.column_name,
+              alias: transliterate(row.column_name) || `col_${idx}`,
+              classification,
+              description: `Из файла ${fileName}`,
+            };
+          });
+
+          const countResult = await conn.query(
+            `SELECT COUNT(*) as cnt FROM ${tableName}`
+          );
+          const totalRows = Number(
+            toNumber((countResult.toArray()[0] as Record<string, unknown>).cnt) ?? 0
+          );
+
+          self.postMessage({
+            id,
+            success: true,
+            result: {
+              configs,
+              totalRows,
+              totalColumns: configs.length,
+              sheetNames,
+            },
+          });
+          return;
+        }
+
+        // ─── ЭТАП 3: Построение конфигов (для стратегии A) ──────
+        const configs = headers.map((col, idx) => {
+          const sample = classificationSample[col] ?? [];
+          const classification = classifyColumn(sample);
+          return {
+            columnName: col,
+            displayName: col,
+            alias: transliterate(col) || `col_${idx}`,
+            classification,
+            description: `Из файла ${fileName}`,
+          };
+        });
+
+        self.postMessage({
+          id,
+          success: true,
+          result: {
+            configs,
+            totalRows: flatRows.length,
+            totalColumns: configs.length,
+            sheetNames,
+          },
+        });
+      } catch (err) {
+        console.error('[Worker] IMPORT_EXCEL failed:', err);
+        self.postMessage({
+          id,
+          success: false,
+          error: err instanceof Error ? err.message : 'Import failed',
+        });
       }
-
-      const configs = schemaRows.map((row, idx) => {
-        const duckType = row.column_type.toUpperCase();
-        let classification: 'numeric' | 'date' | 'categorical' = 'categorical';
-
-        if (
-          duckType.includes('INT') ||
-          duckType.includes('DECIMAL') ||
-          duckType.includes('FLOAT') ||
-          duckType.includes('DOUBLE') ||
-          duckType.includes('NUMERIC') ||
-          duckType.includes('HUGEINT')
-        ) {
-          classification = 'numeric';
-        } else if (duckType.includes('DATE') || duckType.includes('TIMESTAMP')) {
-          classification = 'date';
-        }
-
-        return {
-          columnName: row.column_name,
-          displayName: row.column_name,
-          alias: transliterate(row.column_name) || `col_${idx}`,
-          classification,
-          description: `Из файла ${fileName}`,
-        };
-      });
-
-      const countResult = await conn.query(`SELECT COUNT(*) as cnt FROM ${tableName}`);
-      const totalRows = Number(toNumber((countResult.toArray()[0])!.cnt) ?? 0);
-
-      self.postMessage({
-        id,
-        success: true,
-        result: { configs, totalRows, totalColumns: configs.length, sheetNames },
-      });
     }
 
     // ═══════════════════════════════════════════════════════════

@@ -15,8 +15,8 @@ import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { GroupMetric, HierarchyFilterValue, IndicatorGroupInDashboard, MetricTemplate, VirtualMetric } from '@/shared/lib/validators';
 import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
-import type { ColumnConfig } from '@/entities/dataset';
 import { useComputation } from '@/widgets/shared/model/use-computation';
+import type { ColumnConfig } from '@/shared/lib/types';
 
 
 const EMPTY_LEVELS: HierarchyLevel[] = [];

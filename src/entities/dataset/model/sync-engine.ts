@@ -30,7 +30,7 @@ import {
   testPgConnection,
 } from '@/shared/api/server-actions';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
-import type { DatasetRow, ReplaceFileResult } from './types';
+import type { ReplaceFileResult } from './types';
 import { del, set } from 'idb-keyval';
 
 // ─────────────────────────────────────────────────────────────
@@ -38,6 +38,7 @@ import { del, set } from 'idb-keyval';
 // ─────────────────────────────────────────────────────────────
 import { mergeColumnConfigs } from '@/shared/lib/services';
 import { generateColumnConfigsFromPgSchema } from '../lib/type-mapper';
+import { DatasetRow } from '@/shared/lib/types';
 
 // ─────────────────────────────────────────────────────────────
 // syncFromFile
@@ -63,23 +64,39 @@ export async function syncFromFile(file: File) {
   try {
     const buffer = await file.arrayBuffer();
 
-    // 1. Импортируем ВЕСЬ файл в DuckDB
-    const { configs, totalRows, totalColumns, sheetNames } =
-      await duckdbManager.importExcelBuffer(datasetId, file.name, buffer);
+    // ✅ Прогресс-коллбек — можно подключить к UI-индикатору
+    const onProgress = (progress: {
+      phase: string;
+      current: number;
+      total: number;
+      percent: number;
+    }) => {
+      console.log(
+        `[syncFromFile] Progress: ${progress.percent}% ` +
+          `(${progress.current.toLocaleString()}/${progress.total.toLocaleString()})`
+      );
+      // TODO: опционально обновлять Zustand-стор для UI-индикатора
+    };
 
-    // 2. Экспортируем Arrow buffer для персистентности
+    // 1. Импортируем весь файл в DuckDB
+    const { configs, totalRows, totalColumns, sheetNames } =
+      await duckdbManager.importExcelBuffer(
+        datasetId,
+        file.name,
+        buffer,
+        onProgress  // ← передаём прогресс-коллбек
+      );
+
+    let arrowBuffer: Uint8Array | null = null;
     try {
-      const arrowBuffer = await duckdbManager.exportArrowBuffer(datasetId);
+      arrowBuffer = await duckdbManager.exportArrowBuffer(datasetId);
       await set(`arrow:${datasetId}`, arrowBuffer);
       console.log(
-        `[syncFromFile] ✅ Arrow buffer saved to IndexedDB: ` +
+        `[syncFromFile] ✅ Arrow buffer saved: ` +
           `${(arrowBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`
       );
     } catch (exportErr) {
-      console.warn(
-        '[syncFromFile] Arrow export failed, data will not persist across reloads:',
-        exportErr
-      );
+      console.warn('[syncFromFile] Arrow export failed:', exportErr);
       toast.warning(
         'Данные загружены, но не удалось сохранить в кэш. ' +
           'После перезагрузки страницы файл нужно будет загрузить заново.'
@@ -91,13 +108,12 @@ export async function syncFromFile(file: File) {
     try {
       previewRows = await duckdbManager.getPreviewRows(datasetId, 500);
       console.log(
-        `[syncFromFile] ✅ Preview fetched: ${previewRows.length} rows (из ${totalRows} всего)`
+        `[syncFromFile] ✅ Preview fetched: ${previewRows.length} rows`
       );
     } catch (previewErr) {
       console.warn('[syncFromFile] Preview fetch failed:', previewErr);
     }
 
-    // 4. Сохраняем configs и метаданные
     setConfigs.setDatasetConfigs(datasetId, configs);
 
     addDataset(datasetId, {
@@ -114,7 +130,6 @@ export async function syncFromFile(file: File) {
       },
     });
 
-    // 5. Сохраняем PREVIEW в store
     setDatasetRows(datasetId, previewRows);
     switchDataset(datasetId);
 

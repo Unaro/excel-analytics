@@ -308,20 +308,81 @@ export class DuckDBWorkerManager {
     return this.dispatch('EXPORT_ARROW', { datasetId });
   }
 
+  /**
+   * Импортирует Excel/CSV файл в DuckDB.
+   *
+   * Для больших файлов (> 50k строк) Worker отправляет прогресс-события
+   * во время batched insert. Manager пробрасывает их в callback.
+   *
+   * Таймаут: 5 минут (для файлов до 1M+ строк).
+   */
   async importExcelBuffer(
     datasetId: string,
     fileName: string,
-    buffer: ArrayBuffer
+    buffer: ArrayBuffer,
+    onProgress?: (progress: {
+      phase: string;
+      current: number;
+      total: number;
+      percent: number;
+    }) => void
   ): Promise<ImportExcelResult> {
-    const result = await this.dispatch(
-      'IMPORT_EXCEL',
-      { datasetId, fileName, buffer },
-      [buffer]
-    );
-    this.setStatus('ready');
-    return result;
-  }
+    const worker = this.getWorker();
+    const id = ++this.messageCounter;
 
+    return new Promise<ImportExcelResult>((resolve, reject) => {
+      const IMPORT_TIMEOUT_MS = 5 * 60 * 1000; // 5 минут
+
+      const timer = setTimeout(() => {
+        worker.removeEventListener('message', handler);
+        this.callbacks.delete(id);
+        reject(new Error(`IMPORT_EXCEL timeout after ${IMPORT_TIMEOUT_MS / 1000}s`));
+      }, IMPORT_TIMEOUT_MS);
+
+      const handler = (e: MessageEvent): void => {
+        const data = e.data as {
+          id?: number;
+          type?: string;
+          success?: boolean;
+          result?: ImportExcelResult;
+          error?: string;
+          progress?: {
+            phase: string;
+            current: number;
+            total: number;
+            percent: number;
+          };
+        };
+
+        if (data.id !== id) return;
+
+        // Прогресс-событие (не финальное)
+        if (data.type === 'PROGRESS' && data.progress) {
+          onProgress?.(data.progress);
+          return;
+        }
+
+        // Финальный ответ
+        clearTimeout(timer);
+        worker.removeEventListener('message', handler);
+
+        if (data.success && data.result) {
+          this.setStatus('ready');
+          resolve(data.result);
+        } else {
+          reject(new Error(data.error || 'Import failed'));
+        }
+      };
+
+      worker.addEventListener('message', handler);
+
+      worker.postMessage(
+        { type: 'IMPORT_EXCEL', payload: { datasetId, fileName, buffer }, id },
+        [buffer]
+      );
+    });
+  }
+  
   async dropTable(datasetId: string): Promise<void> {
     return this.dispatch('DROP_TABLE', { datasetId });
   }

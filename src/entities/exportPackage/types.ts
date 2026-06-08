@@ -1,5 +1,5 @@
+import { ColumnConfig } from "@/shared/lib/types";
 import { Dashboard } from "../dashboard";
-import { ColumnConfig } from "../dataset";
 import { GroupMetricConfig } from "../groupMetricConfig";
 import { HierarchyLevel } from "../hierarchy";
 import { IndicatorGroup, MetricTemplate } from "../metric";

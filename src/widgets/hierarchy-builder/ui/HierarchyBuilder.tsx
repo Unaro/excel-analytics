@@ -7,11 +7,12 @@ import { Plus, GripVertical } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
-import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
+import { useDatasetStore } from '@/entities/dataset';
 import { useShallow } from 'zustand/react/shallow';
 import { DragDropList } from '@/shared/ui/drag-drop-list';
 import { cn } from '@/shared/lib/utils';
 import { Trash2 } from 'lucide-react';
+import type { ColumnConfig } from '@/shared/lib/types';
 
 export function HierarchyBuilder() {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);

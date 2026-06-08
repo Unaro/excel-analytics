@@ -2,8 +2,9 @@
 import { useState, useCallback, useMemo } from 'react';
 import { MathNode } from 'mathjs';
 import { useColumnConfigStore } from '@/entities/columnConfig';
-import { ColumnConfig, useDatasetStore } from '@/entities/dataset';
+import { useDatasetStore } from '@/entities/dataset';
 import { extractVariables, validateFormula } from '@/shared/lib/math/safe-math';
+import { ColumnConfig } from '@/shared/lib/types';
 
 interface MathSymbolNode extends MathNode {
   name: string;
