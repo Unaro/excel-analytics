@@ -420,7 +420,6 @@ self.onmessage = async (e: MessageEvent) => {
 
       try {
         // ─── ЭТАП 1: Парсинг Excel в JSON ───────────────────────
-        // Отдаём управление event loop перед тяжёлой операцией
         await yieldToEventLoop();
 
         const { flatRows, sheetNames, headers } = parseExcelToJson(buffer);
@@ -434,8 +433,6 @@ self.onmessage = async (e: MessageEvent) => {
         );
 
         // ─── ЭТАП 2: Выбор стратегии импорта ────────────────────
-        // Порог: если больше 50k строк — используем batched Arrow insert
-        // (экономит RAM, не требует read_csv_auto, работает для 1M+ строк)
         const BATCH_THRESHOLD = 50_000;
         const useBatchedInsert = flatRows.length > BATCH_THRESHOLD;
 
@@ -456,17 +453,33 @@ self.onmessage = async (e: MessageEvent) => {
             const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
 
             const arrowTable = tableFromJSON(chunk);
-            await conn.insertArrowTable(arrowTable, {
-              name: tableName,
-              create: isFirstBatch,
-            });
+            
+            if (isFirstBatch) {
+              // Первый батч — создаём таблицу
+              await conn.insertArrowTable(arrowTable, {
+                name: tableName,
+                create: true,
+              });
+            } else {
+              const tempTableName = `${tableName}_batch_${batchIndex}`;
+              await conn.insertArrowTable(arrowTable, {
+                name: tempTableName,
+                create: true,
+              });
+              
+              // Явный INSERT INTO — гарантированно добавляет данные
+              await conn.query(
+                `INSERT INTO ${tableName} SELECT * FROM ${tempTableName}`
+              );
+              
+              // Удаляем временную таблицу
+              await conn.query(`DROP TABLE IF EXISTS ${tempTableName}`);
+            }
 
-            // Отдаём управление event loop между батчами:
-            //   - Worker остаётся responsive (ping не таймаутит)
-            //   - V8 может запустить GC и освободить память
+            // Отдаём управление event loop между батчами
             await yieldToEventLoop();
 
-            // Прогресс-репорт в UI (каждые 10% или каждый 5-й батч)
+            // Прогресс-репорт в UI
             if (batchIndex % 5 === 0 || batchIndex === totalBatches) {
               self.postMessage({
                 id,
@@ -481,11 +494,27 @@ self.onmessage = async (e: MessageEvent) => {
             }
           }
 
-          console.log(
-            `[Worker] ✅ Batched insert completed: ${totalBatches} batches`
+          // ✅ ПРОВЕРКА: Убеждаемся, что все строки загружены
+          const countResult = await conn.query(
+            `SELECT COUNT(*) as cnt FROM ${tableName}`
           );
+          const actualRows = Number(
+            toNumber((countResult.toArray()[0] as Record<string, unknown>).cnt) ?? 0
+          );
+          
+          console.log(
+            `[Worker] ✅ Batched insert completed: ${totalBatches} batches, ` +
+            `${actualRows.toLocaleString()} rows in table (expected: ${flatRows.length.toLocaleString()})`
+          );
+          
+          if (actualRows !== flatRows.length) {
+            console.warn(
+              `[Worker] ⚠️ Row count mismatch! Expected ${flatRows.length}, got ${actualRows}. ` +
+              `Some batches may have failed silently.`
+            );
+          }
 
-          // Сэмпл для классификации — из первых 100 строк
+          // Сэмпл для классификации
           const sampleRows = flatRows.slice(0, 100);
           classificationSample = buildClassificationSample(headers, sampleRows);
         } else {
@@ -496,9 +525,6 @@ self.onmessage = async (e: MessageEvent) => {
           const csvFileName = `${datasetId}_import.csv`;
           db!.registerFileBuffer(csvFileName, csvBuffer);
 
-          // sample_size = 20000 вместо -1:
-          //   - Достаточно для точного авто-детекта типов
-          //   - Не сканирует весь файл (быстрее в 10-100× для больших файлов)
           await conn.query(`
             CREATE TABLE ${tableName} AS
             SELECT * FROM read_csv_auto(
@@ -528,8 +554,6 @@ self.onmessage = async (e: MessageEvent) => {
             }
           }
 
-          // DuckDB уже определил типы через read_csv_auto —
-          // берём их из схемы для конфигов
           const descResult = await conn.query(`DESCRIBE ${tableName}`);
           const finalSchema = descResult.toArray() as Array<{
             column_name: string;
@@ -593,12 +617,20 @@ self.onmessage = async (e: MessageEvent) => {
           };
         });
 
+        // ✅ ФИНАЛЬНАЯ ПРОВЕРКА: сколько строк реально в таблице
+        const finalCountResult = await conn.query(
+          `SELECT COUNT(*) as cnt FROM ${tableName}`
+        );
+        const finalTotalRows = Number(
+          toNumber((finalCountResult.toArray()[0] as Record<string, unknown>).cnt) ?? 0
+        );
+
         self.postMessage({
           id,
           success: true,
           result: {
             configs,
-            totalRows: flatRows.length,
+            totalRows: finalTotalRows,  // ← Используем реальное количество из DuckDB
             totalColumns: configs.length,
             sheetNames,
           },

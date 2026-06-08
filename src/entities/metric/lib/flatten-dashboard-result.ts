@@ -3,10 +3,13 @@ import type { VirtualMetric } from '@/shared/lib/validators';
 
 /**
  * Объединяет breakdown всех групп дашборда в один плоский массив.
+ * 
  * Используется для ChartsSectionWidget, который работает с одним breakdown.
- *
- * Виртуальные метрики берутся из dashboard.virtualMetrics (с colorConfig),
- * а значения — из group.virtualMetrics.
+ * 
+ * Логика:
+ * - Если есть breakdown: объединяем с префиксом группы
+ * - Если нет breakdown (лист иерархии): создаём отдельные элементы для каждой группы
+ * - Виртуальные метрики дедуплицируются по ID (берём первую найденную)
  */
 export function flattenDashboardResult(
   result: DashboardComputationResult | null,
@@ -19,33 +22,53 @@ export function flattenDashboardResult(
     return { breakdown: [], virtualMetrics: [] };
   }
 
-  // Собираем все breakdown из всех групп
   const allBreakdown: BreakdownItem[] = [];
-  for (const group of result.groups) {
-    if (group.breakdown) {
-      // Помечаем каждый элемент названием группы для контекста
-      const labeled = group.breakdown.map(item => ({
-        ...item,
-        label: `${group.groupName} · ${item.label}`,
-      }));
-      allBreakdown.push(...labeled);
+  const hasAnyBreakdown = result.groups.some(g => g.breakdown && g.breakdown.length > 0);
+
+  if (hasAnyBreakdown) {
+    // ═══════════════════════════════════════════════════════════
+    // СЛУЧАЙ 1: Есть breakdown - объединяем с префиксом группы
+    // ═══════════════════════════════════════════════════════════
+    for (const group of result.groups) {
+      if (group.breakdown && group.breakdown.length > 0) {
+        const labeled = group.breakdown.map(item => ({
+          ...item,
+          label: result.groups.length > 1 
+            ? `${group.groupName} · ${item.label}` 
+            : item.label,
+        }));
+        allBreakdown.push(...labeled);
+      }
+    }
+  } else {
+    // ═══════════════════════════════════════════════════════════
+    // СЛУЧАЙ 2: Нет breakdown (лист иерархии)
+    // Создаём ОТДЕЛЬНЫЕ элементы для каждой группы
+    // ═══════════════════════════════════════════════════════════
+    for (const group of result.groups) {
+      allBreakdown.push({
+        label: group.groupName,
+        recordCount: group.recordCount,
+        virtualMetrics: group.virtualMetrics,
+      });
     }
   }
 
-  // Если breakdown нет (лист иерархии), строим из summary
-  if (allBreakdown.length === 0) {
-    const summaryItem: BreakdownItem = {
-      label: 'Итого',
-      recordCount: result.totalRecords,
-      virtualMetrics: result.groups.flatMap(g => g.virtualMetrics),
-    };
-    allBreakdown.push(summaryItem);
+  // ═══════════════════════════════════════════════════════════
+  // Дедупликация виртуальных метрик
+  // Берём уникальные метрики по virtualMetricId (первую найденную)
+  // ═══════════════════════════════════════════════════════════
+  const uniqueMetricsMap = new Map<string, VirtualMetricValue>();
+  
+  for (const group of result.groups) {
+    for (const vm of group.virtualMetrics) {
+      if (!uniqueMetricsMap.has(vm.virtualMetricId)) {
+        uniqueMetricsMap.set(vm.virtualMetricId, vm);
+      }
+    }
   }
 
-  // Виртуальные метрики — summary-значения (сводные по всем группам)
-  const summaryVirtualMetrics: VirtualMetricValue[] = result.groups.flatMap(
-    g => g.virtualMetrics
-  );
+  const summaryVirtualMetrics = Array.from(uniqueMetricsMap.values());
 
   return {
     breakdown: allBreakdown,
