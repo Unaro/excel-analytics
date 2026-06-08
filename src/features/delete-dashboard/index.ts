@@ -1,0 +1,1 @@
+export { useDeleteDashboard } from './model/use-delete-dashboard';

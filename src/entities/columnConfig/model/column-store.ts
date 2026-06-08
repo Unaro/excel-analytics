@@ -1,5 +1,5 @@
 // lib/stores/column-config-store.ts
-import { ColumnClassification, ColumnConfig } from '@/entities/dataset';
+import { ColumnClassification, ColumnConfig } from '@/shared/lib/types/dataset';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 

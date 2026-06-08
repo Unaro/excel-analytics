@@ -1,14 +1,14 @@
 'use client';
 
-import { useCallback, useMemo, memo } from 'react';
+import { useCallback, useMemo } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Settings, Plus } from 'lucide-react';
-import { FormattingRule, MetricColor } from '@/entities/dashboard';
 import { useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
 import { nanoid } from 'nanoid';
 import { DragDropList } from '@/shared/ui/drag-drop-list';
-import { RuleCard } from './RuleCard';
+import { RuleCard } from '../../shared/ui/rule-card/ui/RuleCard';
+import { FormattingRule } from '@/shared/lib/utils/fortmating-rules';
 
 interface MetricConfigPopoverProps {
   dashboardId: string;

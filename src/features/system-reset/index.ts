@@ -1,0 +1,1 @@
+export { useSystemReset } from './model/use-system-reset';

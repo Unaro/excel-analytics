@@ -2,9 +2,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
-import type { HierarchyFilterValue } from '@/entities/hierarchy/model/types';
 import type { Dashboard, DashboardWidget, KPIWidget } from './types';
-import type { IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
+import type { HierarchyFilterValue, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
 
 interface DashboardState {
   dashboards: Dashboard[];

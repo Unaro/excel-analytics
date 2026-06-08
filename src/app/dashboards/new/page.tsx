@@ -1,22 +1,14 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { DashboardBuilder } from '@/widgets/DashboardBuilder';
+import { Suspense } from 'react';
+import { CreateDashboardWidget } from '@/features/create-dashboard';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
+import type { StaticPageProps } from '@/shared/lib/types/next';
 
-// Отключаем статическую генерацию для этой страницы
 export const dynamic = 'force-dynamic';
 
-export default function NewDashboardPage() {
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return <LoadingScreen message="Загрузка..." />;
-  }
-
-  return <DashboardBuilder />;
+export default function NewDashboardPage(_props: StaticPageProps) {
+  return (
+    <Suspense fallback={<LoadingScreen message="Загрузка конструктора..." />}>
+      <CreateDashboardWidget />
+    </Suspense>
+  );
 }

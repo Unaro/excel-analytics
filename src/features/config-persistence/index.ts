@@ -1,0 +1,1 @@
+export { useConfigPersistence } from './model/use-config-persistence';

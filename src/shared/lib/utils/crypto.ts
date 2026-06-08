@@ -1,15 +1,28 @@
 const ALGO = 'AES-GCM';
 const KEY_NAME = 'pg_crypto_key';
 
+
 async function getOrCreateKey(): Promise<CryptoKey> {
   if (typeof window === 'undefined') throw new Error('Crypto only available in browser');
   
-  let rawKey = localStorage.getItem(KEY_NAME);
+  const legacyKey = localStorage.getItem(KEY_NAME);
+  if (legacyKey) {
+    sessionStorage.setItem(KEY_NAME, legacyKey);
+    localStorage.removeItem(KEY_NAME);
+    console.log('[Crypto] Migrated key from localStorage to sessionStorage');
+  }
+  
+  let rawKey = sessionStorage.getItem(KEY_NAME);
+  
   if (!rawKey) {
-    const key = await crypto.subtle.generateKey({ name: ALGO, length: 256 }, true, ['encrypt', 'decrypt']);
+    const key = await crypto.subtle.generateKey(
+      { name: ALGO, length: 256 }, 
+      true, 
+      ['encrypt', 'decrypt']
+    );
     const exported = await crypto.subtle.exportKey('raw', key);
     rawKey = btoa(String.fromCharCode(...new Uint8Array(exported)));
-    localStorage.setItem(KEY_NAME, rawKey);
+    sessionStorage.setItem(KEY_NAME, rawKey);
   }
   
   const keyData = Uint8Array.from(atob(rawKey), c => c.charCodeAt(0));

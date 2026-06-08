@@ -2,7 +2,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { get, set, del } from 'idb-keyval';
-import type { DatasetRow, ColumnStatistics, DatasetEntry, DatasetState } from './types';
+import type {DatasetEntry, DatasetState } from './types';
+import { ColumnStatistics, DatasetRow } from '@/shared/lib/types';
 
 const EMPTY_ROWS: DatasetRow[] = [];
 const EMPTY_HEADERS: string[] = [];
@@ -138,7 +139,7 @@ export const useDatasetStore = create<DatasetState>()(
           persisted[id] = {
             ...entry,
             rows: null,
-            pgStatus: 'unknown',      
+            pgStatus: 'unknown',
             engineStatus: undefined,
             lastAccessedAt: entry.lastAccessedAt
           };

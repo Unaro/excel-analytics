@@ -1,23 +1,15 @@
 
 import type { 
   VirtualMetric, 
-  IndicatorGroupInDashboard 
+  IndicatorGroupInDashboard, 
+  HierarchyFilterValue
 } from '@/shared/lib/validators';
 
-import type { HierarchyFilterValue } from '@/entities/hierarchy/model/types';
 import type { DisplayFormat } from '@/entities/metric/model/types';
+import { FormattingRule } from '@/shared/lib/utils/fortmating-rules';
+import { MetricColor } from '@/shared/lib/utils/metric-colors';
+import type { ChartType } from '@/shared/lib/types/chart';
 
-// Оставляем ТОЛЬКО UI-типы:
-export type MetricColor = 'emerald' | 'rose' | 'amber' | 'blue' | 'indigo' | 'slate';
-export type ConditionOperator = '>' | '>=' | '<' | '<=' | '==' | '!=' | 'between';
-
-export interface FormattingRule {
-  id: string;
-  operator: ConditionOperator;
-  value: number;
-  value2?: number;
-  color: MetricColor;
-}
 
 export interface ColorConfig {
   rules: FormattingRule[]; 
@@ -39,17 +31,6 @@ export type WidgetType =
   | 'table'            // Обычная таблица данных
   | 'indicator_groups' // Таблица с группами показателей
   | 'text';            // Текстовый блок
-
-/**
- * Тип графика
- */
-export type ChartType = 
-  | 'line'      // Линейный график
-  | 'bar'       // Столбчатая диаграмма
-  | 'pie'       // Круговая диаграмма
-  | 'area'      // Диаграмма с областями
-  | 'scatter'   // Точечная диаграмма
-  | 'radar';    // Радарная диаграмма
 
 /**
  * Настройки графика

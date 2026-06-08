@@ -1,24 +1,19 @@
-'use client';
+import { Suspense } from 'react';
+import { EditDashboardWidget } from '@/features/edit-dashboard';
+import { LoadingScreen } from '@/shared/ui/loading-screen';
+import type { DynamicPageProps } from '@/shared/lib/types/next';
 
-import { use } from 'react';
-import { DashboardBuilder } from '@/widgets/DashboardBuilder';
-import { useStoreHydration } from '@/lib/hooks/use-store-hydration'; // Используем наш хук
-import { Loader2 } from 'lucide-react';
+export const dynamic = 'force-dynamic';
 
-export default function EditDashboardPage({ params }: { params: Promise<{ id: string }> }) {
-  // 1. Распаковываем ID
-  const { id } = use(params);
+export default function EditDashboardPage({ params }: DynamicPageProps<['id']>) {
+  return (
+    <Suspense fallback={<LoadingScreen message="Загрузка редактора..." />}>
+      <EditDashboardPageContent params={params} />
+    </Suspense>
+  );
+}
 
-  // 2. Ждем гидратации стора (это решает и Hydration Error, и проблему пустого стора)
-  const hydrated = useStoreHydration();
-
-  if (!hydrated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="animate-spin text-gray-400" size={32} />
-      </div>
-    );
-  }
-
-  return <DashboardBuilder dashboardId={id} />;
+async function EditDashboardPageContent({ params }: DynamicPageProps<['id']>) {
+  const { id } = await params;
+  return <EditDashboardWidget dashboardId={id} />;
 }

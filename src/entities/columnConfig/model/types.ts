@@ -1,24 +1,10 @@
-import { DatasetRow } from "@/entities/dataset";
+// entities/columnConfig/model/types.ts
+import type { DatasetRow } from '@/shared/lib/types/dataset';
 
-/**
- * Статистика по колонке (для авто-классификации и UI)
- */
-export interface ColumnStatistics {
-  columnName: string;
-  totalValues: number;
-  nullCount: number;
-  uniqueCount: number;
-  numericCount: number;
-  textCount: number;
-  booleanCount: number;
-  dateCount: number;
-  sampleValues: (string | number | boolean | null)[];
-  min?: number;
-  max?: number;
-  avg?: number;
-  sum?: number;
-  median?: number;
-}
+// ─────────────────────────────────────────────────────────────
+// Реэкспорт ColumnStatistics из shared
+// ─────────────────────────────────────────────────────────────
+export type { ColumnStatistics } from '@/shared/lib/types/dataset';
 
 export interface SheetData {
   sheetName: string;

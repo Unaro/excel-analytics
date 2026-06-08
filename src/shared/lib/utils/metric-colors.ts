@@ -1,4 +1,5 @@
-import { MetricColor, ConditionOperator, FormattingRule } from "@/entities/dashboard";
+import { ConditionOperator } from "@/shared/ui/rule-card";
+import { FormattingRule } from "./fortmating-rules";
 
 export const COLOR_STYLES: Record<MetricColor, string> = {
   emerald: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20",
@@ -53,3 +54,5 @@ export function getColorForValue(
   }
   return null;
 }
+
+export type MetricColor = 'emerald' | 'rose' | 'amber' | 'blue' | 'indigo' | 'slate';
