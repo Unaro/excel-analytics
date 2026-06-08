@@ -56,8 +56,8 @@ function processRow(
 
     // Пропускаем технические field deps (начинаются с __fb_)
     if (key.startsWith('__fb_')) continue;
-    // Пропускаем base_ алиасы (они не должны быть в финальном результате)
-    if (key.startsWith('base_')) continue;
+    // // Пропускаем base_ алиасы (они не должны быть в финальном результате)
+    // if (key.startsWith('base_')) continue;
     // Пропускаем служебные AVG-колонки
     if (key.startsWith('__agg_sum__') || key.startsWith('__agg_count__')) continue;
 
@@ -94,7 +94,6 @@ function processRow(
       continue;
     }
 
-    // ❌ Fallback: вычисляем через Math.js
     try {
       const scope: Record<string, number> = {};
 

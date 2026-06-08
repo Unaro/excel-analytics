@@ -3,7 +3,6 @@ import { recalculateFormulasOnAggregated } from './post-process';
 
 /**
  * Агрегированная строка итогов.
- *
  * `_record_count` — строго число (сумма записей по всем группам).
  * `COUNT_DISTINCT`, `MEDIAN`, `PERCENTILE` могут быть `null`,
  * т.к. эти функции не являются аддитивными.
@@ -17,17 +16,20 @@ export interface AggregatedSummary {
  * Умная агрегация строк breakdown в одну сводную строку.
  *
  * Единый источник правды для DuckDB и PostgreSQL engine'ов.
- * Применяет правильную математику для каждого типа агрегации:
  *
- *  - SUM, COUNT → сумма значений (аддитивные)
- *  - AVG → взвешенное среднее через SUM/COUNT
- *  - MAX → глобальный максимум
- *  - MIN → глобальный минимум
- *  - COUNT_DISTINCT → `null` (неаддитивная, требует глобального SQL)
- *  - MEDIAN, PERCENTILE → `null` (неаддитивная)
+ * Применяет правильную математику для каждого типа:
+ *   - SUM, COUNT → сумма значений (аддитивные)
+ *   - AVG → взвешенное среднее через SUM/COUNT
+ *   - MAX → глобальный максимум
+ *   - MIN → глобальный минимум
+ *   - COUNT_DISTINCT → `null` (неаддитивная, требует глобального SQL)
+ *   - MEDIAN, PERCENTILE → `null` (неаддитивная)
+ *   - CALCULATED (формулы) → `null`, затем пересчёт через
+ *     `recalculateFormulasOnAggregated` из агрегированных field dependencies.
+ *     Это гарантирует, что `(SUM(a) / SUM(b)) * 100` даст правильный результат,
+ *     а не `SUM(a/b) * 100` (что было бы математически неверно).
  *
- * После агрегации пересчитывает calculated-метрики (формулы)
- * на сводных значениях.
+ * После агрегации пересчитывает calculated-метрики на сводных значениях.
  */
 export function aggregateProcessedRows(
   processedRows: Record<string, number | null>[],
@@ -40,6 +42,32 @@ export function aggregateProcessedRows(
 
   const summary: AggregatedSummary = { _record_count: 0 };
   const keys = Object.keys(processedRows[0]);
+
+  // ═══════════════════════════════════════════════════════════
+  // Подготовительный этап: собираем метаданные о calculated метриках
+  //
+  // Для корректной агрегации формул вроде (a/b)*100 нужно:
+  //   1. Просуммировать field dependencies (a, b) по всем строкам
+  //   2. Пересчитать формулу из агрегированных значений
+  //
+  // fieldDependencyAliases — технические алиасы вида "base_groupId__metricId__varName",
+  // которые SQL возвращает как уже агрегированные значения (SUM по подгруппе).
+  //
+  // calculatedFinalAliases — финальные алиасы calculated метрик (без "base_"),
+  // которые НЕЛЬЗЯ просто суммировать.
+  // ═══════════════════════════════════════════════════════════
+  const fieldDependencyAliases = new Set<string>();
+  const calculatedFinalAliases = new Set<string>();
+
+  for (const [baseAlias, meta] of formulas.entries()) {
+    const finalAlias = baseAlias.replace('base_', '');
+    calculatedFinalAliases.add(finalAlias);
+
+    for (const dep of meta.fieldDependencies) {
+      const depAlias = `${baseAlias}__${dep.alias}`;
+      fieldDependencyAliases.add(depAlias);
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════
   // Этап 0: Суммируем _record_count по всем строкам
@@ -56,17 +84,39 @@ export function aggregateProcessedRows(
   summary['_record_count'] = totalRecordCount;
 
   // ═══════════════════════════════════════════════════════════
-  // Этап 1: Агрегируем aggregate-метрики по их типу
+  // Этап 1: Агрегируем колонки по их типу
   // ═══════════════════════════════════════════════════════════
   for (const key of keys) {
-    // Пропускаем служебные колонки (они нужны только для AVG)
+    // Пропускаем служебные колонки для AVG
     if (key.startsWith('__agg_sum__') || key.startsWith('__agg_count__')) {
       summary[key] = null;
       continue;
     }
+
     // _record_count уже посчитан выше
     if (key === '_group_label' || key === '_record_count') continue;
 
+    // ─── Поле-зависимость calculated метрики → SUM ─────────
+    // Это уже агрегаты из SQL (SUM по подгруппе).
+    // Для итоговой строки их нужно просто просуммировать.
+    if (fieldDependencyAliases.has(key)) {
+      const values = processedRows
+        .map(row => row[key])
+        .filter((v): v is number => typeof v === 'number' && isFinite(v));
+
+      summary[key] = values.length > 0
+        ? values.reduce((a, b) => a + b, 0)
+        : null;
+      continue;
+    }
+
+    // ─── Calculated метрика (финальный алиас) → null ───────
+    if (calculatedFinalAliases.has(key)) {
+      summary[key] = null;
+      continue;
+    }
+
+    // ─── Aggregate метрика → по типу агрегации ─────────────
     const meta = aggregateMetadata.get(key);
     const values = processedRows
       .map(row => row[key])
@@ -86,7 +136,6 @@ export function aggregateProcessedRows(
 
       case 'COUNT_DISTINCT':
         // ⚠️ НЕАДДИТИВНАЯ: sum(distinct) по группам ≠ глобальный distinct.
-        // Ставим null — UI покажет '—', а в будущем считаем глобально.
         summary[key] = null;
         break;
 
@@ -116,7 +165,6 @@ export function aggregateProcessedRows(
       case 'MEDIAN':
       case 'PERCENTILE':
         // ⚠️ НЕАДДИТИВНАЯ: "медиана медиан" ≠ реальная медиана.
-        // Ставим null, чтобы не вводить пользователя в заблуждение.
         summary[key] = null;
         break;
 
@@ -128,7 +176,10 @@ export function aggregateProcessedRows(
 
   // ═══════════════════════════════════════════════════════════
   // Этап 2: Пересчитываем calculated метрики (формулы)
-  //         на агрегированных значениях
+  //         на агрегированных значениях field dependencies.
+  //
+  // Теперь в summary лежат правильные SUM(a) и SUM(b),
+  // и формула (a/b)*100 даст корректный итоговый результат.
   // ═══════════════════════════════════════════════════════════
   if (formulas.size > 0) {
     const recalculated = recalculateFormulasOnAggregated(summary, formulas);

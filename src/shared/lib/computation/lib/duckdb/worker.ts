@@ -345,7 +345,6 @@ self.onmessage = async (e: MessageEvent) => {
 
           let summaryProcessed: Record<string, number | null>;
           if (groupByColumn) {
-            // ✅ aggregateProcessedRows принимает compiled.formulas и compiled.aggregateMetadata
             const aggregatedRow = aggregateProcessedRows(
               processedRows,
               compiled.aggregateMetadata,
