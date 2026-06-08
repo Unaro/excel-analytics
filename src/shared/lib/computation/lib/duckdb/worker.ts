@@ -1,3 +1,5 @@
+/// <reference lib="webworker" />
+
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { tableFromIPC, tableFromJSON } from 'apache-arrow';
 import { compileQuery } from '../query-compiler';
@@ -5,34 +7,42 @@ import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-
 import { getActiveFilter, formatValue } from '../utils';
 import { transliterate } from '@/shared/lib/utils/translit';
 import { aggregateProcessedRows } from '../aggregation';
-import type { AggregatedSummary } from '../aggregation';
-import { ClientComputeParams } from '../types';
+import type { ClientComputeParams } from '../types';
 import { convertExcelToCsvBuffer } from './excel-parser';
 import { buildTableName } from './table-name';
 
-// --- 1. ОПРЕДЕЛЯЕМ СТРОГИЕ ТИПЫ ДЛЯ СООБЩЕНИЙ ---
+// ─────────────────────────────────────────────────────────────
+// 1. СТРОГИЕ ТИПЫ ДЛЯ СООБЩЕНИЙ
+// ─────────────────────────────────────────────────────────────
+
 export interface RegisterArrowPayload {
   datasetId: string;
   buffer: Uint8Array;
 }
+
 export interface ComputePayload {
   params: ClientComputeParams;
 }
+
 export interface ImportExcelPayload {
   datasetId: string;
   fileName: string;
   buffer: ArrayBuffer;
 }
+
 export interface GetPreviewPayload {
   datasetId: string;
   limit: number;
 }
+
 export interface ExportArrowPayload {
   datasetId: string;
 }
+
 export interface DropTablePayload {
   datasetId: string;
 }
+
 export interface PingPayload {
   datasetId?: string;
 }
@@ -56,7 +66,11 @@ export type WorkerMessage =
   | { type: 'PING'; id: number; payload: PingPayload }
   | { type: 'CHECK_TABLE'; id: number; payload: CheckTablePayload }
   | { type: 'RELOAD_ARROW'; id: number; payload: ReloadArrowPayload };
-// --- ОСТАЛЬНАЯ ЛОГИКА ---
+
+// ─────────────────────────────────────────────────────────────
+// 2. ХЕЛПЕРЫ
+// ─────────────────────────────────────────────────────────────
+
 function toAbsoluteUrl(path: string): string {
   return new URL(path, self.location.origin).href;
 }
@@ -75,21 +89,15 @@ function toNumber(val: unknown): number | null {
   return null;
 }
 
-/**
- * Безопасно извлекает _record_count из строки SQL-результата.
- * DuckDB возвращает bigint для COUNT(*), приводим к number.
- */
-function extractRecordCount(row: Record<string, unknown>): number {
-  const rc = row['_record_count'];
-  if (typeof rc === 'number' && isFinite(rc)) return rc;
-  if (typeof rc === 'bigint') return Number(rc);
-  return 0;
-}
+// ─────────────────────────────────────────────────────────────
+// 3. КОНФИГУРАЦИЯ BUNDLES
+// ─────────────────────────────────────────────────────────────
 
 const EH_BUNDLE = {
   mainModule: toAbsoluteUrl('/duckdb/duckdb-eh.wasm'),
   mainWorker: toAbsoluteUrl('/duckdb/duckdb-browser-eh.worker.js'),
 };
+
 const MVP_BUNDLE = {
   mainModule: toAbsoluteUrl('/duckdb/duckdb-mvp.wasm'),
   mainWorker: toAbsoluteUrl('/duckdb/duckdb-browser-mvp.worker.js'),
@@ -106,7 +114,9 @@ async function loadWorkerScript(workerUrl: string): Promise<Worker> {
   }
   const response = await fetch(workerUrl);
   if (!response.ok) {
-    throw new Error(`Failed to fetch worker script: ${response.status} ${response.statusText} from ${workerUrl}`);
+    throw new Error(
+      `Failed to fetch worker script: ${response.status} ${response.statusText} from ${workerUrl}`
+    );
   }
   const blob = await response.blob();
   const blobUrl = URL.createObjectURL(blob);
@@ -114,8 +124,10 @@ async function loadWorkerScript(workerUrl: string): Promise<Worker> {
 }
 
 let initPromise: Promise<void> | null = null;
+
 async function initDB(): Promise<void> {
   if (initPromise) return initPromise;
+
   initPromise = (async () => {
     try {
       const worker = await loadWorkerScript(EH_BUNDLE.mainWorker);
@@ -136,151 +148,214 @@ async function initDB(): Promise<void> {
       } catch (mvpError) {
         initPromise = null;
         throw new Error(
-          `DuckDB initialization failed: ${mvpError instanceof Error ? mvpError.message : 'Unknown'}`
+          `DuckDB initialization failed: ${
+            mvpError instanceof Error ? mvpError.message : 'Unknown'
+          }`
         );
       }
     }
   })();
+
   return initPromise;
 }
 
-self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
-  const { type, payload, id } = e.data;
+// ─────────────────────────────────────────────────────────────
+// 4. ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ
+// ─────────────────────────────────────────────────────────────
+
+self.onmessage = async (e: MessageEvent) => {
+  const { type, payload, id } = e.data as WorkerMessage;
+
   try {
     await initDB();
+
     if (!conn) {
       throw new Error('DuckDB connection was not established after initDB()');
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // REGISTER_ARROW
+    // ═══════════════════════════════════════════════════════════
     if (type === 'REGISTER_ARROW') {
       const { datasetId, buffer } = payload;
       const tableName = buildTableName(datasetId);
-      await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
+
+      await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+
       const arrowTable = tableFromIPC(buffer);
-      await conn!.insertArrowTable(arrowTable, { name: tableName });
+      await conn.insertArrowTable(arrowTable, { name: tableName });
+
       self.postMessage({ id, success: true });
     }
 
-  if (type === 'COMPUTE') {
-    const { params } = payload;
-    const { dashboardId, dashboardGroupsConfig, virtualMetrics, filters, groupByColumn } = params;
-    const { sql, formulas, aggregateMetadata } = compileQuery(params, 'duckdb');
-    const table = await conn!.query(sql);
-    const rows = table.toArray() as Record<string, unknown>[];
-    const processedRows = postProcessAggregates(rows, formulas);
+    // ═══════════════════════════════════════════════════════════
+    // COMPUTE — оптимизированный блок с CTE
+    // ═══════════════════════════════════════════════════════════
+    if (type === 'COMPUTE') {
+      const { params } = payload;
+      const { dashboardId, dashboardGroupsConfig, virtualMetrics, filters, groupByColumn } = params;
 
-    const computeTotalRecordCount = (sqlRows: Record<string, unknown>[]): number => {
-      let total = 0;
-      for (const row of sqlRows) {
-        const rc = row['_record_count'];
-        if (typeof rc === 'number' && isFinite(rc)) {
-          total += rc;
-        } else if (typeof rc === 'bigint') {
-          total += Number(rc);
+      // ✅ Используем новый compileQuery с CTE-логикой
+      const compiled = compileQuery(params, 'duckdb');
+      const table = await conn.query(compiled.sql);
+      const rows = table.toArray() as Record<string, unknown>[];
+
+      // ✅ postProcessAggregates теперь принимает весь CompiledQuery
+      //    и пропускает метрики, уже вычисленные в SQL через CTE
+      const processedRows = postProcessAggregates(rows, compiled);
+
+      const computeTotalRecordCount = (sqlRows: Record<string, unknown>[]): number => {
+        let total = 0;
+        for (const row of sqlRows) {
+          const rc = row['_record_count'];
+          if (typeof rc === 'number' && isFinite(rc)) {
+            total += rc;
+          } else if (typeof rc === 'bigint') {
+            total += Number(rc);
+          }
         }
-      }
-      return total;
-    };
+        return total;
+      };
 
-    const groups = dashboardGroupsConfig
-      .filter(cfg => cfg.enabled)
-      .map(cfg => {
-        const groupDef = params.groups.find(g => g.id === cfg.groupId);
+      const groups = dashboardGroupsConfig
+        .filter(cfg => cfg.enabled)
+        .map(cfg => {
+          const groupDef = params.groups.find(g => g.id === cfg.groupId);
 
-        const breakdownItems = groupByColumn ? processedRows
-          .map((processed, idx) => {
-            const rawLabel = rows[idx]['_group_label'];
-            const label = rawLabel === null || rawLabel === undefined
-              ? ''
-              : String(rawLabel).trim();
-            const rowRc = rows[idx]['_record_count'];
-            const recordCount = typeof rowRc === 'number'
-              ? rowRc
-              : typeof rowRc === 'bigint'
-              ? Number(rowRc)
-              : 0;
-            const groupVirtualMetrics = virtualMetrics.map(vm => {
-              const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
-              if (!binding) return {
+          const breakdownItems = groupByColumn
+            ? processedRows
+                .map((processed, idx) => {
+                  const rawLabel = rows[idx]['_group_label'];
+                  const label =
+                    rawLabel === null || rawLabel === undefined
+                      ? ''
+                      : String(rawLabel).trim();
+                  const rowRc = rows[idx]['_record_count'];
+                  const recordCount =
+                    typeof rowRc === 'number'
+                      ? rowRc
+                      : typeof rowRc === 'bigint'
+                        ? Number(rowRc)
+                        : 0;
+                  const groupVirtualMetrics = virtualMetrics.map(vm => {
+                    const binding = cfg.virtualMetricBindings?.find(
+                      b => b.virtualMetricId === vm.id
+                    );
+                    if (!binding) {
+                      return {
+                        virtualMetricId: vm.id,
+                        virtualMetricName: vm.name,
+                        value: null,
+                        formattedValue: '—',
+                        sourceMetricId: '',
+                      };
+                    }
+                    const alias = `${cfg.groupId}__${binding.metricId}`;
+                    const numericValue =
+                      typeof processed[alias] === 'number' ? processed[alias] : null;
+                    return {
+                      virtualMetricId: vm.id,
+                      virtualMetricName: vm.name,
+                      value: numericValue,
+                      formattedValue: formatValue(
+                        numericValue,
+                        vm.displayFormat,
+                        vm.decimalPlaces,
+                        vm.unit
+                      ),
+                      sourceMetricId: binding.metricId,
+                    };
+                  });
+                  return { label, recordCount, virtualMetrics: groupVirtualMetrics };
+                })
+                .filter(item => item.label !== '')
+            : undefined;
+
+          let summaryProcessed: Record<string, number | null>;
+          if (groupByColumn) {
+            // ✅ aggregateProcessedRows принимает compiled.formulas и compiled.aggregateMetadata
+            const aggregatedRow = aggregateProcessedRows(
+              processedRows,
+              compiled.aggregateMetadata,
+              compiled.formulas
+            );
+            summaryProcessed = recalculateFormulasOnAggregated(
+              aggregatedRow,
+              compiled.formulas
+            );
+          } else {
+            summaryProcessed = processedRows[0] || {};
+          }
+
+          const groupVirtualMetrics = virtualMetrics.map(vm => {
+            const binding = cfg.virtualMetricBindings?.find(
+              b => b.virtualMetricId === vm.id
+            );
+            if (!binding) {
+              return {
                 virtualMetricId: vm.id,
                 virtualMetricName: vm.name,
                 value: null,
                 formattedValue: '—',
-                sourceMetricId: ''
+                sourceMetricId: '',
               };
-              const alias = `${cfg.groupId}__${binding.metricId}`;
-              const numericValue = typeof processed[alias] === 'number' ? processed[alias] : null;
-              return {
-                virtualMetricId: vm.id,
-                virtualMetricName: vm.name,
-                value: numericValue,
-                formattedValue: formatValue(numericValue, vm.displayFormat, vm.decimalPlaces, vm.unit),
-                sourceMetricId: binding.metricId
-              };
-            });
-            return { label, recordCount, virtualMetrics: groupVirtualMetrics };
-          })
-          .filter(item => item.label !== '')
-          : undefined;
+            }
+            const alias = `${cfg.groupId}__${binding.metricId}`;
+            const numericValue =
+              typeof summaryProcessed[alias] === 'number'
+                ? summaryProcessed[alias]
+                : null;
+            return {
+              virtualMetricId: vm.id,
+              virtualMetricName: vm.name,
+              value: numericValue,
+              formattedValue: formatValue(
+                numericValue,
+                vm.displayFormat,
+                vm.decimalPlaces,
+                vm.unit
+              ),
+              sourceMetricId: binding.metricId,
+            };
+          });
 
-        let summaryProcessed: Record<string, number | null>;
-        if (groupByColumn) {
-          const aggregatedRow = aggregateProcessedRows(processedRows, aggregateMetadata, formulas);
-          summaryProcessed = recalculateFormulasOnAggregated(aggregatedRow, formulas);
-        } else {
-          summaryProcessed = processedRows[0] || {};
-        }
-
-        const groupVirtualMetrics = virtualMetrics.map(vm => {
-          const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
-          if (!binding) return {
-            virtualMetricId: vm.id,
-            virtualMetricName: vm.name,
-            value: null,
-            formattedValue: '—',
-            sourceMetricId: ''
-          };
-          const alias = `${cfg.groupId}__${binding.metricId}`;
-          const numericValue = typeof summaryProcessed[alias] === 'number' ? summaryProcessed[alias] : null;
           return {
-            virtualMetricId: vm.id,
-            virtualMetricName: vm.name,
-            value: numericValue,
-            formattedValue: formatValue(numericValue, vm.displayFormat, vm.decimalPlaces, vm.unit),
-            sourceMetricId: binding.metricId
+            groupId: cfg.groupId,
+            groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
+            virtualMetrics: groupVirtualMetrics,
+            breakdown: breakdownItems,
+            recordCount: computeTotalRecordCount(rows),
+            computedAt: Date.now(),
           };
         });
 
-        return {
-          groupId: cfg.groupId,
-          groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
-          virtualMetrics: groupVirtualMetrics,
-          breakdown: breakdownItems,
-          recordCount: computeTotalRecordCount(rows),
-          computedAt: Date.now()
-        };
-      });
+      const result = {
+        dashboardId,
+        hierarchyFilters: filters,
+        activeFilter: getActiveFilter(filters),
+        virtualMetrics,
+        groups,
+        totalRecords: computeTotalRecordCount(rows),
+        computedAt: Date.now(),
+      };
 
-    const result = {
-      dashboardId,
-      hierarchyFilters: filters,
-      activeFilter: getActiveFilter(filters),
-      virtualMetrics,
-      groups,
-      totalRecords: computeTotalRecordCount(rows),
-      computedAt: Date.now()
-    };
-    self.postMessage({ id, success: true, result });
-  }
+      self.postMessage({ id, success: true, result });
+    }
 
+    // ═══════════════════════════════════════════════════════════
+    // IMPORT_EXCEL
+    // ═══════════════════════════════════════════════════════════
     if (type === 'IMPORT_EXCEL') {
       const { datasetId, fileName, buffer } = payload;
       const tableName = buildTableName(datasetId);
+
       const { csvBuffer, sheetNames } = convertExcelToCsvBuffer(buffer);
       const csvFileName = `${datasetId}_import.csv`;
+
       db!.registerFileBuffer(csvFileName, csvBuffer);
-      await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
-      await conn!.query(`
+
+      await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+      await conn.query(`
         CREATE TABLE ${tableName} AS
         SELECT * FROM read_csv_auto(
           '${csvFileName}',
@@ -293,7 +368,9 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           quote = '"'
         )
       `);
-      const schemaResult = await conn!.query(`DESCRIBE ${tableName}`);
+
+      // Приведение TIME-типов к VARCHAR (защита от ошибок парсинга)
+      const schemaResult = await conn.query(`DESCRIBE ${tableName}`);
       const schemaRows = schemaResult.toArray() as Array<{
         column_name: string;
         column_type: string;
@@ -302,55 +379,80 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         default: string;
         extra: string;
       }>;
+
       for (const row of schemaRows) {
         const duckType = row.column_type.toUpperCase();
         if (duckType === 'TIME' || duckType === 'TIME WITH TIME ZONE') {
-          await conn!.query(`ALTER TABLE ${tableName} ALTER COLUMN "${row.column_name}" TYPE VARCHAR`);
+          await conn.query(`ALTER TABLE ${tableName} ALTER COLUMN "${row.column_name}" TYPE VARCHAR`);
           row.column_type = 'VARCHAR';
         }
       }
+
       const configs = schemaRows.map((row, idx) => {
         const duckType = row.column_type.toUpperCase();
         let classification: 'numeric' | 'date' | 'categorical' = 'categorical';
-        if (duckType.includes('INT') || duckType.includes('DECIMAL') || duckType.includes('FLOAT') || duckType.includes('DOUBLE') || duckType.includes('NUMERIC') || duckType.includes('HUGEINT')) {
+
+        if (
+          duckType.includes('INT') ||
+          duckType.includes('DECIMAL') ||
+          duckType.includes('FLOAT') ||
+          duckType.includes('DOUBLE') ||
+          duckType.includes('NUMERIC') ||
+          duckType.includes('HUGEINT')
+        ) {
           classification = 'numeric';
-        }
-        else if (duckType.includes('DATE') || duckType.includes('TIMESTAMP')) {
+        } else if (duckType.includes('DATE') || duckType.includes('TIMESTAMP')) {
           classification = 'date';
         }
+
         return {
           columnName: row.column_name,
           displayName: row.column_name,
           alias: transliterate(row.column_name) || `col_${idx}`,
           classification,
-          description: `Из файла ${fileName}`
+          description: `Из файла ${fileName}`,
         };
       });
-      const countResult = await conn!.query(`SELECT COUNT(*) as cnt FROM ${tableName}`);
-      const totalRows = Number(toNumber((countResult.toArray()[0]).cnt) ?? 0);
+
+      const countResult = await conn.query(`SELECT COUNT(*) as cnt FROM ${tableName}`);
+      const totalRows = Number(toNumber((countResult.toArray()[0])!.cnt) ?? 0);
+
       self.postMessage({
         id,
         success: true,
-        result: { configs, totalRows, totalColumns: configs.length, sheetNames }
+        result: { configs, totalRows, totalColumns: configs.length, sheetNames },
       });
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // GET_PREVIEW
+    // ═══════════════════════════════════════════════════════════
     if (type === 'GET_PREVIEW') {
       const { datasetId, limit } = payload;
       const tableName = buildTableName(datasetId);
+
       try {
-        const checkTable = await conn!.query(`
+        const checkTable = await conn.query(`
           SELECT COUNT(*) as cnt
           FROM information_schema.tables
           WHERE table_name = '${tableName}'
         `);
-        const tableExists = (checkTable.toArray()[0])?.cnt > 0;
-        if (!tableExists) {
+        const tableExists = (checkTable.toArray()[0] as Record<string, unknown>)?.cnt;
+        const exists =
+          typeof tableExists === 'number'
+            ? tableExists > 0
+            : typeof tableExists === 'bigint'
+              ? Number(tableExists) > 0
+              : false;
+
+        if (!exists) {
           self.postMessage({ id, success: true, result: [] });
           return;
         }
+
         const safeLimit = Math.max(1, Math.min(limit, 5000));
-        const table = await conn!.query(`SELECT * FROM ${tableName} LIMIT ${safeLimit}`);
+        const table = await conn.query(`SELECT * FROM ${tableName} LIMIT ${safeLimit}`);
+
         const rows = table.toArray().map(row => {
           const obj: Record<string, unknown> = {};
           for (const [key, value] of Object.entries(row)) {
@@ -366,49 +468,70 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
           }
           return obj;
         });
+
         self.postMessage({ id, success: true, result: rows });
       } catch (err) {
         console.error('[Worker] GET_PREVIEW failed:', err);
         self.postMessage({
           id,
           success: false,
-          error: err instanceof Error ? err.message : 'Preview fetch failed'
+          error: err instanceof Error ? err.message : 'Preview fetch failed',
         });
       }
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // EXPORT_ARROW
+    // ═══════════════════════════════════════════════════════════
     if (type === 'EXPORT_ARROW') {
       const { datasetId } = payload;
       const tableName = buildTableName(datasetId);
+
       try {
-        const checkTable = await conn!.query(`
+        const checkTable = await conn.query(`
           SELECT COUNT(*) as cnt
           FROM information_schema.tables
           WHERE table_name = '${tableName}'
         `);
-        const tableExists = (checkTable.toArray()[0])?.cnt > 0;
-        if (!tableExists) {
+        const tableExists = (checkTable.toArray()[0] as Record<string, unknown>)?.cnt;
+        const exists =
+          typeof tableExists === 'number'
+            ? tableExists > 0
+            : typeof tableExists === 'bigint'
+              ? Number(tableExists) > 0
+              : false;
+
+        if (!exists) {
           throw new Error(`Table ${tableName} does not exist`);
         }
-        const table = await conn!.query(`SELECT * FROM ${tableName}`);
+
+        const table = await conn.query(`SELECT * FROM ${tableName}`);
         const { tableToIPC } = await import('apache-arrow');
         const arrowBuffer = tableToIPC(table, 'stream');
-        self.postMessage({ id, success: true, result: arrowBuffer });
+        
+
+        self.postMessage({ id, success: true, result: arrowBuffer }, [
+          arrowBuffer.buffer as ArrayBuffer,
+        ]);
       } catch (err) {
         console.error('[Worker] EXPORT_ARROW failed:', err);
         self.postMessage({
           id,
           success: false,
-          error: err instanceof Error ? err.message : 'Export failed'
+          error: err instanceof Error ? err.message : 'Export failed',
         });
       }
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // DROP_TABLE
+    // ═══════════════════════════════════════════════════════════
     if (type === 'DROP_TABLE') {
       const { datasetId } = payload;
       const tableName = buildTableName(datasetId);
+
       try {
-        await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
+        await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
         console.log(`[Worker] Dropped table: ${tableName}`);
         self.postMessage({ id, success: true });
       } catch (err) {
@@ -416,19 +539,17 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         self.postMessage({
           id,
           success: false,
-          error: err instanceof Error ? err.message : 'Drop table failed'
+          error: err instanceof Error ? err.message : 'Drop table failed',
         });
       }
     }
-  
+
     // ═══════════════════════════════════════════════════════════
-    // ✅ PING — расширенный health-check
+    // PING — расширенный health-check
     // ═══════════════════════════════════════════════════════════
     if (type === 'PING') {
       const pingPayload = payload as PingPayload;
 
-      // Если Worker ещё не инициализирован — не пытаемся его инициализировать в PING.
-      // PING должен быть максимально лёгким и быстрым.
       if (!db || !conn) {
         self.postMessage({
           id,
@@ -443,7 +564,6 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
         return;
       }
 
-      // Проверка существования конкретной таблицы (если запрошена)
       let tableExists = false;
       if (pingPayload.datasetId) {
         const tableName = buildTableName(pingPayload.datasetId);
@@ -453,10 +573,14 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
             FROM information_schema.tables
             WHERE table_name = '${tableName}'
           `);
-          const checkRow = checkResult.toArray()[0];
+          const checkRow = checkResult.toArray()[0] as Record<string, unknown>;
           const cnt = checkRow?.cnt;
-          tableExists = typeof cnt === 'number' ? cnt > 0 :
-                       typeof cnt === 'bigint' ? Number(cnt) > 0 : false;
+          tableExists =
+            typeof cnt === 'number'
+              ? cnt > 0
+              : typeof cnt === 'bigint'
+                ? Number(cnt) > 0
+                : false;
         } catch (checkErr) {
           console.warn('[Worker] PING table check failed:', checkErr);
           tableExists = false;
@@ -477,31 +601,33 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // ✅ CHECK_TABLE — быстрая проверка одной таблицы
+    // CHECK_TABLE
     // ═══════════════════════════════════════════════════════════
     if (type === 'CHECK_TABLE') {
       await initDB();
       if (!conn) {
-        self.postMessage({
-          id,
-          success: true,
-          result: { exists: false },
-        });
+        self.postMessage({ id, success: true, result: { exists: false } });
         return;
       }
 
       const { datasetId } = payload as CheckTablePayload;
       const tableName = buildTableName(datasetId);
+
       try {
         const checkResult = await conn.query(`
           SELECT COUNT(*) as cnt
           FROM information_schema.tables
           WHERE table_name = '${tableName}'
         `);
-        const checkRow = checkResult.toArray()[0];
+        const checkRow = checkResult.toArray()[0] as Record<string, unknown>;
         const cnt = checkRow?.cnt;
-        const exists = typeof cnt === 'number' ? cnt > 0 :
-                      typeof cnt === 'bigint' ? Number(cnt) > 0 : false;
+        const exists =
+          typeof cnt === 'number'
+            ? cnt > 0
+            : typeof cnt === 'bigint'
+              ? Number(cnt) > 0
+              : false;
+
         self.postMessage({ id, success: true, result: { exists } });
       } catch (err) {
         console.error('[Worker] CHECK_TABLE failed:', err);
@@ -511,30 +637,33 @@ self.onmessage = async (e: MessageEvent<WorkerMessage>) => {
     }
 
     // ═══════════════════════════════════════════════════════════
-    // ✅ RELOAD_ARROW — восстановление таблицы после auto-recovery
+    // RELOAD_ARROW — восстановление таблицы после auto-recovery
     // ═══════════════════════════════════════════════════════════
     if (type === 'RELOAD_ARROW') {
       await initDB();
       if (!conn) {
         throw new Error('DuckDB connection was not established after initDB()');
       }
+
       const { datasetId, buffer } = payload as ReloadArrowPayload;
       const tableName = buildTableName(datasetId);
+
       await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
       const arrowTable = tableFromIPC(buffer);
       await conn.insertArrowTable(arrowTable, { name: tableName });
+
       console.log(`[Worker] ♻️ Table ${tableName} reloaded from Arrow buffer`);
       self.postMessage({ id, success: true });
       return;
     }
-    
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     const isCatalogError = message.includes('Catalog Error');
 
     if (isCatalogError) {
-      // Worker не логирует — это делает Manager при обработке retry
-      console.warn(`[Worker] Transient table error (will auto-retry): ${message.split('\n')[0]}`);
+      console.warn(
+        `[Worker] Transient table error (will auto-retry): ${message.split('\n')[0]}`
+      );
     } else {
       console.error('[Worker] Query failed:', error);
     }

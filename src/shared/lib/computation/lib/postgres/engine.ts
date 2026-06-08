@@ -5,7 +5,7 @@ import type {
 } from '../types';
 import { compileQuery } from '../query-compiler';
 import { getActiveFilter, formatValue } from '../utils';
-import { postProcessAggregates } from '../post-process';
+import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
 import { decryptConfig } from '@/shared/lib/utils/crypto';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
 import type {
@@ -43,6 +43,13 @@ function buildAggregateMetadataMap(
   return metadata;
 }
 
+/**
+ * PostgreSQL Compute Engine.
+ *
+ * ✅ Pure function — не зависит от Zustand-сторов.
+ * pgSchema и pgTable читаются из params, которые передаёт вызывающий код
+ * (виджеты, уже подписанные на useDatasetStore).
+ */
 export class PgEngine implements IComputeEngine {
   async initialize(): Promise<void> {
     // PG не требует инициализации
@@ -65,11 +72,11 @@ export class PgEngine implements IComputeEngine {
       throw new Error('Missing encryptedConfig for PostgreSQL');
     }
 
-    // ✅ Читаем schema/table ИЗ params, а НЕ из useDatasetStore
+    // ✅ Читаем schema/table из params, а НЕ из useDatasetStore
     if (!pgSchema || !pgTable) {
       throw new Error(
         `PostgreSQL dataset ${datasetId} missing pgSchema/pgTable in params. ` +
-        `Caller must pass these from entities/dataset store.`
+          `Caller must pass these from entities/dataset store.`
       );
     }
 
@@ -88,8 +95,13 @@ export class PgEngine implements IComputeEngine {
     }
 
     const rows = response.rows as Record<string, unknown>[];
-    const { formulas, aggregateMetadata } = compileQuery(pgParams, 'postgres');
-    const processedRows = postProcessAggregates(rows, formulas);
+
+    // ✅ Используем новый compileQuery с CTE-логикой
+    const compiled = compileQuery(pgParams, 'postgres');
+
+    // ✅ postProcessAggregates теперь принимает весь CompiledQuery
+    //    и пропускает метрики, уже вычисленные в SQL через CTE
+    const processedRows = postProcessAggregates(rows, compiled);
 
     const computeTotalRecordCount = (sqlRows: Record<string, unknown>[]): number => {
       let total = 0;
@@ -157,8 +169,8 @@ export class PgEngine implements IComputeEngine {
                   typeof rowRc === 'number'
                     ? rowRc
                     : typeof rowRc === 'bigint'
-                    ? Number(rowRc)
-                    : 0;
+                      ? Number(rowRc)
+                      : 0;
                 return {
                   label,
                   recordCount,
@@ -169,7 +181,11 @@ export class PgEngine implements IComputeEngine {
           : undefined;
 
         const summaryProcessed = groupByColumn
-          ? aggregateProcessedRows(processedRows, aggregateMetadata, formulas)
+          ? aggregateProcessedRows(
+              processedRows,
+              compiled.aggregateMetadata,
+              compiled.formulas
+            )
           : processedRows[0] || {};
 
         return {

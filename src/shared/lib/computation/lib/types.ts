@@ -34,43 +34,39 @@ export interface ClientComputeParams {
   virtualMetrics: VirtualMetric[];
   groupByColumn?: string;
   validColumns?: string[];
-
-  /**
-   * PostgreSQL schema (для sourceType === 'postgres').
-   * Передаётся вызывающим кодом из entities/dataset store.
-   * Engine не должен сам читать из UI-сторов.
-   */
   pgSchema?: string;
-
-  /**
-   * PostgreSQL table (для sourceType === 'postgres').
-   * Передаётся вызывающим кодом из entities/dataset store.
-   */
   pgTable?: string;
+}
+
+export interface CompiledFormulaMeta {
+  groupId: string;
+  metricId: string;
+  templateId: string;
+  formula: string;
+  fieldDependencies: {
+    alias: string;
+    columnName: string;
+    aggregateFn: string;
+  }[];
+  metricDependencies: {
+    alias: string;
+    metricId: string;
+  }[];
 }
 
 export interface CompiledQuery {
   sql: string;
   params?: QueryParam[];
-  formulas: Map<
-    string,
-    {
-      groupId: string;
-      metricId: string;
-      templateId: string;
-      formula: string;
-      fieldDependencies: {
-        alias: string;
-        columnName: string;
-        aggregateFn: string;
-      }[];
-      metricDependencies: {
-        alias: string;
-        metricId: string;
-      }[];
-    }
-  >;
+  formulas: Map<string, CompiledFormulaMeta>;
   aggregateMetadata: Map<string, MetricAggregationMeta>;
+  /**
+   * Алиасы calculated-метрик, УЖЕ вычисленные внутри SQL через CTE.
+   * postProcessAggregates должен их пропускать — значения уже в строках.
+   *
+   * Если Set пустой (все формулы упали в fallback), post-process
+   * вычислит их через Math.js как раньше.
+   */
+  calculatedInSqlAliases: Set<string>;
 }
 
 export interface IComputeEngine {
