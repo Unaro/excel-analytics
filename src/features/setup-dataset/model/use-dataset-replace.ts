@@ -1,13 +1,18 @@
+// features/setup-dataset/model/use-dataset-replace.ts
 'use client';
+
 import { useCallback } from 'react';
 import { replaceDatasetFile } from '@/entities/dataset';
 import { toast } from 'sonner';
+import { useDashboardFilterReconciler } from './use-dashboard-filter-reconciler';
 
 interface UseDatasetReplaceProps {
-  onSuccess: () => void;
+  onSuccess: (datasetId: string) => void;
 }
 
 export function useDatasetReplace({ onSuccess }: UseDatasetReplaceProps) {
+  const { reconcileAllForDataset } = useDashboardFilterReconciler();
+
   const handleReplaceFile = useCallback(
     async (datasetId: string, currentName: string) => {
       // 1. Диалог выбора файла
@@ -23,12 +28,12 @@ export function useDatasetReplace({ onSuccess }: UseDatasetReplaceProps) {
         // 2. Диалог подтверждения
         const confirmed = window.confirm(
           `Заменить файл для датасета "${currentName}"?\n\n` +
-          `⚠️ Это действие:\n` +
-          `• Загрузит новые данные в DuckDB\n` +
-          `• Сохранит настройки колонок (классификацию, алиасы)\n` +
-          `• Сбросит кэш вычислений дашбордов\n` +
-          `• Пометит удалённые колонки как "скрытые" (не удалит)\n\n` +
-          `Продолжить?`
+            `⚠️ Это действие:\n` +
+            `• Загрузит новые данные в DuckDB\n` +
+            `• Сохранит настройки колонок (классификацию, алиасы)\n` +
+            `• Сбросит кэш вычислений дашбордов\n` +
+            `• Пометит удалённые колонки как "скрытые" (не удалит)\n\n` +
+            `Продолжить?`
         );
         if (!confirmed) return;
 
@@ -59,7 +64,11 @@ export function useDatasetReplace({ onSuccess }: UseDatasetReplaceProps) {
             }
 
             toast.success(message, { id: toastId, duration: 8000 });
-            onSuccess();
+
+            // ✅ 4. Согласуем фильтры дашбордов с новой структурой
+            reconcileAllForDataset(datasetId);
+
+            onSuccess(datasetId);
           } else {
             toast.error(`❌ Ошибка: ${res.error}`, { id: toastId });
           }
@@ -70,7 +79,7 @@ export function useDatasetReplace({ onSuccess }: UseDatasetReplaceProps) {
 
       input.click();
     },
-    [onSuccess]
+    [onSuccess, reconcileAllForDataset]
   );
 
   return { handleReplaceFile };

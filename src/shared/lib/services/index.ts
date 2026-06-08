@@ -22,3 +22,13 @@ export {
   type ConfigImportContext,
   type ConfigImportResult,
 } from './config-import-service';
+
+export {
+  mergeColumnConfigs,
+  type ColumnConfigMergeResult,
+} from './column-config-merger';
+
+export {
+  reconcileHierarchyFilters,
+  type FilterReconciliationResult,
+} from './dashboard-filter-reconciler';
