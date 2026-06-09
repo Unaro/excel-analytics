@@ -1,4 +1,3 @@
-// shared/lib/storage/computation-cache.ts
 import { get, set, del, clear as clearDB } from 'idb-keyval';
 import type {
   IComputationCache,
@@ -17,7 +16,7 @@ export class FileComputationCache implements IComputationCache {
   async set(
     key: CacheKey,
     result: DashboardComputationResult,
-    ttlMs = PG_TTL
+    ttlMs = FILE_TTL
   ): Promise<void> {
     const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${key.filtersHash}`;
     const meta = {
@@ -59,17 +58,26 @@ export class FileComputationCache implements IComputationCache {
       return null;
     }
 
-    const invalidatedAt = (await get(
+    // 1. Глобальная инвалидация датасета (вызывается cache.clear(datasetId))
+    const globalInvalidatedAt = (await get(
+      `comp:file:invalidated:${key.datasetId}`
+    )) as number | undefined;
+
+    // 2. Инвалидация конкретного дашборда (вызывается cache.clearByDashboard)
+    const dashboardInvalidatedAt = (await get(
       `comp:file:invalidated:${key.datasetId}:${key.dashboardId}`
     )) as number | undefined;
-    if (invalidatedAt && entry.meta.storedAt < invalidatedAt) {
+
+    const invalidatedAt = Math.max(globalInvalidatedAt ?? 0, dashboardInvalidatedAt ?? 0);
+
+    if (invalidatedAt > 0 && entry.meta.storedAt < invalidatedAt) {
       await this.invalidate(key);
       return null;
     }
 
     return entry;
   }
-
+  
   async invalidate(key: CacheKey): Promise<void> {
     const storageKey = `${this.prefix}${key.datasetId}:${key.dashboardId}:${
       key.filtersHash

@@ -77,7 +77,7 @@ function buildAggregateExpr(
 // ─────────────────────────────────────────────────────────────
 // Префиксы для технических алиасов
 // ─────────────────────────────────────────────────────────────
-const FIELD_DEP_PREFIX = '__fb_';
+export const FIELD_DEP_PREFIX = '_fb';
 const BASE_CTE_NAME = '__base';
 const CALC_CTE_PREFIX = '__calc_';
 
@@ -319,73 +319,65 @@ export function compileQuery(
   const calcSelectParts: string[][] = [];
 
   // Маппинг alias → SQL-выражение (для компилятора формул)
-  const fieldAliasMap = new Map<string, string>();
-  const metricAliasMap = new Map<string, string>();
-
-  // Заполняем field aliases для КАЖДОЙ calculated метрики
-  for (const calc of sortedCalculated) {
-    for (const fd of calc.fieldDependencies) {
-      const depAlias = `${FIELD_DEP_PREFIX}${calc.groupId}_${calc.metricId}_${fd.alias}`;
-      fieldAliasMap.set(fd.alias, wrapWithCoalesce(quote(depAlias)));
-    }
-  }
-
-  // Пытаемся скомпилировать каждую calculated метрику
   let allCalculatedCompiled = true;
-
   for (const calc of sortedCalculated) {
-    // Для МЕТРИЧЕСКИХ зависимостей используем finalAlias предыдущих CTE
-    const localMetricAliases = new Map<string, string>();
-    for (const md of calc.metricDependencies) {
-      // Ищем finalAlias по metricId
-      const depCalc = sortedCalculated.find((c) => c.metricId === md.metricId);
-      if (depCalc) {
-        localMetricAliases.set(
-          md.alias,
-          wrapWithCoalesce(quote(depCalc.finalAlias))
-        );
-      } else {
-        // Зависимость от aggregate-метрики — ищем в formulas
-        // Aggregate метрики имеют finalAlias напрямую в base CTE
-        const aggAlias = calc.groupId.includes(md.metricId)
-          ? md.metricId
-          : undefined;
-        if (aggAlias) {
-          localMetricAliases.set(md.alias, wrapWithCoalesce(quote(aggAlias)));
-        }
+      // ─── Локальные field aliases ТОЛЬКО для текущей метрики ───
+      const localFieldAliases = new Map<string, string>();
+      for (const fd of calc.fieldDependencies) {
+          const depAlias = `${FIELD_DEP_PREFIX}${calc.groupId}_${calc.metricId}_${fd.alias}`;
+          localFieldAliases.set(fd.alias, wrapWithCoalesce(quote(depAlias)));
       }
-    }
 
-    const ctx = createFormulaToSqlContext(
-      fieldAliasMap,
-      localMetricAliases,
-      dialect
-    );
-    const compiler = new FormulaToSqlCompiler(ctx);
-    const result = compiler.compile(calc.formula);
+      // ─── Локальные metric aliases для зависимостей от других метрик ───
+      const localMetricAliases = new Map<string, string>();
+      for (const md of calc.metricDependencies) {
+          const depCalc = sortedCalculated.find((c) => c.metricId === md.metricId);
+          if (depCalc) {
+              localMetricAliases.set(
+                  md.alias,
+                  wrapWithCoalesce(quote(depCalc.finalAlias))
+              );
+          } else {
+              // Зависимость от aggregate-метрики — ищем в formulas
+              const aggMeta = Array.from(formulas.values()).find(
+                  (f) => f.metricId === md.metricId && f.groupId === calc.groupId
+              );
+              if (aggMeta) {
+                  const aggFinalAlias = `base_${calc.groupId}__${md.metricId}`.replace('base_', '');
+                  localMetricAliases.set(md.alias, wrapWithCoalesce(quote(aggFinalAlias)));
+              }
+          }
+      }
 
-    if (!result.success) {
-      console.warn(
-        `[query-compiler] ⚠️ Cannot compile formula for "${calc.finalAlias}" to SQL: ${result.reason}. ` +
-          `Falling back ALL calculated metrics to Math.js.`
+      // ─── Контекст содержит ТОЛЬКО зависимости текущей метрики ───
+      const ctx = createFormulaToSqlContext(
+          localFieldAliases,   // ← field deps ТОЛЬКО этой метрики
+          localMetricAliases,  // ← metric deps ТОЛЬКО этой метрики
+          dialect
       );
-      allCalculatedCompiled = false;
-      break;
-    }
+      const compiler = new FormulaToSqlCompiler(ctx);
+      const result = compiler.compile(calc.formula);
 
-    calcSelectParts.push([
-      `${result.sql} AS ${quote(calc.finalAlias)}`,
-      calc.baseAlias,
-    ]);
+      if (!result.success) {
+          console.warn(
+              `[query-compiler] ⚠️ Cannot compile formula for "${calc.finalAlias}" to SQL: ${result.reason}. ` +
+              `Falling back ALL calculated metrics to Math.js.`
+          );
+          allCalculatedCompiled = false;
+          break;
+      }
+
+      calcSelectParts.push([
+          `${result.sql} AS ${quote(calc.finalAlias)}`,
+          calc.baseAlias,
+      ]);
   }
 
   // ───────────────────────────────────────────────────────────
   // Сборка финального SQL
   // ───────────────────────────────────────────────────────────
   let sql: string;
-
   if (allCalculatedCompiled && sortedCalculated.length > 0) {
-    // ✅ Успех: используем CTE
     const baseSql = [
       `SELECT ${baseSelectParts.join(', ')}`,
       `FROM ${tableName}`,
@@ -396,51 +388,55 @@ export function compileQuery(
     ]
       .filter(Boolean)
       .join(' ');
-
     cteParts.push(`${BASE_CTE_NAME} AS (${baseSql})`);
+    
+    const extractAlias = (expr: string): string | null => {
+      const match = expr.match(/AS\s+"([^"]+)"/);
+      return match ? match[1] : null;
+    };
+
+    const availableAliases: string[] = [];
+    for (const part of baseSelectParts) {
+      const alias = extractAlias(part);
+      if (alias) availableAliases.push(alias);
+    }
 
     let previousCteName = BASE_CTE_NAME;
-    const accumulatedSelectParts = [...baseSelectParts];
 
     for (let i = 0; i < sortedCalculated.length; i++) {
-      const [calcExpr, baseAlias] = calcSelectParts[i];
+      const [calcExpr] = calcSelectParts[i];
       const cteName = `${CALC_CTE_PREFIX}${sortedCalculated[i].finalAlias.replace(/[^a-zA-Z0-9_]/g, '_')}`;
 
-      // В текущем CTE выбираем всё из предыдущего + новая calculated метрика
-      // Исключаем из SELECT технические field deps, которые не нужны далее
-      const currentSelectParts = accumulatedSelectParts.filter((part) => {
-        // Убираем base_* алиасы — они не нужны в финальном результате
-        if (/AS\s+"base_/.test(part)) return false;
-        return true;
-      });
+      const currentSelectParts = availableAliases
+        .filter(alias => !alias.startsWith('base_'))
+        .map(alias => quote(alias));
       currentSelectParts.push(calcExpr);
 
       const cteSql = `SELECT ${currentSelectParts.join(', ')} FROM ${previousCteName}`;
       cteParts.push(`${cteName} AS (${cteSql})`);
 
-      accumulatedSelectParts.push(calcExpr);
-      previousCteName = cteName;
+      const newAlias = extractAlias(calcExpr);
+      if (newAlias) availableAliases.push(newAlias);
 
-      // Помечаем как вычисленную в SQL
+      previousCteName = cteName;
       calculatedInSqlAliases.add(sortedCalculated[i].finalAlias);
     }
 
-    // ORDER BY и LIMIT применяются к финальному CTE
+    // ORDER BY и LIMIT
     let orderByClause = '';
     let limitClause = '';
     if (safeGroupByColumn) {
-      const firstMetricAlias = baseSelectParts.find(
-        (p) =>
-          p.includes('__') &&
-          !p.includes('_record_count') &&
-          !p.startsWith('NULL') &&
-          !p.includes(FIELD_DEP_PREFIX)
+      const firstMetricAlias = availableAliases.find(
+        (a) =>
+          a.includes('__') &&
+          a !== '_group_label' &&
+          a !== '_record_count' &&
+          !a.startsWith('base_') &&
+          !a.startsWith('__fb_') &&
+          !a.startsWith('__agg_')
       );
       if (firstMetricAlias) {
-        const match = firstMetricAlias.match(/AS\s+"([^"]+)"/);
-        if (match) {
-          orderByClause = `ORDER BY ${quote(match[1])} DESC`;
-        }
+        orderByClause = `ORDER BY ${quote(firstMetricAlias)} DESC`;
       }
       limitClause = 'LIMIT 1000';
     }
@@ -454,8 +450,6 @@ export function compileQuery(
 
     sql = finalParts.join(' ');
   } else {
-    // ❌ Fallback: старый подход (все calculated через Math.js)
-    // Добавляем field deps в SELECT для пост-обработки
     for (const calc of sortedCalculated) {
       for (const fd of calc.fieldDependencies) {
         const depAlias = `${calc.baseAlias}__${fd.alias}`;

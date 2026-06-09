@@ -1,4 +1,3 @@
-// shared/lib/computation/lib/utils.ts
 import type {
   ActiveHierarchyFilter,
   VirtualMetricValue,
@@ -85,4 +84,25 @@ export function buildVirtualMetricValue(
     ),
     sourceMetricId: '',
   };
+}
+
+/**
+ * Вычисляет общее количество записей из агрегированных SQL-строк.
+ * `_record_count` — служебная колонка, добавляемая query-compiler'ом.
+ *
+ * Единый источник правды для DuckDB и PostgreSQL engine'ов.
+ */
+export function computeTotalRecordCount(
+  sqlRows: Record<string, unknown>[]
+): number {
+  let total = 0;
+  for (const row of sqlRows) {
+    const rc = row['_record_count'];
+    if (typeof rc === 'number' && isFinite(rc)) {
+      total += rc;
+    } else if (typeof rc === 'bigint') {
+      total += Number(rc);
+    }
+  }
+  return total;
 }

@@ -1,4 +1,3 @@
-// shared/lib/computation/lib/duckdb/manager.ts
 import type { DatasetRow, ColumnConfig } from '@/shared/lib/types/dataset';
 import type { ClientComputeParams } from '../types';
 import type { DashboardComputationResult } from '@/shared/lib/types/computation';
@@ -258,11 +257,20 @@ export class DuckDBWorkerManager {
 
   async computeDashboard(
     params: ClientComputeParams,
-    arrowBuffer?: Uint8Array
+    arrowBuffer?: Uint8Array,
+    signal?: AbortSignal 
   ): Promise<DashboardComputationResult> {
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
     try {
       return await this.dispatch('COMPUTE', { params });
     } catch (err) {
+      if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
+        throw err;
+      }
+
       const message = err instanceof Error ? err.message : String(err);
       const isTableMissing =
         message.includes('Catalog Error') && message.includes('does not exist');
@@ -270,15 +278,16 @@ export class DuckDBWorkerManager {
       if (isTableMissing && arrowBuffer) {
         try {
           const ready = await this.ensureReady(params.datasetId, arrowBuffer);
-          if (!ready) {
-            throw err;
+          if (!ready) throw err;
+
+          if (signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
           }
+
           return await this.dispatch('COMPUTE', { params });
         } catch (retryErr) {
-          console.error(
-            '[DuckDBManager] COMPUTE retry failed after recovery:',
-            retryErr
-          );
+          if (signal?.aborted) throw retryErr;
+          console.error('[DuckDBManager] COMPUTE retry failed after recovery:', retryErr);
           throw retryErr;
         }
       }

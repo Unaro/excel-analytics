@@ -123,10 +123,6 @@ widgets/                # Композиции страниц
 ├── Sidebar/            # Десктопное меню
 └── TemplateManager/    # Список шаблонов метрик
 │
-lib/                    # Общая логика и хуки
-├── hooks/              # Кастомные хуки (расчёты, гидратация, фильтры)
-└── logic/              # safe-math.ts, validators.ts, postgres-client.ts, crypto.ts
-│
 shared/                 # Переиспользуемый код
 ├── lib/                # Утилиты (translit, format, cn, crypto)
 └── ui/                 # Примитивы (Button, Card, Dialog, Input, Select)

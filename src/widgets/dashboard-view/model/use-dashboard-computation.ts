@@ -1,16 +1,14 @@
 'use client';
 
 import { useCallback, useMemo } from 'react';
-import { useDatasetStore } from '@/entities/dataset';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
-import { useMetricTemplateStore } from '@/entities/metric';
+import { useMetricTemplateStore, useComputedMetricsStore } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
-import { useComputedMetricsStore } from '@/entities/metric';
+import { useDatasetInfo } from '@/entities/groupView';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
 import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { useShallow } from 'zustand/react/shallow';
-import type { MetricTemplate } from '@/entities/metric';
-import type { DashboardComputationResult } from '@/entities/metric';
+import type { MetricTemplate, DashboardComputationResult } from '@/entities/metric';
 import type {
   HierarchyFilterValue,
   IndicatorGroup,
@@ -28,12 +26,14 @@ const EMPTY_GROUPS: IndicatorGroup[] = [];
 const EMPTY_TEMPLATES: MetricTemplate[] = [];
 
 export function useDashboardComputation(dashboardId: string) {
-  const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
-  const dataset = useDatasetStore(s =>
-    s.activeDatasetId ? s.datasets[s.activeDatasetId] ?? null : null
-  );
-  const sourceType = dataset?.sourceType ?? 'file';
-  const isSyncing = useDatasetStore(s => s.isSyncing);
+  const {
+    activeDatasetId,
+    sourceType,
+    encryptedConnection,
+    pgSchema,
+    pgTable,
+    isSyncing,
+  } = useDatasetInfo();
 
   const selectDashboard = useCallback(
     (s: { dashboards: Dashboard[] }) => s.dashboards.find(d => d.id === dashboardId),
@@ -44,15 +44,14 @@ export function useDashboardComputation(dashboardId: string) {
   const hierarchyFilters = dashboard?.hierarchyFilters ?? EMPTY_FILTERS;
   const dashboardGroupsConfig = dashboard?.indicatorGroups ?? EMPTY_DASHBOARD_GROUPS;
   const virtualMetrics = dashboard?.virtualMetrics ?? EMPTY_VIRTUAL_METRICS;
-
   const groups = useIndicatorGroupStore(useShallow(s => s.groups)) ?? EMPTY_GROUPS;
-  const metricTemplates =
-    useMetricTemplateStore(useShallow(s => s.templates)) ?? EMPTY_TEMPLATES;
+  const metricTemplates = useMetricTemplateStore(useShallow(s => s.templates)) ?? EMPTY_TEMPLATES;
 
   const filtersHash = useMemo(
     () => generateFiltersHash(hierarchyFilters),
     [hierarchyFilters]
   );
+
   const configHash = useMemo(
     () =>
       generateConfigHash({
@@ -63,34 +62,31 @@ export function useDashboardComputation(dashboardId: string) {
       }),
     [groups, metricTemplates, dashboardGroupsConfig, virtualMetrics]
   );
-  const compositeHash = `${filtersHash}:${configHash}`;
 
-  // ✅ Функция построения params
+  const compositeHash = useMemo(
+    () => `${filtersHash}:${configHash}`,
+    [filtersHash, configHash]
+  );
+
   const buildParams = useCallback((): ClientComputeParams | null => {
     if (!dashboard || !activeDatasetId) return null;
     return {
       datasetId: activeDatasetId,
       dashboardId,
-      encryptedConfig: dataset?.pgConfig?.encryptedConnection,
+      encryptedConfig: encryptedConnection,
       tableName: 'placeholder',
       filters: hierarchyFilters,
       groups,
       dashboardGroupsConfig,
       metricTemplates,
       virtualMetrics,
-      pgSchema: dataset?.pgConfig?.schema,
-      pgTable: dataset?.pgConfig?.table,
+      pgSchema,
+      pgTable,
     };
   }, [
-    dashboard,
-    activeDatasetId,
-    dashboardId,
-    dataset?.pgConfig,
-    hierarchyFilters,
-    groups,
-    dashboardGroupsConfig,
-    metricTemplates,
-    virtualMetrics,
+    dashboard, activeDatasetId, dashboardId, encryptedConnection,
+    hierarchyFilters, groups, dashboardGroupsConfig,
+    metricTemplates, virtualMetrics, pgSchema, pgTable,
   ]);
 
   const buildCacheKey = useCallback((): CacheKey | null => {
@@ -125,7 +121,6 @@ export function useDashboardComputation(dashboardId: string) {
   const mergedResult = useMemo<DashboardComputationResult | null>(() => {
     if (!result) return null;
     if (virtualMetrics.length === 0) return result;
-
     const updatedGroups = result.groups.map(group => ({
       ...group,
       virtualMetrics: group.virtualMetrics.map(vm => {
@@ -142,7 +137,6 @@ export function useDashboardComputation(dashboardId: string) {
         }),
       })),
     }));
-
     return { ...result, virtualMetrics, groups: updatedGroups };
   }, [result, virtualMetrics]);
 

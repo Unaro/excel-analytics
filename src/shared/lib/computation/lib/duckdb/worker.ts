@@ -259,8 +259,32 @@ self.onmessage = async (e: MessageEvent) => {
     if (type === 'COMPUTE') {
       const { params } = payload;
       const { dashboardId, dashboardGroupsConfig, virtualMetrics, filters, groupByColumn } = params;
+      const tableName = buildTableName(params.datasetId);
 
-      const compiled = compileQuery(params, 'duckdb');
+      // ─── ПОЛУЧАЕМ РЕАЛЬНУЮ СХЕМУ ИЗ DUCKDB ─────────────────
+      let effectiveParams = params;
+      try {
+        const schemaResult = await conn!.query(`DESCRIBE ${tableName}`);
+        const realColumns = schemaResult.toArray().map(
+          (r) => (r as Record<string, unknown>)['column_name'] as string
+        );
+        console.log(
+          `[Worker] 🔍 DESCRIBE ${tableName}: ${realColumns.length} columns`,
+          realColumns
+        );
+        if (realColumns.length > 0) {
+          effectiveParams = { ...params, validColumns: realColumns };
+        }
+      } catch (schemaErr) {
+        console.warn(
+          `[Worker] ⚠️ DESCRIBE failed for ${tableName}, falling back to params.validColumns:`,
+          schemaErr
+        );
+      }
+
+      const compiled = compileQuery(effectiveParams, 'duckdb');
+
+      console.log(`[Worker] 📝 Compiled SQL (${compiled.sql.length} chars):`, compiled.sql.slice(0, 200) + '...');
 
       const prepared = await preparedStatementCache.getOrCreate(compiled.sql);
       let table: Awaited<ReturnType<duckdb.AsyncDuckDBConnection['query']>>;
@@ -268,13 +292,11 @@ self.onmessage = async (e: MessageEvent) => {
       if (prepared) {
         table = await prepared.query();
       } else {
-        // Fallback, если prepare() не сработал (например, DuckDB отверг SQL)
         table = await conn!.query(compiled.sql);
       }
 
       const rows = table.toArray() as Record<string, unknown>[];
       const processedRows = postProcessAggregates(rows, compiled);
-      
 
       const computeTotalRecordCount = (sqlRows: Record<string, unknown>[]): number => {
         let total = 0;
@@ -292,7 +314,7 @@ self.onmessage = async (e: MessageEvent) => {
       const groups = dashboardGroupsConfig
         .filter(cfg => cfg.enabled)
         .map(cfg => {
-          const groupDef = params.groups.find(g => g.id === cfg.groupId);
+          const groupDef = effectiveParams.groups.find(g => g.id === cfg.groupId);
 
           const breakdownItems = groupByColumn
             ? processedRows
@@ -345,13 +367,9 @@ self.onmessage = async (e: MessageEvent) => {
 
           let summaryProcessed: Record<string, number | null>;
           if (groupByColumn) {
-            const aggregatedRow = aggregateProcessedRows(
+            summaryProcessed = aggregateProcessedRows(
               processedRows,
               compiled.aggregateMetadata,
-              compiled.formulas
-            );
-            summaryProcessed = recalculateFormulasOnAggregated(
-              aggregatedRow,
               compiled.formulas
             );
           } else {
@@ -493,7 +511,6 @@ self.onmessage = async (e: MessageEvent) => {
             }
           }
 
-          // ✅ ПРОВЕРКА: Убеждаемся, что все строки загружены
           const countResult = await conn.query(
             `SELECT COUNT(*) as cnt FROM ${tableName}`
           );
@@ -616,7 +633,6 @@ self.onmessage = async (e: MessageEvent) => {
           };
         });
 
-        // ✅ ФИНАЛЬНАЯ ПРОВЕРКА: сколько строк реально в таблице
         const finalCountResult = await conn.query(
           `SELECT COUNT(*) as cnt FROM ${tableName}`
         );
@@ -629,7 +645,7 @@ self.onmessage = async (e: MessageEvent) => {
           success: true,
           result: {
             configs,
-            totalRows: finalTotalRows,  // ← Используем реальное количество из DuckDB
+            totalRows: finalTotalRows,
             totalColumns: configs.length,
             sheetNames,
           },
@@ -845,7 +861,6 @@ self.onmessage = async (e: MessageEvent) => {
         const table = await conn!.query(`SELECT * FROM ${tableName}`);
         const totalRows = table.numRows;
 
-        // ✅ Chunked export с прогрессом
         let chunkIndex = 0;
         for await (const chunk of exportTableInChunks(table)) {
           // Отправляем каждый chunk отдельно как Transferable

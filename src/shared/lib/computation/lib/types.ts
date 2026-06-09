@@ -71,6 +71,9 @@ export interface CompiledQuery {
 
 export interface IComputeEngine {
   initialize(datasetId: string): Promise<void>;
-  compute(params: ClientComputeParams): Promise<DashboardComputationResult>;
+  compute(
+    params: ClientComputeParams,
+    signal?: AbortSignal
+  ): Promise<DashboardComputationResult>;
   dispose(datasetId: string): void;
 }

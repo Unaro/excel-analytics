@@ -1,14 +1,6 @@
-// app/providers/hydration.ts
 // ─────────────────────────────────────────────────────────────
 // Application-level bootstrapper для восстановления состояния.
 //
-// Этот файл ИМЕЕТ ПРАВО импортировать entities, потому что:
-// - Живёт в app/ слое (оркестратор всего приложения)
-// - Отвечает за глобальную инициализацию при старте
-// - Связывает между собой все доменные слои
-//
-// НЕ должен находиться в shared/, т.к. shared должен быть
-// переиспользуемым без привязки к конкретному application.
 // ─────────────────────────────────────────────────────────────
 
 'use client';
@@ -138,7 +130,7 @@ async function restoreFileDataset(id: string, ds: DatasetEntry): Promise<boolean
 
   // Пропускаем уже готовые
   if (ds.engineStatus === 'ready') {
-    // Но проверим preview, если rows пустые
+    // Проверим preview, если rows пустые
     if (!ds.rows || ds.rows.length === 0) {
       try {
         const preview = await duckdbManager.getPreviewRows(id, 500);
@@ -159,10 +151,19 @@ async function restoreFileDataset(id: string, ds: DatasetEntry): Promise<boolean
   try {
     // 1. Достаём Arrow buffer из IDB
     let arrowBuffer: Uint8Array | null = null;
+    let bufferSizeBytes = 0;
+    let bufferSource: 'idb' | 'rebuilt' | null = null;
+
     try {
       const existingBuffer = await get<Uint8Array>(`arrow:${id}`);
       if (existingBuffer instanceof Uint8Array && existingBuffer.byteLength > 0) {
         arrowBuffer = existingBuffer;
+        bufferSizeBytes = existingBuffer.byteLength;
+        bufferSource = 'idb';
+        console.log(
+          `[Hydration] 📦 Arrow buffer loaded from IDB for ${id}: ` +
+          `${(bufferSizeBytes / 1024 / 1024).toFixed(2)} MB`
+        );
       }
     } catch (cacheErr) {
       console.warn(`[Hydration] Cache read failed for ${id}:`, cacheErr);
@@ -172,10 +173,12 @@ async function restoreFileDataset(id: string, ds: DatasetEntry): Promise<boolean
     if (!arrowBuffer && ds.rows && ds.rows.length > 0) {
       try {
         arrowBuffer = rowsToArrowBuffer(ds.rows);
+        bufferSizeBytes = arrowBuffer.byteLength;
+        bufferSource = 'rebuilt';
         await set(`arrow:${id}`, arrowBuffer);
         console.log(
-          `[Hydration] ♻️ Arrow buffer rebuilt from rows for ${id}: ` +
-          `${(arrowBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`
+          `[Hydration] ♻️ Arrow buffer rebuilt from ${ds.rows.length} rows for ${id}: ` +
+          `${(bufferSizeBytes / 1024 / 1024).toFixed(2)} MB`
         );
       } catch (rebuildErr) {
         console.error(`[Hydration] Buffer rebuild failed for ${id}:`, rebuildErr);
@@ -198,22 +201,24 @@ async function restoreFileDataset(id: string, ds: DatasetEntry): Promise<boolean
       return false;
     }
 
-    // 4. Регистрируем таблицу через СТАРОЕ сообщение REGISTER_ARROW.
+    // 4. Регистрируем таблицу через REGISTER_ARROW.
     await duckdbManager.registerArrowBuffer(id, arrowBuffer);
 
-    // 5. Восстанавливаем preview rows (с chunked прогрессом)
+    // 5. Восстанавливаем preview rows (500 строк для UI).
     try {
-        const newBuffer = await duckdbManager.exportArrowBufferChunked(id, (progress) => {
-            const percent = Math.round((progress.processedRows / progress.totalRows) * 100);
-            console.log(`[Hydration] Export progress: ${percent}% (${progress.processedRows}/${progress.totalRows})`);
-        });
-        await set(`arrow:${id}`, newBuffer);
-    } catch (err) {
-        console.warn(`[Hydration] Chunked re-export failed for ${id}:`, err);
+      const preview = await duckdbManager.getPreviewRows(id, 500);
+      datasetStore.setDatasetRows(id, preview);
+    } catch (previewErr) {
+      console.warn(`[Hydration] Preview fetch failed for ${id}:`, previewErr);
     }
 
     datasetStore.updateDataset(id, { engineStatus: 'ready' });
-    console.log(`[Hydration] ✅ Dataset ${id} restored successfully`);
+
+    const sourceLabel = bufferSource === 'idb' ? 'IDB' : 'rebuilt';
+    console.log(
+      `[Hydration] ✅ Dataset ${id} restored successfully ` +
+      `(${(bufferSizeBytes / 1024 / 1024).toFixed(2)} MB from ${sourceLabel})`
+    );
     return true;
   } catch (err) {
     console.error(`[Hydration] ❌ Failed to restore dataset ${id}:`, err);

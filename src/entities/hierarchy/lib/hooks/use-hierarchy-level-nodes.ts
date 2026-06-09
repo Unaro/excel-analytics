@@ -82,6 +82,8 @@ export function useHierarchyLevelNodes(
   const sourceType = dataset?.sourceType ?? 'file';
   const isSyncing = useDatasetStore(s => s.isSyncing);
 
+  const totalRows = dataset?.metadata?.totalRows ?? 0;
+
   const [nodes, setNodes] = useState<HierarchyNode[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -183,7 +185,7 @@ export function useHierarchyLevelNodes(
     compute();
 
     return () => { cancelled = true; };
-  }, [activeDatasetId, level, columnName, isSyncing, filtersHash, engine, cache, dataset, hasNextLevel, validColumns]);
+  }, [activeDatasetId, level, columnName, isSyncing, filtersHash, engine, cache, dataset, hasNextLevel, validColumns, totalRows,]);
 
   return { nodes, isLoading };
 }

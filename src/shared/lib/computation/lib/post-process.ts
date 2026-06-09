@@ -1,7 +1,36 @@
 import { safeMath } from '@/shared/lib/math/safe-math';
 import type { CompiledQuery } from './types';
+import { FIELD_DEP_PREFIX } from './query-compiler';
 
-type CompiledFormula = { evaluate: (scope: Record<string, number>) => unknown };
+// ─────────────────────────────────────────────────────────────
+// Типизация скомпилированных формул
+//
+// mathjs.compile() имеет две перегрузки:
+//   compile(expr: string):    EvalFunction       ← одиночная формула
+//   compile(exprs: string[]): EvalFunction[]     ← массив формул
+//
+// ─────────────────────────────────────────────────────────────
+
+/** Структурный контракт скомпилированной формулы mathjs. */
+interface CompiledFormula {
+  evaluate: (scope: Record<string, number>) => unknown;
+}
+
+/**
+ * Компилирует строковую формулу в исполняемый объект mathjs.
+ *
+ * Изолирует приведение типа в одной точке — все вызовы ниже
+ * получают строго типизированный CompiledFormula без кастов.
+ *
+ * @throws Error если формула содержит синтаксическую ошибку
+ */
+function compileFormula(formula: string): CompiledFormula {
+  return safeMath.compile(formula) as CompiledFormula;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Пост-обработка SQL-результата
+// ─────────────────────────────────────────────────────────────
 
 /**
  * Пост-обработка SQL-результата.
@@ -22,10 +51,7 @@ export function postProcessAggregates(
   const compiledFormulas = new Map<string, CompiledFormula>();
   for (const [baseAlias, meta] of formulas.entries()) {
     try {
-      compiledFormulas.set(
-        baseAlias,
-        safeMath.compile(meta.formula) as CompiledFormula
-      );
+      compiledFormulas.set(baseAlias, compileFormula(meta.formula));
     } catch (error) {
       console.error(
         `[post-process] Formula compilation error for ${baseAlias}:`,
@@ -48,20 +74,11 @@ function processRow(
 ): Record<string, number | null> {
   const results: Record<string, number | null> = {};
 
-  // ═══════════════════════════════════════════════════════════
-  // Этап 1: Извлекаем AGGREGATE и готовые CALCULATED из SQL
-  // ═══════════════════════════════════════════════════════════
+  // Этап 1: Извлекаем значения из SQL
   for (const [key, val] of Object.entries(row)) {
     if (key === 'dummy' || key === '_group_label' || key === 'record_count') continue;
-
-    // Пропускаем технические field deps (начинаются с __fb_)
-    if (key.startsWith('__fb_')) continue;
-    // // Пропускаем base_ алиасы (они не должны быть в финальном результате)
-    // if (key.startsWith('base_')) continue;
-    // Пропускаем служебные AVG-колонки
     if (key.startsWith('__agg_sum__') || key.startsWith('__agg_count__')) continue;
 
-    // Формулы-зависимости пропускаем — обработаем ниже
     if (formulas.has(key)) continue;
 
     const numericVal =
@@ -73,16 +90,12 @@ function processRow(
     results[key] = numericVal;
   }
 
-  // ═══════════════════════════════════════════════════════════
-  // Этап 2: Вычисляем CALCULATED метрики (ТОЛЬКО те, что не в SQL)
-  // ═══════════════════════════════════════════════════════════
+  // Этап 2: Вычисляем calculated метрики
   for (const baseAlias of sortedCalculated) {
     const meta = formulas.get(baseAlias);
     if (!meta) continue;
-
     const finalAlias = baseAlias.replace('base_', '');
 
-    // ✅ Если метрика уже вычислена в SQL — берём готовое значение
     if (calculatedInSqlAliases.has(finalAlias)) {
       const sqlVal = row[finalAlias];
       results[finalAlias] =
@@ -98,7 +111,7 @@ function processRow(
       const scope: Record<string, number> = {};
 
       for (const dep of meta.fieldDependencies) {
-        const depAlias = `${baseAlias}__${dep.alias}`;
+        const depAlias = `${FIELD_DEP_PREFIX}${meta.groupId}_${meta.metricId}_${dep.alias}`;
         const rawVal = row[depAlias];
         scope[dep.alias] =
           typeof rawVal === 'number'
@@ -151,7 +164,9 @@ function topologicalSort(
       );
       return;
     }
+
     visiting.add(baseAlias);
+
     const meta = formulas.get(baseAlias);
     if (meta) {
       for (const dep of meta.metricDependencies) {
@@ -161,6 +176,7 @@ function topologicalSort(
         }
       }
     }
+
     visiting.delete(baseAlias);
     visited.add(baseAlias);
     result.push(baseAlias);
@@ -177,15 +193,19 @@ function findMetricValue(
 ): number | null {
   const exactKey = `${currentGroupId}__${metricId}`;
   if (exactKey in results) return results[exactKey];
+
   for (const [key, val] of Object.entries(results)) {
     if (key.endsWith(`__${metricId}`)) return val;
   }
   return null;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Пересчёт calculated-метрик на агрегированных значениях
+// ─────────────────────────────────────────────────────────────
+
 /**
  * Пересчёт calculated-метрик на АГРЕГИРОВАННЫХ значениях (для сводной строки).
- * Используется только в aggregateProcessedRows (сводка breakdown).
  */
 export function recalculateFormulasOnAggregated(
   aggregatedRow: Record<string, number | null>,
@@ -193,16 +213,21 @@ export function recalculateFormulasOnAggregated(
 ): Record<string, number | null> {
   const sortedCalculated = topologicalSort(formulas);
   const result = { ...aggregatedRow };
-  const compiledFormulas = new Map<string, CompiledFormula>();
 
+  console.log(
+    '[recalc-summary] input keys:',
+    Object.keys(result).filter(k => !k.startsWith('_'))
+  );
+
+  const compiledFormulas = new Map<string, CompiledFormula>();
   for (const [baseAlias, meta] of formulas.entries()) {
     try {
       compiledFormulas.set(
         baseAlias,
         safeMath.compile(meta.formula) as CompiledFormula
       );
-    } catch {
-      // skip
+    } catch (err) {
+      console.error(`[recalc-summary] compile failed for ${baseAlias}:`, err);
     }
   }
 
@@ -211,23 +236,34 @@ export function recalculateFormulasOnAggregated(
     if (!meta) continue;
     try {
       const scope: Record<string, number> = {};
+
       for (const dep of meta.fieldDependencies) {
-        const depAlias = `${baseAlias}__${dep.alias}`;
+        const depAlias = `${FIELD_DEP_PREFIX}${meta.groupId}_${meta.metricId}_${dep.alias}`;
         scope[dep.alias] = result[depAlias] ?? 0;
       }
+
       for (const dep of meta.metricDependencies) {
         const depValue = findMetricValue(result, dep.metricId, meta.groupId);
         scope[dep.alias] = depValue ?? 0;
       }
+
+      console.log(`[recalc-summary] ${baseAlias}:`, { scope, deps: meta.fieldDependencies.length + meta.metricDependencies.length });
+
       const compiled = compiledFormulas.get(baseAlias);
       if (compiled) {
         const value = compiled.evaluate(scope);
         result[baseAlias.replace('base_', '')] =
           typeof value === 'number' && isFinite(value) ? value : null;
       }
-    } catch {
+    } catch (err) {
+      console.error(`[recalc-summary] error for ${baseAlias}:`, err);
       result[baseAlias.replace('base_', '')] = null;
     }
   }
+
+  console.log('[recalc-summary] output:', Object.fromEntries(
+    Object.entries(result).filter(([k]) => !k.startsWith('_'))
+  ));
+
   return result;
 }

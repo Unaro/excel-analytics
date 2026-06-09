@@ -13,7 +13,6 @@ import type { ComputeDialect } from './types';
 // ─────────────────────────────────────────────────────────────
 // Публичные типы
 // ─────────────────────────────────────────────────────────────
-
 export interface FormulaToSqlContext {
   fieldAliases: Map<string, string>;
   metricAliases: Map<string, string>;
@@ -33,50 +32,13 @@ export interface FormulaToSqlFailure {
 export type FormulaToSqlResult = FormulaToSqlSuccess | FormulaToSqlFailure;
 
 // ─────────────────────────────────────────────────────────────
-// Внутренние интерфейсы для работы с AST-нодами
-//
-// mathjs имеет очень строгие дженерики (ConstantNode<T>, OperatorNode<Op, Fn, Args>),
-// которые практически невозможно удовлетворить при динамической работе с AST.
-// После instanceof-проверки в visit() мы знаем конкретный тип ноды,
-// но TypeScript не может автоматически сузить дженерики.
-//
-// Решение: вводим минимальные интерфейсы с нужными полями и работаем
-// с ними через безопасное приведение. Это НЕ any — это конкретный контракт.
-// ─────────────────────────────────────────────────────────────
-
-/** Контракт ConstantNode: нам нужно только поле value */
-interface ConstantNodeValue {
-  value: string | number | boolean | null | undefined;
-}
-
-/** Контракт OperatorNode: op, fn и args */
-interface OperatorNodeShape {
-  op: string;
-  fn: string;
-  args: MathNode[];
-}
-
-/** Контракт FunctionNode: fn как SymbolNode + args */
-interface FunctionNodeShape {
-  fn: { name: string } | MathNode;
-  args: MathNode[];
-}
-
-/** Контракт ConditionalNode */
-interface ConditionalNodeShape {
-  condition: MathNode;
-  trueExpr: MathNode;
-  falseExpr: MathNode;
-}
-
-// ─────────────────────────────────────────────────────────────
 // Маппинг бинарных операторов
 // ─────────────────────────────────────────────────────────────
-
 const BINARY_OPERATOR_MAP: Record<string, string> = {
   '+': '+',
   '-': '-',
   '*': '*',
+  '/': '/',
   '%': '%',
   '==': '=',
   '!=': '<>',
@@ -92,7 +54,6 @@ const BINARY_OPERATOR_MAP: Record<string, string> = {
 // ─────────────────────────────────────────────────────────────
 // Маппинг функций mathjs → SQL
 // ─────────────────────────────────────────────────────────────
-
 type FunctionHandler = (args: string[], dialect: ComputeDialect) => string;
 
 const FUNCTION_HANDLERS: Record<string, FunctionHandler> = {
@@ -127,9 +88,34 @@ const FUNCTION_HANDLERS: Record<string, FunctionHandler> = {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Основной класс-компилятор
+// Type Guards для AST-нод
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Проверяет, что значение является допустимой SQL-константой.
+ * После проверки TypeScript сужает тип до union конкретных типов.
+ */
+function isValidSqlConstant(
+  value: unknown
+): value is string | number | boolean | null | undefined {
+  if (value === null || value === undefined) return true;
+  const t = typeof value;
+  return t === 'string' || t === 'number' || t === 'boolean';
+}
+
+/**
+ * Проверяет, что fn в FunctionNode — это статический SymbolNode (имя функции).
+ * mathjs допускает dynamic calls (fn как expression), но SQL их не поддерживает.
+ */
+function isStaticFunctionCall(
+  fn: MathNode
+): fn is SymbolNode & { name: string } {
+  return fn instanceof SymbolNode && typeof fn.name === 'string';
+}
+
+// ─────────────────────────────────────────────────────────────
+// Основной класс-компилятор
+// ─────────────────────────────────────────────────────────────
 export class FormulaToSqlCompiler {
   constructor(private readonly ctx: FormulaToSqlContext) {}
 
@@ -147,50 +133,51 @@ export class FormulaToSqlCompiler {
   }
 
   // ─── Dispatcher ───────────────────────────────────────────
-  // Здесь instanceof-проверки гарантируют тип ноды.
-  // Приведение к внутренним интерфейсам безопасно.
+  // instanceof-проверки гарантируют наличие полей нод.
+  // Обращаемся к полям напрямую — без промежуточных интерфейсов.
   private visit(node: MathNode): string {
     if (node instanceof ConstantNode) {
-      return this.visitConstant(node as unknown as ConstantNodeValue);
+      return this.visitConstant(node.value);
     }
     if (node instanceof SymbolNode) {
-      return this.visitSymbol(node);
+      return this.visitSymbol(node.name);
     }
     if (node instanceof OperatorNode) {
-      return this.visitOperator(node as unknown as OperatorNodeShape);
+      return this.visitOperator(node.op, node.fn, node.args);
     }
     if (node instanceof FunctionNode) {
-      return this.visitFunction(node as unknown as FunctionNodeShape);
+      return this.visitFunction(node.fn, node.args);
     }
     if (node instanceof ParenthesisNode) {
       return `(${this.visit(node.content)})`;
     }
     if (node instanceof ConditionalNode) {
-      return this.visitConditional(node as unknown as ConditionalNodeShape);
+      return this.visitConditional(node.condition, node.trueExpr, node.falseExpr);
     }
     throw new Error(`Unsupported AST node type: "${node.type}"`);
   }
 
   // ─── Constants ────────────────────────────────────────────
-  private visitConstant(node: ConstantNodeValue): string {
-    const v = node.value;
-    if (v === null || v === undefined) return 'NULL';
-    if (typeof v === 'number') {
-      if (!isFinite(v)) {
-        throw new Error(`Non-finite constant not allowed in SQL: ${v}`);
+  private visitConstant(value: unknown): string {
+    if (!isValidSqlConstant(value)) {
+      throw new Error(`Unsupported constant type: ${typeof value}`);
+    }
+    if (value === null || value === undefined) return 'NULL';
+    if (typeof value === 'number') {
+      if (!isFinite(value)) {
+        throw new Error(`Non-finite constant not allowed in SQL: ${value}`);
       }
-      return String(v);
+      return String(value);
     }
-    if (typeof v === 'string') {
-      return `'${v.replace(/'/g, "''")}'`;
+    if (typeof value === 'string') {
+      return `'${value.replace(/'/g, "''")}'`;
     }
-    if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
-    throw new Error(`Unsupported constant type: ${typeof v}`);
+    // typeof value === 'boolean'
+    return value ? 'TRUE' : 'FALSE';
   }
 
   // ─── Symbols (variables) ──────────────────────────────────
-  private visitSymbol(node: SymbolNode): string {
-    const name = node.name;
+  private visitSymbol(name: string): string {
     if (name === 'true') return 'TRUE';
     if (name === 'false') return 'FALSE';
     if (name === 'null') return 'NULL';
@@ -205,28 +192,27 @@ export class FormulaToSqlCompiler {
   }
 
   // ─── Operators ────────────────────────────────────────────
-  private visitOperator(node: OperatorNodeShape): string {
-    const args = node.args.map((a) => this.visit(a));
+  private visitOperator(op: string, fn: string, args: MathNode[]): string {
+    const sqlArgs = args.map((a) => this.visit(a));
 
-    if (node.op === '^') return `POWER(${args[0]}, ${args[1]})`;
-    if (node.fn === 'unaryMinus') return `(-(${args[0]}))`;
-    if (node.fn === 'unaryPlus') return `(+(${args[0]}))`;
-    if (node.fn === 'not') return `(NOT (${args[0]}))`;
+    if (op === '^') return `POWER(${sqlArgs[0]}, ${sqlArgs[1]})`;
+    if (fn === 'unaryMinus') return `(-(${sqlArgs[0]}))`;
+    if (fn === 'unaryPlus') return `(+(${sqlArgs[0]}))`;
+    if (fn === 'not') return `(NOT (${sqlArgs[0]}))`;
 
-    const sqlOp = BINARY_OPERATOR_MAP[node.op];
-    if (!sqlOp) throw new Error(`Unsupported operator: "${node.op}"`);
-    if (node.op === '/') {
-      return `((${args[0]}) / NULLIF((${args[1]}), 0))`;
+    const sqlOp = BINARY_OPERATOR_MAP[op];
+    if (!sqlOp) throw new Error(`Unsupported operator: "${op}"`);
+
+    if (op === '/') {
+      return `((${sqlArgs[0]}) / NULLIF((${sqlArgs[1]}), 0))`;
     }
 
-    return `((${args[0]}) ${sqlOp} (${args[1]}))`;
+    return `((${sqlArgs[0]}) ${sqlOp} (${sqlArgs[1]}))`;
   }
 
   // ─── Function calls ───────────────────────────────────────
-  private visitFunction(node: FunctionNodeShape): string {
-    // Проверяем, что fn — это SymbolNode (статический вызов)
-    const fn = node.fn;
-    if (!('name' in fn) || typeof fn.name !== 'string') {
+  private visitFunction(fn: MathNode, args: MathNode[]): string {
+    if (!isStaticFunctionCall(fn)) {
       throw new Error('Dynamic function calls are not supported in SQL');
     }
 
@@ -239,23 +225,26 @@ export class FormulaToSqlCompiler {
       );
     }
 
-    const args = node.args.map((a) => this.visit(a));
-    return handler(args, this.ctx.dialect);
+    const sqlArgs = args.map((a) => this.visit(a));
+    return handler(sqlArgs, this.ctx.dialect);
   }
 
   // ─── Conditional (ternary) ────────────────────────────────
-  private visitConditional(node: ConditionalNodeShape): string {
-    const cond = this.visit(node.condition);
-    const trueExpr = this.visit(node.trueExpr);
-    const falseExpr = this.visit(node.falseExpr);
-    return `CASE WHEN (${cond}) THEN (${trueExpr}) ELSE (${falseExpr}) END`;
+  private visitConditional(
+    condition: MathNode,
+    trueExpr: MathNode,
+    falseExpr: MathNode
+  ): string {
+    const cond = this.visit(condition);
+    const t = this.visit(trueExpr);
+    const f = this.visit(falseExpr);
+    return `CASE WHEN (${cond}) THEN (${t}) ELSE (${f}) END`;
   }
 }
 
 // ─────────────────────────────────────────────────────────────
 // Фабрика контекста
 // ─────────────────────────────────────────────────────────────
-
 export function createFormulaToSqlContext(
   fieldAliases: Map<string, string>,
   metricAliases: Map<string, string>,
