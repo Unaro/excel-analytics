@@ -15,12 +15,21 @@ import { useColumnConfigStore } from '@/entities/columnConfig';
 import { useHierarchyStore } from '@/entities/hierarchy';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
-import { useDashboardStore } from '@/entities/dashboard';
+import { Dashboard, useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
-import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
 import { createComputationCache } from '@/shared/lib/storage';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { DatasetConfigExport } from '@/entities/exportPackage/types';
+import {
+  DatasetConfigExportSchema,
+  HierarchyFilterValue,
+  IndicatorGroup,
+  IndicatorGroupInDashboard,
+  VirtualMetric,
+  VirtualMetricBindingInDashboard,
+} from '@/shared/lib/validators';
+import { GroupMetricConfig, useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
 import {
   buildConfigExportPayload,
   processConfigImport,
@@ -34,47 +43,46 @@ export function useConfigPersistence() {
   // EXPORT
   // ───────────────────────────────────────────────────────────
   const exportDatasetConfig = useCallback((datasetId: string) => {
-    // 1. Собираем контекст из сторов
+    const allDashboards = useDashboardStore.getState().dashboards;
+    const allGroups = useIndicatorGroupStore.getState().groups;
     const activeDatasetId = useDatasetStore.getState().activeDatasetId;
-    const context = {
-      datasetId,
-      dashboards: useDashboardStore.getState().dashboards,
-      indicatorGroups: useIndicatorGroupStore.getState().groups,
-      hierarchyLevels:
-        useHierarchyStore.getState().levelsByDataset[datasetId] || [],
-      columnConfigs:
-        useColumnConfigStore.getState().configsByDataset[datasetId] || [],
-      metricTemplates: useMetricTemplateStore.getState().templates,
-      groupMetricConfigs: useGroupMetricConfigStore.getState().configsByGroup,
-    };
 
-    // 2. Делегируем логику в чистый сервис
-    const result = buildConfigExportPayload(context, activeDatasetId);
+    try {
+      const result = buildConfigExportPayload(
+        {
+          datasetId,
+          dashboards: allDashboards,
+          indicatorGroups: allGroups,
+          hierarchyLevels:
+            useHierarchyStore.getState().levelsByDataset[datasetId] || [],
+          columnConfigs:
+            useColumnConfigStore.getState().configsByDataset[datasetId] || [],
+          metricTemplates: useMetricTemplateStore.getState().templates,
+          groupMetricConfigs:
+            useGroupMetricConfigStore.getState().configsByGroup,
+        },
+        activeDatasetId
+      );
 
-    // 3. Проверяем, есть ли что экспортировать
-    if (result.stats.dashboardsCount === 0 && result.stats.groupsCount === 0) {
-      toast.warning('Нечего экспортировать');
-      return;
+      const url = URL.createObjectURL(result.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = result.suggestedFileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const { dashboardsCount, groupsCount, groupConfigsWithColors } = result.stats;
+      toast.success(
+        `Экспортировано: ${dashboardsCount} дашбордов, ${groupsCount} групп` +
+          (groupConfigsWithColors > 0
+            ? `, ${groupConfigsWithColors} групп с настройками цвета`
+            : '')
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Ошибка экспорта');
     }
-
-    // 4. Скачиваем файл
-    const url = URL.createObjectURL(result.blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = result.suggestedFileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    URL.revokeObjectURL(url);
-
-    // 5. Уведомляем пользователя
-    const { dashboardsCount, groupsCount, groupConfigsWithColors } = result.stats;
-    toast.success(
-      `Экспортировано: ${dashboardsCount} дашбордов, ${groupsCount} групп` +
-        (groupConfigsWithColors > 0
-          ? `, ${groupConfigsWithColors} групп с настройками цвета`
-          : '')
-    );
   }, []);
 
   // ───────────────────────────────────────────────────────────
@@ -83,21 +91,18 @@ export function useConfigPersistence() {
   const importToDataset = useCallback(
     async (file: File, targetDatasetId: string) => {
       try {
-        // 1. Читаем файл
         const fileContent = await file.text();
 
-        // 2. Собираем контекст для дедупликации
-        const context = {
+        const existingVmIds = collectExistingVmIds(targetDatasetId);
+        const result = processConfigImport(fileContent, {
           targetDatasetId,
           existingMetricTemplates: useMetricTemplateStore.getState().templates,
           existingIndicatorGroups: useIndicatorGroupStore.getState().groups,
           existingDashboards: useDashboardStore.getState().dashboards,
-        };
+          existingVmIds,
+        });
 
-        // 3. Делегируем логику в чистый сервис
-        const result = processConfigImport(fileContent, context);
-
-        // 4. Применяем результат к сторам
+        // Применяем результат к сторам
         if (result.newMetricTemplates.length > 0) {
           useMetricTemplateStore.setState((state) => ({
             templates: [...state.templates, ...result.newMetricTemplates],
@@ -129,29 +134,33 @@ export function useConfigPersistence() {
             .importConfigs(result.importedGroupMetricConfigs);
         }
 
-        // 5. Инвалидируем кэш вычислений
+        // Инвалидация кэша
         await invalidateComputationCache(targetDatasetId);
 
-        // 6. Уведомляем и обновляем UI
         const { stats } = result;
+        const conflictNote =
+          stats.vmIdConflicts > 0
+            ? `\n⚠️ ${stats.vmIdConflicts} VM ID переименовано (конфликты)`
+            : '';
+
         toast.success(
           `Конфиг применён: ${stats.dashboardsImported} дашбордов, ` +
             `${stats.groupsImported} групп, ${stats.hierarchyLevelsImported} уровней` +
             (stats.groupConfigsWithColors > 0
               ? `, ${stats.groupConfigsWithColors} групп с настройками цвета`
-              : '')
+              : '') +
+            conflictNote,
+          { duration: stats.vmIdConflicts > 0 ? 8000 : 4000 }
         );
         router.refresh();
-      } catch (error) {
-        console.error('[ConfigImport] Error:', error);
-
+      } catch (e) {
+        console.error('[ConfigImport] Error:', e);
         const message =
-          error instanceof ConfigImportError
-            ? error.message
-            : error instanceof Error
-              ? error.message
+          e instanceof ConfigImportError
+            ? e.message
+            : e instanceof Error
+              ? e.message
               : 'Ошибка импорта';
-
         toast.error(message);
       }
     },
@@ -159,6 +168,22 @@ export function useConfigPersistence() {
   );
 
   return { exportDatasetConfig, importToDataset };
+}
+
+/**
+ * Собирает Set всех virtualMetricId существующих дашбордов целевого датасета.
+ * Вызывается через getState() — не нарушает правила хуков.
+ */
+function collectExistingVmIds(targetDatasetId: string): Set<string> {
+  const ids = new Set<string>();
+  for (const dashboard of useDashboardStore.getState().dashboards) {
+    if (dashboard.datasetId === targetDatasetId) {
+      for (const vm of dashboard.virtualMetrics) {
+        ids.add(vm.id);
+      }
+    }
+  }
+  return ids;
 }
 
 // ─────────────────────────────────────────────────────────────
