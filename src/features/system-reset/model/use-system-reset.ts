@@ -1,4 +1,5 @@
 'use client';
+import { logger } from '@/shared/lib/logger';
 import { useState, useCallback } from 'react';
 import { clear as clearIdb } from 'idb-keyval';
 import { toast } from 'sonner';
@@ -29,7 +30,7 @@ export function useSystemReset() {
       // 4. Жёсткая перезагрузка
       window.location.href = '/';
     } catch (e) {
-      console.error('[SystemReset] Reset failed:', e);
+      logger.error('[SystemReset] Reset failed:', e);
       toast.error('Не удалось полностью очистить данные');
       setIsResetting(false);
     }

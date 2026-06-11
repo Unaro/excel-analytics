@@ -10,6 +10,7 @@
 
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { useCallback } from 'react';
 import { useColumnConfigStore } from '@/entities/column-config';
 import { useHierarchyStore } from '@/entities/hierarchy';
@@ -154,7 +155,7 @@ export function useConfigPersistence() {
         );
         router.refresh();
       } catch (e) {
-        console.error('[ConfigImport] Error:', e);
+        logger.error('[ConfigImport] Error:', e);
         const message =
           e instanceof ConfigImportError
             ? e.message
@@ -194,12 +195,12 @@ async function invalidateComputationCache(datasetId: string): Promise<void> {
     const fileCache = createComputationCache('file');
     await fileCache.clear(datasetId);
   } catch (err) {
-    console.warn('[ConfigImport] File cache invalidation failed:', err);
+    logger.warn('[ConfigImport] File cache invalidation failed:', err);
   }
   try {
     const pgCache = createComputationCache('postgres');
     await pgCache.clear(datasetId);
   } catch (err) {
-    console.warn('[ConfigImport] PG cache invalidation failed:', err);
+    logger.warn('[ConfigImport] PG cache invalidation failed:', err);
   }
 }

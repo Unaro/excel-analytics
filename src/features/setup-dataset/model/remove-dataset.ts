@@ -7,6 +7,7 @@
 // кэш вычислений и конфиги колонок (п.10 аудита — утечка Arrow-буферов).
 // ─────────────────────────────────────────────────────────────
 
+import { logger } from '@/shared/lib/logger';
 import { del } from 'idb-keyval';
 import { useDatasetStore } from '@/entities/dataset';
 import { useColumnConfigStore } from '@/entities/column-config';
@@ -33,19 +34,19 @@ export async function removeDatasetCompletely(datasetId: string): Promise<void> 
     try {
       await duckdbManager.dropTable(datasetId);
     } catch (err) {
-      console.warn('[remove-dataset] Drop table failed (non-critical):', err);
+      logger.warn('[remove-dataset] Drop table failed (non-critical):', err);
     }
 
     try {
       await del(`arrow:${datasetId}`);
     } catch (err) {
-      console.warn('[remove-dataset] Delete arrow buffer failed:', err);
+      logger.warn('[remove-dataset] Delete arrow buffer failed:', err);
     }
 
     try {
       await createComputationCache(entry.sourceType ?? 'file').clear(datasetId);
     } catch (err) {
-      console.warn('[remove-dataset] Cache invalidation failed:', err);
+      logger.warn('[remove-dataset] Cache invalidation failed:', err);
     }
 
     useColumnConfigStore.getState().clearDatasetConfigs(datasetId);

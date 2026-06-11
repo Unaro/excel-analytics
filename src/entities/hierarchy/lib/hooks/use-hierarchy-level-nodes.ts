@@ -1,4 +1,5 @@
 'use client';
+import { logger } from '@/shared/lib/logger';
 import { useEffect, useState, useMemo } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { createComputeEngine } from '@/shared/lib/computation/lib/engine-factory';
@@ -175,7 +176,7 @@ export function useHierarchyLevelNodes(
 
         setNodes(mapped);
       } catch (err) {
-        console.error('[HierarchyNodes] Compute failed:', err);
+        logger.error('[HierarchyNodes] Compute failed:', err);
         if (!cancelled) setNodes([]);
       } finally {
         if (!cancelled) setIsLoading(false);

@@ -1,3 +1,4 @@
+import { logger } from '@/shared/lib/logger';
 import type { DatasetRow, ColumnConfig } from '@/shared/lib/types/dataset';
 import type { ClientComputeParams } from '../types';
 import type { DashboardComputationResult } from '@/shared/lib/types/computation';
@@ -109,7 +110,7 @@ export class DuckDBWorkerManager {
       this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
       this.worker.onerror = (event) => {
-        console.error('[DuckDBManager] Worker error:', event);
+        logger.error('[DuckDBManager] Worker error:', event);
         this.handleWorkerDisconnect('Worker onerror: ' + event.message);
       };
 
@@ -132,7 +133,7 @@ export class DuckDBWorkerManager {
   }
 
   private handleWorkerDisconnect(reason: string) {
-    console.warn(`[DuckDBManager] Worker disconnected: ${reason}`);
+    logger.warn(`[DuckDBManager] Worker disconnected: ${reason}`);
     for (const [id, cb] of this.callbacks.entries()) {
       cb.reject(new Error(`Worker disconnected: ${reason}`));
       this.callbacks.delete(id);
@@ -217,7 +218,7 @@ export class DuckDBWorkerManager {
     }
 
     if (pingResult?.alive && pingResult.dbInitialized && !pingResult.tableExists) {
-      console.log(
+      logger.debug(
         `[DuckDBManager] ⚠️ Worker alive but table missing for ${datasetId}. Reloading...`
       );
       this.setStatus('loading');
@@ -226,13 +227,13 @@ export class DuckDBWorkerManager {
         this.setStatus('ready');
         return true;
       } catch (err) {
-        console.error('[DuckDBManager] Table reload failed:', err);
+        logger.error('[DuckDBManager] Table reload failed:', err);
         this.setStatus('error');
         return false;
       }
     }
 
-    console.log(
+    logger.debug(
       `[DuckDBManager] ♻️ Full auto-recovery for dataset ${datasetId} ` +
         `(alive=${pingResult?.alive}, dbInit=${pingResult?.dbInitialized})`
     );
@@ -245,7 +246,7 @@ export class DuckDBWorkerManager {
       this.setStatus('ready');
       return true;
     } catch (err) {
-      console.error('[DuckDBManager] Recovery failed:', err);
+      logger.error('[DuckDBManager] Recovery failed:', err);
       this.setStatus('error');
       return false;
     }
@@ -287,7 +288,7 @@ export class DuckDBWorkerManager {
           return await this.dispatch('COMPUTE', { params });
         } catch (retryErr) {
           if (signal?.aborted) throw retryErr;
-          console.error('[DuckDBManager] COMPUTE retry failed after recovery:', retryErr);
+          logger.error('[DuckDBManager] COMPUTE retry failed after recovery:', retryErr);
           throw retryErr;
         }
       }

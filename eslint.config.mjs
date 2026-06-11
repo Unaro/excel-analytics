@@ -79,11 +79,25 @@ const preexistingDebt = {
   },
 };
 
+/**
+ * Прямые console.* запрещены — только shared/lib/logger (уровни,
+ * отключение debug/info в production). В самом логгере стоит
+ * точечный eslint-disable.
+ */
+const noConsole = {
+  files: ["src/**/*.{ts,tsx}"],
+  ignores: ["src/**/*.test.ts"],
+  rules: {
+    "no-console": "error",
+  },
+};
+
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   fsdBoundaries,
   preexistingDebt,
+  noConsole,
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

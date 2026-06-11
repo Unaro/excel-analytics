@@ -1,5 +1,6 @@
 // shared/api/server-actions/postgres.ts
 'use server';
+import { logger } from '@/shared/lib/logger';
 import {
   withPgClient,
   normalizePgRow,
@@ -26,7 +27,7 @@ export async function testPgConnection(
     });
     return { success: true };
   } catch (error) {
-    console.error('[PG] Connection test failed:', error);
+    logger.error('[PG] Connection test failed:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Не удалось подключиться',
@@ -91,7 +92,7 @@ export async function getPgSchema(
       };
     });
   } catch (error) {
-    console.error('[PG] Schema fetch failed:', error);
+    logger.error('[PG] Schema fetch failed:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Ошибка чтения схемы',
@@ -136,7 +137,7 @@ export async function fetchPgTableData(
       };
     });
   } catch (error) {
-    console.error('[PG] Data fetch failed:', error);
+    logger.error('[PG] Data fetch failed:', error);
     return {
       success: false,
       rows: [],
@@ -185,7 +186,7 @@ export async function refreshPgData(
       };
     });
   } catch (error) {
-    console.error('[PG] Refresh failed:', error);
+    logger.error('[PG] Refresh failed:', error);
     return {
       success: false,
       rows: [],

@@ -1,5 +1,6 @@
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { Component, ReactNode, ErrorInfo } from 'react';
 import { AlertTriangle, RotateCw, Bug } from 'lucide-react';
 import { Button } from './button';
@@ -28,7 +29,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error(
+    logger.error(
       `[ErrorBoundary] ${this.props.label || 'Unknown widget'} crashed:`,
       error,
       errorInfo.componentStack

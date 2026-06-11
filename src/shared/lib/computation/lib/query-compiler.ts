@@ -1,3 +1,4 @@
+import { logger } from '@/shared/lib/logger';
 import type {
   ComputeDialect,
   CompiledQuery,
@@ -25,7 +26,7 @@ function sanitizeOperator(op: string | undefined): string {
   if (!op || op === 'exact') return '=';
   const normalized = op.toUpperCase();
   if (!ALLOWED_OPERATORS.has(normalized)) {
-    console.warn(`[query-compiler] Blocked invalid operator: ${op}`);
+    logger.warn(`[query-compiler] Blocked invalid operator: ${op}`);
     return '=';
   }
   return op === 'between' ? 'BETWEEN' : op;
@@ -45,7 +46,7 @@ function escapeDuckDBValue(val: QueryParam): string {
       .replace(/\0/g, '');
     return `'${escaped}'`;
   }
-  console.warn(`[query-compiler] Unexpected value type: ${typeof val}`);
+  logger.warn(`[query-compiler] Unexpected value type: ${typeof val}`);
   return 'NULL';
 }
 
@@ -107,7 +108,7 @@ function topologicalSortCalculated(
   const visit = (finalAlias: string): void => {
     if (visited.has(finalAlias)) return;
     if (visiting.has(finalAlias)) {
-      console.warn(
+      logger.warn(
         `[query-compiler] Circular dependency detected at "${finalAlias}", skipping`
       );
       return;
@@ -378,7 +379,7 @@ export function compileQuery(
       const result = compiler.compile(calc.formula);
 
       if (!result.success) {
-          console.warn(
+          logger.warn(
               `[query-compiler] ⚠️ Cannot compile formula for "${calc.finalAlias}" to SQL: ${result.reason}. ` +
               `Falling back ALL calculated metrics to Math.js.`
           );

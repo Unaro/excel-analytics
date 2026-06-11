@@ -1,6 +1,7 @@
 // widgets/dashboard-view/model/use-dashboard-dataset-sync.ts
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { useEffect, useState, useCallback } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
@@ -45,7 +46,7 @@ export function useDashboardDatasetSync(dashboardId: string) {
         toast.error('Не удалось обновить датасет');
       }
     } catch (err) {
-      console.error('[DashboardDatasetSync] Refresh failed:', err);
+      logger.error('[DashboardDatasetSync] Refresh failed:', err);
       toast.error('Ошибка синхронизации');
     } finally {
       setRefreshingDataset(false);

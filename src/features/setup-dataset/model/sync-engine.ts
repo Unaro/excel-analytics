@@ -17,6 +17,7 @@
 
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { nanoid } from 'nanoid';
 import { useDatasetStore } from '@/entities/dataset';
 import { useColumnConfigStore } from '@/entities/column-config';
@@ -71,7 +72,7 @@ export async function syncFromFile(file: File) {
       total: number;
       percent: number;
     }) => {
-      console.log(
+      logger.debug(
         `[syncFromFile] Progress: ${progress.percent}% ` +
           `(${progress.current.toLocaleString()}/${progress.total.toLocaleString()})`
       );
@@ -91,12 +92,12 @@ export async function syncFromFile(file: File) {
     try {
       arrowBuffer = await duckdbManager.exportArrowBuffer(datasetId);
       await set(`arrow:${datasetId}`, arrowBuffer);
-      console.log(
+      logger.debug(
         `[syncFromFile] ✅ Arrow buffer saved: ` +
           `${(arrowBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`
       );
     } catch (exportErr) {
-      console.warn('[syncFromFile] Arrow export failed:', exportErr);
+      logger.warn('[syncFromFile] Arrow export failed:', exportErr);
       toast.warning(
         'Данные загружены, но не удалось сохранить в кэш. ' +
           'После перезагрузки страницы файл нужно будет загрузить заново.'
@@ -107,11 +108,11 @@ export async function syncFromFile(file: File) {
     let previewRows: DatasetRow[] = [];
     try {
       previewRows = await duckdbManager.getPreviewRows(datasetId, 500);
-      console.log(
+      logger.debug(
         `[syncFromFile] ✅ Preview fetched: ${previewRows.length} rows`
       );
     } catch (previewErr) {
-      console.warn('[syncFromFile] Preview fetch failed:', previewErr);
+      logger.warn('[syncFromFile] Preview fetch failed:', previewErr);
     }
 
     setConfigs.setDatasetConfigs(datasetId, configs);
@@ -135,7 +136,7 @@ export async function syncFromFile(file: File) {
 
     return { success: true, datasetId };
   } catch (error) {
-    console.error('[DatasetSync] File sync failed:', error);
+    logger.error('[DatasetSync] File sync failed:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Ошибка загрузки',
@@ -217,7 +218,7 @@ export async function syncFromPostgres(
 
     return { success: true, datasetId };
   } catch (error) {
-    console.error('[DatasetSync] PG sync failed:', error);
+    logger.error('[DatasetSync] PG sync failed:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Ошибка подключения',
@@ -270,7 +271,7 @@ export async function refreshPgDataset(datasetId: string) {
     toast.success(`Данные "${entry.name}" обновлены (${dataRes.totalFetched} строк)`);
     return { success: true };
   } catch (error) {
-    console.error('[PG Refresh Failed]', error);
+    logger.error('[PG Refresh Failed]', error);
     store.setPgStatus(datasetId, 'offline');
     toast.warning(
       `Не удалось обновить "${entry.name}". Используются кэшированные данные.`
@@ -328,20 +329,20 @@ export async function replaceDatasetFile(
     try {
       await duckdbManager.dropTable(datasetId);
     } catch (err) {
-      console.warn('[replaceDatasetFile] Drop table failed (non-critical):', err);
+      logger.warn('[replaceDatasetFile] Drop table failed (non-critical):', err);
     }
 
     try {
       await del(`arrow:${datasetId}`);
     } catch (err) {
-      console.warn('[replaceDatasetFile] Delete arrow buffer failed:', err);
+      logger.warn('[replaceDatasetFile] Delete arrow buffer failed:', err);
     }
 
     try {
       const cache = createComputationCache('file');
       await cache.clear(datasetId);
     } catch (err) {
-      console.warn('[replaceDatasetFile] Cache invalidation failed:', err);
+      logger.warn('[replaceDatasetFile] Cache invalidation failed:', err);
     }
 
     // 3. Импорт нового файла
@@ -357,12 +358,12 @@ export async function replaceDatasetFile(
     try {
       const arrowBuffer = await duckdbManager.exportArrowBuffer(datasetId);
       await set(`arrow:${datasetId}`, arrowBuffer);
-      console.log(
+      logger.debug(
         `[replaceDatasetFile] ✅ Arrow buffer saved: ` +
           `${(arrowBuffer.byteLength / 1024 / 1024).toFixed(2)} MB`
       );
     } catch (err) {
-      console.warn('[replaceDatasetFile] Arrow export failed:', err);
+      logger.warn('[replaceDatasetFile] Arrow export failed:', err);
     }
 
     // 5. ✅ ДЕЛЕГИРУЕМ МЕРЖ КОНФИГОВ В ЧИСТЫЙ СЕРВИС
@@ -378,7 +379,7 @@ export async function replaceDatasetFile(
     try {
       previewRows = await duckdbManager.getPreviewRows(datasetId, 500);
     } catch (err) {
-      console.warn('[replaceDatasetFile] Preview fetch failed:', err);
+      logger.warn('[replaceDatasetFile] Preview fetch failed:', err);
     }
 
     // 7. Обновляем metadata и rows в store
@@ -402,7 +403,7 @@ export async function replaceDatasetFile(
       removedColumns,
     };
   } catch (error) {
-    console.error('[DatasetSync] Replace file failed:', error);
+    logger.error('[DatasetSync] Replace file failed:', error);
     store.updateDataset(datasetId, { engineStatus: 'error' });
     return {
       success: false,

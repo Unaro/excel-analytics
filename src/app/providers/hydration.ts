@@ -5,6 +5,7 @@
 
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { useState, useEffect, useRef } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { useDashboardStore } from '@/entities/dashboard';
@@ -107,7 +108,7 @@ export function useStoreHydration() {
 
         if (!cancelled) setHydrated(true);
       } catch (error) {
-        console.error('[Hydration] Critical error:', error);
+        logger.error('[Hydration] Critical error:', error);
         if (!cancelled) setHydrated(true);
       }
     };
@@ -136,7 +137,7 @@ async function restoreFileDataset(id: string, ds: DatasetEntry): Promise<boolean
         const preview = await duckdbManager.getPreviewRows(id, 500);
         datasetStore.setDatasetRows(id, preview);
       } catch (err) {
-        console.warn(`[Hydration] Preview re-fetch failed for ${id}:`, err);
+        logger.warn(`[Hydration] Preview re-fetch failed for ${id}:`, err);
       }
     }
     return true;
@@ -160,13 +161,13 @@ async function restoreFileDataset(id: string, ds: DatasetEntry): Promise<boolean
         arrowBuffer = existingBuffer;
         bufferSizeBytes = existingBuffer.byteLength;
         bufferSource = 'idb';
-        console.log(
+        logger.debug(
           `[Hydration] 📦 Arrow buffer loaded from IDB for ${id}: ` +
           `${(bufferSizeBytes / 1024 / 1024).toFixed(2)} MB`
         );
       }
     } catch (cacheErr) {
-      console.warn(`[Hydration] Cache read failed for ${id}:`, cacheErr);
+      logger.warn(`[Hydration] Cache read failed for ${id}:`, cacheErr);
     }
 
     // 2. Fallback: восстановление из preview rows
@@ -176,12 +177,12 @@ async function restoreFileDataset(id: string, ds: DatasetEntry): Promise<boolean
         bufferSizeBytes = arrowBuffer.byteLength;
         bufferSource = 'rebuilt';
         await set(`arrow:${id}`, arrowBuffer);
-        console.log(
+        logger.debug(
           `[Hydration] ♻️ Arrow buffer rebuilt from ${ds.rows.length} rows for ${id}: ` +
           `${(bufferSizeBytes / 1024 / 1024).toFixed(2)} MB`
         );
       } catch (rebuildErr) {
-        console.error(`[Hydration] Buffer rebuild failed for ${id}:`, rebuildErr);
+        logger.error(`[Hydration] Buffer rebuild failed for ${id}:`, rebuildErr);
       }
     }
 
@@ -209,19 +210,19 @@ async function restoreFileDataset(id: string, ds: DatasetEntry): Promise<boolean
       const preview = await duckdbManager.getPreviewRows(id, 500);
       datasetStore.setDatasetRows(id, preview);
     } catch (previewErr) {
-      console.warn(`[Hydration] Preview fetch failed for ${id}:`, previewErr);
+      logger.warn(`[Hydration] Preview fetch failed for ${id}:`, previewErr);
     }
 
     datasetStore.updateDataset(id, { engineStatus: 'ready' });
 
     const sourceLabel = bufferSource === 'idb' ? 'IDB' : 'rebuilt';
-    console.log(
+    logger.debug(
       `[Hydration] ✅ Dataset ${id} restored successfully ` +
       `(${(bufferSizeBytes / 1024 / 1024).toFixed(2)} MB from ${sourceLabel})`
     );
     return true;
   } catch (err) {
-    console.error(`[Hydration] ❌ Failed to restore dataset ${id}:`, err);
+    logger.error(`[Hydration] ❌ Failed to restore dataset ${id}:`, err);
     datasetStore.updateDataset(id, { engineStatus: 'error' });
     return false;
   }

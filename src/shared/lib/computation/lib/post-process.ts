@@ -1,3 +1,4 @@
+import { logger } from '@/shared/lib/logger';
 import { safeMath } from '@/shared/lib/math/safe-math';
 import type { CompiledQuery } from './types';
 import { FIELD_DEP_PREFIX } from './query-compiler';
@@ -53,7 +54,7 @@ export function postProcessAggregates(
     try {
       compiledFormulas.set(baseAlias, compileFormula(meta.formula));
     } catch (error) {
-      console.error(
+      logger.error(
         `[post-process] Formula compilation error for ${baseAlias}:`,
         error
       );
@@ -135,7 +136,7 @@ function processRow(
         results[finalAlias] = null;
       }
     } catch (err) {
-      console.error(`[post-process] Error calculating ${baseAlias}:`, err);
+      logger.error(`[post-process] Error calculating ${baseAlias}:`, err);
       results[finalAlias] = null;
     }
   }
@@ -159,7 +160,7 @@ function topologicalSort(
   function visit(baseAlias: string): void {
     if (visited.has(baseAlias)) return;
     if (visiting.has(baseAlias)) {
-      console.warn(
+      logger.warn(
         `[post-process] Circular dependency detected at ${baseAlias}`
       );
       return;
@@ -214,7 +215,7 @@ export function recalculateFormulasOnAggregated(
   const sortedCalculated = topologicalSort(formulas);
   const result = { ...aggregatedRow };
 
-  console.log(
+  logger.debug(
     '[recalc-summary] input keys:',
     Object.keys(result).filter(k => !k.startsWith('_'))
   );
@@ -227,7 +228,7 @@ export function recalculateFormulasOnAggregated(
         safeMath.compile(meta.formula) as CompiledFormula
       );
     } catch (err) {
-      console.error(`[recalc-summary] compile failed for ${baseAlias}:`, err);
+      logger.error(`[recalc-summary] compile failed for ${baseAlias}:`, err);
     }
   }
 
@@ -247,7 +248,7 @@ export function recalculateFormulasOnAggregated(
         scope[dep.alias] = depValue ?? 0;
       }
 
-      console.log(`[recalc-summary] ${baseAlias}:`, { scope, deps: meta.fieldDependencies.length + meta.metricDependencies.length });
+      logger.debug(`[recalc-summary] ${baseAlias}:`, { scope, deps: meta.fieldDependencies.length + meta.metricDependencies.length });
 
       const compiled = compiledFormulas.get(baseAlias);
       if (compiled) {
@@ -256,12 +257,12 @@ export function recalculateFormulasOnAggregated(
           typeof value === 'number' && isFinite(value) ? value : null;
       }
     } catch (err) {
-      console.error(`[recalc-summary] error for ${baseAlias}:`, err);
+      logger.error(`[recalc-summary] error for ${baseAlias}:`, err);
       result[baseAlias.replace('base_', '')] = null;
     }
   }
 
-  console.log('[recalc-summary] output:', Object.fromEntries(
+  logger.debug('[recalc-summary] output:', Object.fromEntries(
     Object.entries(result).filter(([k]) => !k.startsWith('_'))
   ));
 

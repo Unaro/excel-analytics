@@ -1,5 +1,6 @@
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { useEffect } from 'react';
 
 export default function Error({
@@ -10,7 +11,7 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error(error);
+    logger.error(error);
   }, [error]);
 
   return (

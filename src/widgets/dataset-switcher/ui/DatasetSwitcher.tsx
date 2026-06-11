@@ -1,5 +1,6 @@
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import * as Popover from '@radix-ui/react-popover';
@@ -100,7 +101,7 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
         }
       }
     } catch (err) {
-      console.error('[DatasetSwitcher] Refresh failed:', err);
+      logger.error('[DatasetSwitcher] Refresh failed:', err);
     } finally {
       setRefreshingId(null);
     }

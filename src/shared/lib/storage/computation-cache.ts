@@ -1,3 +1,4 @@
+import { logger } from '@/shared/lib/logger';
 import { get, set, del, clear as clearDB } from 'idb-keyval';
 import type {
   IComputationCache,
@@ -60,14 +61,14 @@ export class FileComputationCache implements IComputationCache {
     } catch (err) {
       // Квота sessionStorage исчерпана — переносим запись в IndexedDB,
       // чтобы кэш переживал перезагрузку страницы.
-      console.warn(
+      logger.warn(
         '[computation-cache] sessionStorage переполнен, результат уходит в IndexedDB:',
         err
       );
       try {
         await set(storageKey, entry);
       } catch (idbErr) {
-        console.warn('[computation-cache] IndexedDB fallback не удался:', idbErr);
+        logger.warn('[computation-cache] IndexedDB fallback не удался:', idbErr);
       }
     }
   }
@@ -175,7 +176,7 @@ export class PgComputationCache implements IComputationCache {
       sessionStorage.setItem(storageKey, JSON.stringify(entry));
     } catch (err) {
       // Короткоживущая запись — memory-only достаточно, но сигналим.
-      console.warn('[computation-cache] sessionStorage переполнен (pg):', err);
+      logger.warn('[computation-cache] sessionStorage переполнен (pg):', err);
     }
   }
 

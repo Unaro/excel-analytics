@@ -1,3 +1,4 @@
+import { logger } from '@/shared/lib/logger';
 /**
  * Фабрика миграций для Zustand persist.
  *
@@ -43,9 +44,7 @@ export function createMigration<TState>(
     for (let v = version + 1; v <= targetVersion; v++) {
       const migrationFn = migrations[v];
       if (migrationFn) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`[Migration] ${v - 1} → ${v}`);
-        }
+        logger.debug(`[Migration] ${v - 1} → ${v}`);
         migrated = migrationFn(migrated);
       }
     }

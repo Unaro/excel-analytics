@@ -3,6 +3,7 @@
  * 
  * Предотвращает XSS атаки через выполнение вредоносного кода
  */
+import { logger } from '@/shared/lib/logger';
 import { create, all, parse, type MathNode, FunctionNode, SymbolNode } from 'mathjs';
 
 // Создаём инстанс mathjs
@@ -166,7 +167,7 @@ export function safeEvaluate(
     }
     return null;
   } catch (error) {
-    console.error('Formula evaluation error:', error);
+    logger.error('Formula evaluation error:', error);
     return null;
   }
 }

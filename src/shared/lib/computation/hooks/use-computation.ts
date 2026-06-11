@@ -1,5 +1,6 @@
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   createComputationCache,
@@ -126,7 +127,7 @@ export function useComputation({
 
         // 5. Сохраняем в кэш (fire-and-forget, но с abort-check)
         cache.set(cacheKey, computedResult).catch(err => {
-          console.warn('[useComputation] Cache save failed:', err);
+          logger.warn('[useComputation] Cache save failed:', err);
         });
       } catch (err) {
         // Отменённые запросы
@@ -134,7 +135,7 @@ export function useComputation({
 
         if (signal.aborted || currentVersion !== requestVersionRef.current) return;
 
-        console.error('[useComputation] Compute failed:', err);
+        logger.error('[useComputation] Compute failed:', err);
         setError(err instanceof Error ? err.message : 'Ошибка вычисления');
         setIsComputing(false);
       }
@@ -160,7 +161,7 @@ export function useComputation({
       try {
         await cache.invalidate(cacheKey);
       } catch (err) {
-        console.warn('[useComputation] Cache invalidate failed:', err);
+        logger.warn('[useComputation] Cache invalidate failed:', err);
       }
     }
     await executeInternal(true);

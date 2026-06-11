@@ -1,4 +1,5 @@
 // lib/utils/formula.ts
+import { logger } from '@/shared/lib/logger';
 import { parse, MathNode } from 'mathjs';
 
 interface MathSymbolNode extends MathNode {
@@ -36,7 +37,7 @@ export function extractVariables(formula: string): string[] {
     
     return Array.from(foundDeps);
   } catch (e) {
-    console.error("Error parsing formula variables:", e);
+    logger.error("Error parsing formula variables:", e);
     return [];
   }
 }

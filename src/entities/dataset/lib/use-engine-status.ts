@@ -1,5 +1,6 @@
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { useEffect, useState, useCallback } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { duckdbManager, type DuckDBEngineStatus } from '@/shared/lib/computation/lib/duckdb/manager';
@@ -74,7 +75,7 @@ export function useEngineStatus(): EngineStatusState {
       const arrowBuffer = await get<Uint8Array>(`arrow:${activeDatasetId}`);
 
       if (!(arrowBuffer instanceof Uint8Array) || arrowBuffer.byteLength === 0) {
-        console.error('[useEngineStatus] No Arrow buffer in IDB for', activeDatasetId);
+        logger.error('[useEngineStatus] No Arrow buffer in IDB for', activeDatasetId);
         setStatus('error');
         return false;
       }
@@ -82,7 +83,7 @@ export function useEngineStatus(): EngineStatusState {
       const success = await duckdbManager.ensureReady(activeDatasetId, arrowBuffer);
       return success;
     } catch (err) {
-      console.error('[useEngineStatus] Reload failed:', err);
+      logger.error('[useEngineStatus] Reload failed:', err);
       setStatus('error');
       return false;
     } finally {
