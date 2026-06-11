@@ -18,6 +18,19 @@ interface DatasetSwitcherProps {
   isDisabled?: boolean;
 }
 
+/**
+ * Индикатор статуса PG-подключения.
+ *
+ * Определён на уровне модуля: объявление компонента внутри рендера
+ * пересоздаёт его тип каждый кадр и сбрасывает state/DOM поддерева.
+ */
+function StatusDot({ status }: { status?: string }) {
+  if (status === 'online') return <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />;
+  if (status === 'offline') return <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)] animate-pulse" />;
+  if (status === 'checking') return <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />;
+  return <span className="w-2 h-2 rounded-full bg-slate-400" />;
+}
+
 export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
   const [open, setOpen] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
@@ -32,13 +45,6 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
 
   const activeDataset = activeId ? datasets[activeId] : null;
   const datasetList = Object.values(datasets);
-
-  const StatusDot = ({ status }: { status?: string }) => {
-    if (status === 'online') return <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />;
-    if (status === 'offline') return <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)] animate-pulse" />;
-    if (status === 'checking') return <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />;
-    return <span className="w-2 h-2 rounded-full bg-slate-400" />;
-  };
 
   const handleSwitch = (id: string) => {
     if (isDisabled) return;

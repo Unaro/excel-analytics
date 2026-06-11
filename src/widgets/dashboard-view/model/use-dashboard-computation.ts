@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useMetricTemplateStore, useComputedMetricsStore } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
@@ -110,11 +110,14 @@ export function useDashboardComputation(dashboardId: string) {
   const storeSetResult = useComputedMetricsStore(s => s.setDashboardResult);
   const storeSetComputing = useComputedMetricsStore(s => s.setComputingState);
 
-  useMemo(() => {
+  // Side-эффекты записи в стор — только в useEffect: useMemo исполняется
+  // во время рендера, и мутация стора оттуда ломает Strict Mode и
+  // провоцирует каскадные ререндеры (п.16 аудита).
+  useEffect(() => {
     if (result) storeSetResult(dashboardId, result);
   }, [result, dashboardId, storeSetResult]);
 
-  useMemo(() => {
+  useEffect(() => {
     storeSetComputing(isComputing, error);
   }, [isComputing, error, storeSetComputing]);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useMemo, useCallback } from 'react';
+import { use, useMemo } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
 import { HierarchyTree } from '@/widgets/hierarchy-filter';
 import { KPIGrid } from '@/widgets/kpi-grid';
@@ -62,12 +62,12 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
     useShallow(s => s.dashboards.find(d => d.id === dashboardId))
   );
 
+  // useShallow сравнивает РЕЗУЛЬТАТ селектора по shallow-равенству —
+  // мемоизировать сам селектор через useCallback не нужно (и вредно:
+  // лишняя обёртка скрывала суть сравнения).
   const hierarchyFilters = useDashboardStore(
     useShallow(
-      useCallback(
-        s => s.dashboards.find(d => d.id === dashboardId)?.hierarchyFilters ?? [],
-        [dashboardId]
-      )
+      s => s.dashboards.find(d => d.id === dashboardId)?.hierarchyFilters ?? []
     )
   );
 

@@ -65,18 +65,17 @@ const fsdBoundaries = {
 };
 
 /**
- * Технический долг, вскрытый при включении линта (в Next 16 `next lint`
- * удалён, поэтому линт в проекте фактически не запускался).
- * 16 существующих ошибок переведены в warn до Phase 4 (React-фиксы),
- * после которой блок удаляется.
+ * set-state-in-effect оставлен в warn осознанно: оставшиеся вхождения —
+ * канонические паттерны mount-флагов/гидрации (client-only, hydration,
+ * use-engine-status) и синхронизация с async-источниками, где setState
+ * в эффекте корректен. Новые вхождения видны в warnings и проверяются
+ * на код-ревью. Остальной долг Phase 0 (use-memo, static-components,
+ * no-empty-object-type) исправлен в Phase 4.
  */
 const preexistingDebt = {
   files: ["src/**/*.{ts,tsx}"],
   rules: {
     "react-hooks/set-state-in-effect": "warn",
-    "react-hooks/use-memo": "warn",
-    "react-hooks/static-components": "warn",
-    "@typescript-eslint/no-empty-object-type": "warn",
   },
 };
 
