@@ -1,15 +1,14 @@
 import { defineConfig } from 'vitest/config';
-import tsconfigPaths from 'vite-tsconfig-paths';
 
 /**
  * Конфигурация Vitest.
  *
  * Окружение `node`: тестируется чистая логика (компиляция запросов,
- * агрегация, миграции) без DOM. Алиасы `@/*` подтягиваются из tsconfig
- * через vite-tsconfig-paths.
+ * агрегация, миграции) без DOM. Алиасы `@/*` берутся из tsconfig
+ * через нативный resolve.tsconfigPaths.
  */
 export default defineConfig({
-  plugins: [tsconfigPaths()],
+  resolve: { tsconfigPaths: true },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
