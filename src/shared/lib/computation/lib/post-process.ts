@@ -18,7 +18,17 @@ interface CompiledFormula {
 }
 
 /**
- * Компилирует строковую формулу в исполняемый объект mathjs.
+ * Модульный LRU-кэш скомпилированных формул.
+ *
+ * Формулы меняются только при редактировании шаблона, а компиляция
+ * (парсинг AST mathjs) раньше выполнялась на КАЖДЫЙ compute дважды
+ * (построчная пост-обработка + сводка) — п.5 аудита ядра.
+ */
+const FORMULA_CACHE_LIMIT = 200;
+const formulaCache = new Map<string, CompiledFormula>();
+
+/**
+ * Компилирует строковую формулу в исполняемый объект mathjs с кэшированием.
  *
  * Изолирует приведение типа в одной точке — все вызовы ниже
  * получают строго типизированный CompiledFormula без кастов.
@@ -26,7 +36,20 @@ interface CompiledFormula {
  * @throws Error если формула содержит синтаксическую ошибку
  */
 function compileFormula(formula: string): CompiledFormula {
-  return safeMath.compile(formula) as CompiledFormula;
+  const hit = formulaCache.get(formula);
+  if (hit) {
+    // LRU: переподнимаем ключ в конец порядка итерации Map
+    formulaCache.delete(formula);
+    formulaCache.set(formula, hit);
+    return hit;
+  }
+  const compiled = safeMath.compile(formula) as CompiledFormula;
+  if (formulaCache.size >= FORMULA_CACHE_LIMIT) {
+    const oldest = formulaCache.keys().next().value;
+    if (oldest !== undefined) formulaCache.delete(oldest);
+  }
+  formulaCache.set(formula, compiled);
+  return compiled;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -91,6 +114,8 @@ function processRow(
     results[key] = numericVal;
   }
 
+  const metricKeyIndex = buildMetricKeyIndex(results);
+
   // Этап 2: Вычисляем calculated метрики
   for (const baseAlias of sortedCalculated) {
     const meta = formulas.get(baseAlias);
@@ -105,6 +130,7 @@ function processRow(
           : typeof sqlVal === 'bigint'
             ? Number(sqlVal)
             : null;
+      registerMetricKey(metricKeyIndex, finalAlias);
       continue;
     }
 
@@ -123,7 +149,7 @@ function processRow(
       }
 
       for (const dep of meta.metricDependencies) {
-        const depValue = findMetricValue(results, dep.metricId, meta.groupId);
+        const depValue = findMetricValue(results, metricKeyIndex, dep.metricId, meta.groupId);
         scope[dep.alias] = depValue ?? 0;
       }
 
@@ -139,6 +165,7 @@ function processRow(
       logger.error(`[post-process] Error calculating ${baseAlias}:`, err);
       results[finalAlias] = null;
     }
+    registerMetricKey(metricKeyIndex, finalAlias);
   }
 
   return results;
@@ -187,18 +214,54 @@ function topologicalSort(
   return result;
 }
 
+/**
+ * Индекс metricId → ключ результата для O(1)-поиска зависимостей.
+ *
+ * Раньше fallback делал полный перебор Object.entries по endsWith
+ * на каждую зависимость каждой строки breakdown (п.6 аудита ядра).
+ * Индекс строится один раз на строку и пополняется по мере вычисления
+ * calculated-метрик (registerMetricKey).
+ */
+function buildMetricKeyIndex(
+  results: Record<string, number | null>
+): Map<string, string> {
+  const index = new Map<string, string>();
+  for (const key of Object.keys(results)) {
+    registerMetricKey(index, key);
+  }
+  return index;
+}
+
+/** Регистрирует ключ вида `${groupId}__${metricId}` в индексе зависимостей. */
+function registerMetricKey(index: Map<string, string>, key: string): void {
+  const sep = key.lastIndexOf('__');
+  if (sep <= 0) return;
+  const metricId = key.slice(sep + 2);
+  // Первое вхождение выигрывает — соответствует прежнему порядку перебора
+  if (!index.has(metricId)) index.set(metricId, key);
+}
+
+/**
+ * Ищет значение метрики-зависимости.
+ *
+ * Сначала точный ключ `${groupId}__${metricId}` (метрика своей группы).
+ * Если его нет — МЕЖГРУППОВОЙ fallback: метрика с тем же id из любой
+ * другой группы (первая по порядку появления в результате). Это
+ * осознанная семантика: при переиспользовании шаблона между группами
+ * binding хранит id метрики группы-источника, и без fallback'а такие
+ * зависимости молча обнулялись бы.
+ */
 function findMetricValue(
   results: Record<string, number | null>,
+  index: Map<string, string>,
   metricId: string,
   currentGroupId: string
 ): number | null {
   const exactKey = `${currentGroupId}__${metricId}`;
   if (exactKey in results) return results[exactKey];
 
-  for (const [key, val] of Object.entries(results)) {
-    if (key.endsWith(`__${metricId}`)) return val;
-  }
-  return null;
+  const fallbackKey = index.get(metricId);
+  return fallbackKey !== undefined ? results[fallbackKey] : null;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -223,14 +286,13 @@ export function recalculateFormulasOnAggregated(
   const compiledFormulas = new Map<string, CompiledFormula>();
   for (const [baseAlias, meta] of formulas.entries()) {
     try {
-      compiledFormulas.set(
-        baseAlias,
-        safeMath.compile(meta.formula) as CompiledFormula
-      );
+      compiledFormulas.set(baseAlias, compileFormula(meta.formula));
     } catch (err) {
       logger.error(`[recalc-summary] compile failed for ${baseAlias}:`, err);
     }
   }
+
+  const metricKeyIndex = buildMetricKeyIndex(result);
 
   for (const baseAlias of sortedCalculated) {
     const meta = formulas.get(baseAlias);
@@ -244,7 +306,7 @@ export function recalculateFormulasOnAggregated(
       }
 
       for (const dep of meta.metricDependencies) {
-        const depValue = findMetricValue(result, dep.metricId, meta.groupId);
+        const depValue = findMetricValue(result, metricKeyIndex, dep.metricId, meta.groupId);
         scope[dep.alias] = depValue ?? 0;
       }
 
@@ -260,6 +322,7 @@ export function recalculateFormulasOnAggregated(
       logger.error(`[recalc-summary] error for ${baseAlias}:`, err);
       result[baseAlias.replace('base_', '')] = null;
     }
+    registerMetricKey(metricKeyIndex, baseAlias.replace('base_', ''));
   }
 
   logger.debug('[recalc-summary] output:', Object.fromEntries(

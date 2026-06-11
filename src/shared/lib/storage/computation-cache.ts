@@ -30,6 +30,34 @@ function removeSessionKeysByPrefix(prefix: string): void {
   keys.forEach((k) => sessionStorage.removeItem(k));
 }
 
+// ─────────────────────────────────────────────────────────────
+// Общие memory-слои кэша (по одному на sourceType).
+//
+// Раньше каждый инстанс кэша (= каждый смонтированный хук) держал
+// собственный memoryStore: clear() PG-кэша чистил только свою память,
+// а соседние инстансы продолжали отдавать устаревшие записи после
+// очистки sessionStorage (п.4 аудита ядра). Модульный синглтон чинит
+// stale-hit и убирает дублирование записей между инстансами.
+// ─────────────────────────────────────────────────────────────
+const MEMORY_CACHE_LIMIT = 50;
+
+const fileMemoryStore = new Map<string, CachedComputationEntry>();
+const pgMemoryStore = new Map<string, CachedComputationEntry>();
+
+/** Кладёт запись с LRU-вытеснением (Map хранит порядок вставки). */
+function memorySet(
+  store: Map<string, CachedComputationEntry>,
+  key: string,
+  entry: CachedComputationEntry
+): void {
+  store.delete(key);
+  store.set(key, entry);
+  if (store.size > MEMORY_CACHE_LIMIT) {
+    const oldest = store.keys().next().value;
+    if (oldest !== undefined) store.delete(oldest);
+  }
+}
+
 /**
  * Кэш результатов вычислений для file-источников (DuckDB-WASM).
  *
@@ -40,7 +68,7 @@ function removeSessionKeysByPrefix(prefix: string): void {
  */
 export class FileComputationCache implements IComputationCache {
   private prefix = 'comp:file:';
-  private memoryStore = new Map<string, CachedComputationEntry>();
+  private memoryStore = fileMemoryStore;
 
   async set(
     key: CacheKey,
@@ -55,7 +83,7 @@ export class FileComputationCache implements IComputationCache {
       recordCount: result.totalRecords,
     };
     const entry: CachedComputationEntry = { result, meta };
-    this.memoryStore.set(storageKey, entry);
+    memorySet(this.memoryStore, storageKey, entry);
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(entry));
     } catch (err) {
@@ -131,8 +159,14 @@ export class FileComputationCache implements IComputationCache {
 
   async clear(datasetId?: string): Promise<void> {
     if (!datasetId) {
+      // Полная очистка: память и sessionStorage тоже, иначе get()
+      // продолжит отдавать записи из верхних уровней кэша.
+      this.memoryStore.clear();
+      removeSessionKeysByPrefix(this.prefix);
       await clearDB();
     } else {
+      // Точечная инвалидация датасета: get() сравнивает storedAt записи
+      // с отметкой и сам вычищает устаревшие записи на всех уровнях.
       await set(`comp:file:invalidated:${datasetId}`, Date.now());
     }
   }
@@ -156,7 +190,7 @@ export class FileComputationCache implements IComputationCache {
  */
 export class PgComputationCache implements IComputationCache {
   private prefix = 'comp:pg:';
-  private memoryStore = new Map<string, CachedComputationEntry>();
+  private memoryStore = pgMemoryStore;
 
   async set(
     key: CacheKey,
@@ -171,7 +205,7 @@ export class PgComputationCache implements IComputationCache {
       recordCount: result.totalRecords,
     };
     const entry: CachedComputationEntry = { result, meta };
-    this.memoryStore.set(storageKey, entry);
+    memorySet(this.memoryStore, storageKey, entry);
     try {
       sessionStorage.setItem(storageKey, JSON.stringify(entry));
     } catch (err) {
