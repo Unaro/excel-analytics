@@ -1,5 +1,5 @@
 import { VirtualMetric } from '@/shared/lib/validators';
-import { FormattingRule } from './fortmating-rules';
+import { FormattingRule } from './formatting-rules';
 
 export interface GroupedThreshold {
   /** Значение Y для ReferenceLine (среднее по группе) */

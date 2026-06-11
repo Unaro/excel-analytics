@@ -1,4 +1,4 @@
-import { FormattingRule } from "@/shared/lib/utils/fortmating-rules";
+import { FormattingRule } from "@/shared/lib/utils/formatting-rules";
 import { RenderItemProps } from "../drag-drop-list";
 
 export interface RuleCardProps extends RenderItemProps<FormattingRule> {

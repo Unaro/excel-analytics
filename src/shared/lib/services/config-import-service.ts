@@ -15,7 +15,7 @@ import {
   type VirtualMetric,
   type VirtualMetricBindingInDashboard,
 } from '@/shared/lib/validators';
-import { FormattingRule } from '../utils/fortmating-rules';
+import { FormattingRule } from '../utils/formatting-rules';
 import type { Dashboard } from '@/shared/lib/types/dashboard';
 
 // ─────────────────────────────────────────────────────────────

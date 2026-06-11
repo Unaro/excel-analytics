@@ -12,7 +12,7 @@ import type {
   HierarchyFilterValue,
 } from '@/shared/lib/validators';
 import type { DisplayFormat } from './metric';
-import type { FormattingRule } from '@/shared/lib/utils/fortmating-rules';
+import type { FormattingRule } from '@/shared/lib/utils/formatting-rules';
 import type { MetricColor } from '@/shared/lib/utils/metric-colors';
 import type { ChartType } from '@/shared/lib/types/chart';
 

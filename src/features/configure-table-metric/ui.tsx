@@ -8,7 +8,7 @@ import { cn } from '@/shared/lib/utils';
 import { nanoid } from 'nanoid';
 import { DragDropList } from '@/shared/ui/drag-drop-list';
 import { RuleCard } from '../../shared/ui/rule-card/ui/RuleCard';
-import { FormattingRule } from '@/shared/lib/utils/fortmating-rules';
+import { FormattingRule } from '@/shared/lib/utils/formatting-rules';
 
 interface MetricConfigPopoverProps {
   dashboardId: string;

@@ -41,9 +41,10 @@ export function SetupWizardContent() {
     onNavigateToUpload: () => wizard.setStep('upload'),
   });
 
-  const { handleReplaceFile } = useDatasetReplace({
-    onSuccess: () => wizard.setStep('columns'),
-  });
+  const { handleReplaceFile, pendingReplace, cancelReplace, confirmReplace } =
+    useDatasetReplace({
+      onSuccess: () => wizard.setStep('columns'),
+    });
 
   const {
     handleImportConfig,
@@ -124,6 +125,14 @@ export function SetupWizardContent() {
         description="Будут удалены данные, кэш вычислений и настройки колонок. Настройки дашбордов, метрики и группы сохранятся."
         variant="destructive"
         onConfirm={confirmDeleteDataset}
+      />
+
+      <ConfirmDialog
+        open={pendingReplace !== null}
+        onOpenChange={(v) => !v && cancelReplace()}
+        title={`Заменить файл для датасета «${pendingReplace?.datasetName ?? ''}»?`}
+        description="Новые данные загрузятся в DuckDB; настройки колонок сохранятся, кэш вычислений сбросится, удалённые колонки будут помечены как скрытые."
+        onConfirm={confirmReplace}
       />
     </div>
   );
