@@ -1,6 +1,7 @@
 // entities/indicator-group/model/store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createMigration } from '@/shared/lib/storage/migration';
 import { nanoid } from 'nanoid';
 import { FieldBinding, GroupMetric, IndicatorGroup } from '@/entities/metric';
 
@@ -234,6 +235,8 @@ export const useIndicatorGroupStore = create<IndicatorGroupState>()(
     {
       name: 'indicator-group-storage',
       version: 2,
+      // v1 → v2: структура groups совместима — переносим как есть.
+      migrate: createMigration({ 2: (state) => state }),
     }
   )
 );

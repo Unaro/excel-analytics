@@ -1,6 +1,7 @@
 // entities/hierarchy/model/store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createMigration } from '@/shared/lib/storage/migration';
 import { HierarchyConfig, HierarchyLevel } from './types';
 
 
@@ -116,7 +117,13 @@ export const useHierarchyStore = create<HierarchyState>()(
     }),
     {
       name: 'hierarchy-storage',
-      version: 2, // Инкрементим версию из-за смены структуры
+      version: 2,
+      migrate: createMigration<HierarchyState>({
+        // v1 хранил глобальный список уровней без привязки к датасету —
+        // отнести их к конкретному датасету невозможно, поэтому уровни
+        // сбрасываются явно (раньше Zustand молча отбрасывал ВСЁ состояние).
+        2: (state) => ({ ...state, levelsByDataset: {} }),
+      }),
     }
   )
 );

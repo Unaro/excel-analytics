@@ -1,6 +1,7 @@
 // entities/groupMetricConfig/model/store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createMigration } from '@/shared/lib/storage/migration';
 import type { ColorConfig } from '@/shared/lib/types/dashboard';
 import type { GroupMetricConfig } from '@/shared/lib/types/group-metric-config';
 
@@ -113,6 +114,8 @@ export const useGroupMetricConfigStore = create<GroupMetricConfigState>()(
     {
       name: 'group-metric-config-storage',
       version: 1,
+      // v0 (до версионирования) → v1: конфиги совместимы — переносим как есть.
+      migrate: createMigration({ 1: (state) => state }),
     }
   )
 );

@@ -2,6 +2,7 @@
 import { ColumnClassification, ColumnConfig } from '@/shared/lib/types/dataset';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createMigration } from '@/shared/lib/storage/migration';
 
 interface ColumnConfigState {
   configsByDataset: Record<string, ColumnConfig[]>;
@@ -76,6 +77,9 @@ export const useColumnConfigStore = create<ColumnConfigState>()(
     {
       name: 'column-config-storage',
       version: 2,
+      // v1 → v2: совместимая структура configsByDataset — переносим как есть
+      // (раньше Zustand при несовпадении версии молча отбрасывал состояние).
+      migrate: createMigration({ 2: (state) => state }),
     }
   )
 );
