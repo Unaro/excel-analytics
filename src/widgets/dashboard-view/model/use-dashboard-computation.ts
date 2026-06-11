@@ -4,9 +4,11 @@ import { useCallback, useMemo } from 'react';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { useDatasetInfo } from '@/entities/group-view';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
-import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
+import type { ClientComputeParams, DateGranularity } from '@/shared/lib/computation/lib/types';
+import type { ColumnConfig } from '@/shared/lib/types';
 import { useShallow } from 'zustand/react/shallow';
 import type { MetricTemplate, DashboardComputationResult } from '@/entities/metric';
 import type {
@@ -25,7 +27,21 @@ const EMPTY_VIRTUAL_METRICS: VirtualMetric[] = [];
 const EMPTY_GROUPS: IndicatorGroup[] = [];
 const EMPTY_TEMPLATES: MetricTemplate[] = [];
 
-export function useDashboardComputation(dashboardId: string) {
+const EMPTY_CONFIGS: ColumnConfig[] = [];
+
+export interface DashboardComputationOptions {
+  /**
+   * Размерность временно́й группировки: каждая группа дашборда получает
+   * breakdown по интервалам первой дата-колонки датасета (для секции
+   * динамики). null — обычный режим (сводки без breakdown).
+   */
+  dateGranularity?: DateGranularity | null;
+}
+
+export function useDashboardComputation(
+  dashboardId: string,
+  options: DashboardComputationOptions = {}
+) {
   const {
     activeDatasetId,
     sourceType,
@@ -34,6 +50,17 @@ export function useDashboardComputation(dashboardId: string) {
     pgTable,
     isSyncing,
   } = useDatasetInfo();
+
+  const columnConfigs = useColumnConfigStore(s =>
+    activeDatasetId ? (s.configsByDataset[activeDatasetId] ?? EMPTY_CONFIGS) : EMPTY_CONFIGS
+  );
+  /** Первая колонка с классификацией «Дата» — для временно́го измерения. */
+  const dateColumn = useMemo(
+    () => columnConfigs.find(c => c.classification === 'date') ?? null,
+    [columnConfigs]
+  );
+  const dateGranularity = options.dateGranularity ?? null;
+  const isTimeMode = dateGranularity !== null && dateColumn !== null;
 
   const selectDashboard = useCallback(
     (s: { dashboards: Dashboard[] }) => s.dashboards.find(d => d.id === dashboardId),
@@ -64,8 +91,10 @@ export function useDashboardComputation(dashboardId: string) {
   );
 
   const compositeHash = useMemo(
-    () => `${filtersHash}:${configHash}`,
-    [filtersHash, configHash]
+    () =>
+      `${filtersHash}:${configHash}` +
+      (isTimeMode ? `:dc:${dateColumn.columnName}:dg:${dateGranularity}` : ''),
+    [filtersHash, configHash, isTimeMode, dateColumn, dateGranularity]
   );
 
   const buildParams = useCallback((): ClientComputeParams | null => {
@@ -80,13 +109,16 @@ export function useDashboardComputation(dashboardId: string) {
       dashboardGroupsConfig,
       metricTemplates,
       virtualMetrics,
+      groupByDateColumn: isTimeMode ? dateColumn.columnName : undefined,
+      groupByDateGranularity: isTimeMode ? dateGranularity : undefined,
       pgSchema,
       pgTable,
     };
   }, [
     dashboard, activeDatasetId, dashboardId, encryptedConnection,
     hierarchyFilters, groups, dashboardGroupsConfig,
-    metricTemplates, virtualMetrics, pgSchema, pgTable,
+    metricTemplates, virtualMetrics, isTimeMode, dateColumn, dateGranularity,
+    pgSchema, pgTable,
   ]);
 
   const buildCacheKey = useCallback((): CacheKey | null => {
@@ -138,5 +170,6 @@ export function useDashboardComputation(dashboardId: string) {
     isComputing,
     error,
     recalculate,
+    dateColumn,
   };
 }

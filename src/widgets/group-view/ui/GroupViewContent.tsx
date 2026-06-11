@@ -13,6 +13,7 @@ import { useGroupPath } from '@/shared/lib/hooks/use-group-path';
 import { useGroupBreakdown } from '../model/use-group-breakdown';
 import { CalendarClock } from 'lucide-react';
 import { Select, SelectOption } from '@/shared/ui/select';
+import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 
 /** Подписи размерностей временно́й группировки. */
@@ -48,6 +49,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     dateColumn,
     dateGranularity,
     setDateGranularity,
+    isTwoDimensional,
   } = useGroupBreakdown(groupId, path);
 
   const {
@@ -121,10 +123,10 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
                   )
                 }
               >
-                <SelectOption value="">По иерархии</SelectOption>
+                <SelectOption value="">Без разбивки по дате</SelectOption>
                 {(Object.keys(GRANULARITY_LABELS) as DateGranularity[]).map(g => (
                   <SelectOption key={g} value={g}>
-                    По дате: {GRANULARITY_LABELS[g]}
+                    + по дате: {GRANULARITY_LABELS[g]}
                   </SelectOption>
                 ))}
               </Select>
@@ -151,7 +153,25 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         </div>
       )}
 
-      {!isComputing && breakdown && breakdown.length > 0 && (
+      {/* Двумерный режим: иерархия × время — pivot + линии */}
+      {!isComputing && isTwoDimensional && breakdown && breakdown.length > 0 && (
+        <TimeBreakdownSection
+          items={breakdown}
+          metricMetas={baseVirtualMetrics}
+          activeMetricIds={activeMetricIds}
+          dimensionTitle={nextLevel?.displayName ?? 'Элемент'}
+          dateTitle={
+            dateColumn && dateGranularity
+              ? `${dateColumn.displayName} · ${GRANULARITY_LABELS[dateGranularity]}`
+              : 'Дата'
+          }
+          truncated={summary?.breakdownTruncated}
+          onRowClick={drillDown}
+        />
+      )}
+
+      {/* Одномерные режимы: иерархия ИЛИ время (на листе) */}
+      {!isComputing && !isTwoDimensional && breakdown && breakdown.length > 0 && (
         <GroupBreakdownTable
           breakdown={breakdown}
           sortConfig={sortConfig}
@@ -172,7 +192,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         />
       )}
 
-      {!isComputing && chartBreakdown.length > 0 && (
+      {!isComputing && !isTwoDimensional && chartBreakdown.length > 0 && (
         <GroupChartsPanel
           breakdown={chartBreakdown}
           virtualMetrics={summaryVirtualMetrics}

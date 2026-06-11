@@ -199,9 +199,9 @@ describe('compileQuery: группировка', () => {
     expect(sql).toContain(`LIMIT ${BREAKDOWN_LIMIT + 1}`);
   });
 
-  it('groupByDateGranularity: date_trunc-метка, GROUP BY по выражению, хронологический ORDER BY', () => {
+  it('только дата (groupByDateColumn): date_trunc-метка как _group_label, хронологический ORDER BY', () => {
     const params = makeParams({
-      groupByColumn: 'created_at',
+      groupByDateColumn: 'created_at',
       groupByDateGranularity: 'month',
       validColumns: ['created_at', 'revenue'],
     });
@@ -215,6 +215,7 @@ describe('compileQuery: группировка', () => {
     );
     expect(duck.sql).toContain('ORDER BY "_group_label" ASC');
     expect(duck.sql).toContain(`LIMIT ${BREAKDOWN_LIMIT + 1}`);
+    expect(duck.sql).not.toContain('_date_label');
 
     const pg = compileQuery(params, 'postgres');
     expect(pg.sql).toContain(
@@ -223,18 +224,40 @@ describe('compileQuery: группировка', () => {
     expect(pg.sql).toContain('ORDER BY "_group_label" ASC');
   });
 
-  it('невалидная размерность даты отбрасывается — обычная группировка по колонке', () => {
+  it('двумерная группировка: категория = _group_label, время = _date_label, GROUP BY оба', () => {
     const params = makeParams({
-      groupByColumn: 'created_at',
+      groupByColumn: 'region',
+      groupByDateColumn: 'created_at',
+      groupByDateGranularity: 'day',
+      validColumns: ['region', 'created_at', 'revenue'],
+    });
+
+    const { sql } = compileQuery(params, 'duckdb');
+    expect(sql).toContain(`"region" AS "_group_label"`);
+    expect(sql).toContain(
+      `strftime(date_trunc('day', TRY_CAST("created_at" AS TIMESTAMP)), '%Y-%m-%d') AS "_date_label"`
+    );
+    expect(sql).toContain(
+      `GROUP BY "region", strftime(date_trunc('day', TRY_CAST("created_at" AS TIMESTAMP)), '%Y-%m-%d')`
+    );
+    expect(sql).toContain('ORDER BY "_date_label" ASC, "_group_label" ASC');
+    expect(sql).toContain(`LIMIT ${BREAKDOWN_LIMIT + 1}`);
+  });
+
+  it('невалидная размерность даты отбрасывается — группировка только по категории', () => {
+    const params = makeParams({
+      groupByColumn: 'region',
+      groupByDateColumn: 'created_at',
       // тип обходится намеренно: значение могло прийти из недоверенного ввода
       groupByDateGranularity: 'second; DROP TABLE x' as never,
-      validColumns: ['created_at', 'revenue'],
+      validColumns: ['region', 'created_at', 'revenue'],
     });
     const { sql } = compileQuery(params, 'duckdb');
     expect(sql).not.toContain('DROP TABLE');
     expect(sql).not.toContain('date_trunc');
-    expect(sql).toContain(`"created_at" AS "_group_label"`);
-    expect(sql).toContain('GROUP BY "created_at"');
+    expect(sql).toContain(`"region" AS "_group_label"`);
+    expect(sql).toContain('GROUP BY "region"');
+    expect(sql).not.toContain('_date_label');
   });
 
   it('невалидный groupByColumn деградирует в NULL AS "_group_label"', () => {

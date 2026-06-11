@@ -51,8 +51,10 @@ export class PgEngine implements IComputeEngine {
     const {
       dashboardId, encryptedConfig, dashboardGroupsConfig,
       virtualMetrics, filters, datasetId, groupByColumn,
-      pgSchema, pgTable,
+      groupByDateColumn, pgSchema, pgTable,
     } = params;
+    // Есть ли группировка (категориальная и/или временна́я)
+    const hasGrouping = !!(groupByColumn || groupByDateColumn);
 
     if (!encryptedConfig) throw new Error('Missing encryptedConfig for PostgreSQL');
     if (!pgSchema || !pgTable) {
@@ -86,7 +88,7 @@ export class PgEngine implements IComputeEngine {
     // усечения breakdown. Обрезаем ДО пост-обработки, чтобы сводка
     // и breakdown считались по одному набору строк.
     const breakdownTruncated =
-      !!groupByColumn && allRows.length > BREAKDOWN_LIMIT;
+      hasGrouping && allRows.length > BREAKDOWN_LIMIT;
     const rows = breakdownTruncated ? allRows.slice(0, BREAKDOWN_LIMIT) : allRows;
 
     // Локальная перекомпиляция только ради метаданных пост-обработки
@@ -131,21 +133,23 @@ export class PgEngine implements IComputeEngine {
             };
           });
 
-        const breakdown = groupByColumn
+        const breakdown = hasGrouping
           ? processedRows
               .map((processed, idx) => {
                 const rawLabel = rows[idx]['_group_label'];
                 const label = rawLabel == null ? '' : String(rawLabel).trim();
+                const rawDate = rows[idx]['_date_label'];
+                const dateLabel = rawDate == null ? undefined : String(rawDate).trim();
                 const rowRc = rows[idx]['_record_count'];
                 const recordCount =
                   typeof rowRc === 'number' ? rowRc
                   : typeof rowRc === 'bigint' ? Number(rowRc) : 0;
-                return { label, recordCount, virtualMetrics: buildVirtualMetrics(processed) };
+                return { label, dateLabel, recordCount, virtualMetrics: buildVirtualMetrics(processed) };
               })
               .filter(item => item.label !== '')
           : undefined;
 
-        const summaryProcessed = groupByColumn
+        const summaryProcessed = hasGrouping
           ? aggregateProcessedRows(processedRows, compiled.aggregateMetadata, compiled.formulas)
           : processedRows[0] || {};
 

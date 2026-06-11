@@ -340,11 +340,13 @@ self.onmessage = async (e: MessageEvent) => {
       if (abortIfCancelled()) return;
 
       const allRows = table.toArray() as Record<string, unknown>[];
+      // Есть ли группировка (категориальная и/или временна́я)
+      const hasGrouping = !!(groupByColumn || params.groupByDateColumn);
       // SQL запрашивает BREAKDOWN_LIMIT + 1 строк: наличие лишней строки —
       // признак усечения. Обрезаем ДО пост-обработки, чтобы сводка («Итого»)
       // и breakdown считались по одному набору строк.
       const breakdownTruncated =
-        !!groupByColumn && allRows.length > BREAKDOWN_LIMIT;
+        hasGrouping && allRows.length > BREAKDOWN_LIMIT;
       const rows = breakdownTruncated ? allRows.slice(0, BREAKDOWN_LIMIT) : allRows;
       const processedRows = postProcessAggregates(rows, compiled);
 
@@ -366,7 +368,7 @@ self.onmessage = async (e: MessageEvent) => {
         .map(cfg => {
           const groupDef = effectiveParams.groups.find(g => g.id === cfg.groupId);
 
-          const breakdownItems = groupByColumn
+          const breakdownItems = hasGrouping
             ? processedRows
                 .map((processed, idx) => {
                   const rawLabel = rows[idx]['_group_label'];
@@ -374,6 +376,11 @@ self.onmessage = async (e: MessageEvent) => {
                     rawLabel === null || rawLabel === undefined
                       ? ''
                       : String(rawLabel).trim();
+                  const rawDate = rows[idx]['_date_label'];
+                  const dateLabel =
+                    rawDate === null || rawDate === undefined
+                      ? undefined
+                      : String(rawDate).trim();
                   const rowRc = rows[idx]['_record_count'];
                   const recordCount =
                     typeof rowRc === 'number'
@@ -410,13 +417,13 @@ self.onmessage = async (e: MessageEvent) => {
                       sourceMetricId: binding.metricId,
                     };
                   });
-                  return { label, recordCount, virtualMetrics: groupVirtualMetrics };
+                  return { label, dateLabel, recordCount, virtualMetrics: groupVirtualMetrics };
                 })
                 .filter(item => item.label !== '')
             : undefined;
 
           let summaryProcessed: Record<string, number | null>;
-          if (groupByColumn) {
+          if (hasGrouping) {
             summaryProcessed = aggregateProcessedRows(
               processedRows,
               compiled.aggregateMetadata,

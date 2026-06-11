@@ -53,6 +53,11 @@ export interface VirtualMetricValue {
  */
 export interface BreakdownItem {
   label: string;
+  /**
+   * Метка временно́го интервала при двумерной группировке
+   * (категория × время). Отсутствует в одномерных режимах.
+   */
+  dateLabel?: string;
   recordCount: number;
   virtualMetrics: VirtualMetricValue[];
 }

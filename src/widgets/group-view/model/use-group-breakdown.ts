@@ -44,9 +44,11 @@ export interface GroupBreakdownResult {
   resetAll: () => void;
   /** Первая колонка датасета с классификацией «Дата» (null — нет таких). */
   dateColumn: ColumnConfig | null;
-  /** Активная размерность временно́й группировки (null — группировка по иерархии). */
+  /** Активная размерность временно́й группировки (null — только иерархия). */
   dateGranularity: DateGranularity | null;
   setDateGranularity: (g: DateGranularity | null) => void;
+  /** true — двумерный режим: следующий уровень иерархии × время. */
+  isTwoDimensional: boolean;
 }
 
 export function useGroupBreakdown(
@@ -122,15 +124,18 @@ export function useGroupBreakdown(
 
   const filtersHash = useMemo(() => generateFiltersHash(currentPath), [currentPath]);
 
-  // Временна́я группировка: вместо следующего уровня иерархии breakdown
-  // строится по дата-колонке с выбранной размерностью (date_trunc в SQL).
+  // Временна́я группировка ДОБАВЛЯЕТСЯ к текущему уровню иерархии:
+  //  - есть следующий уровень → двумерный режим (категория × время);
+  //  - достигнут лист → одномерная разбивка по временны́м интервалам.
   // Текущие фильтры пути продолжают применяться в WHERE.
   const dateColumn = useMemo(
     () => columnConfigs.find(c => c.classification === 'date') ?? null,
     [columnConfigs]
   );
-  const isDateMode = dateGranularity !== null && dateColumn !== null;
-  const groupByColumn = isDateMode ? dateColumn.columnName : nextLevel?.columnName;
+  const isTimeMode = dateGranularity !== null && dateColumn !== null;
+  const isTwoDimensional = isTimeMode && nextLevel !== null;
+  const groupByColumn = nextLevel?.columnName;
+  const groupByDateColumn = isTimeMode ? dateColumn.columnName : undefined;
 
   const configHash = useMemo(() => {
     return (
@@ -141,9 +146,9 @@ export function useGroupBreakdown(
         virtualMetrics,
       }) +
       (groupByColumn ? `:gb:${groupByColumn}` : '') +
-      (isDateMode ? `:dg:${dateGranularity}` : '')
+      (isTimeMode ? `:dc:${groupByDateColumn}:dg:${dateGranularity}` : '')
     );
-  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn, isDateMode, dateGranularity]);
+  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn, isTimeMode, groupByDateColumn, dateGranularity]);
 
   const buildParams = useCallback((): ClientComputeParams | null => {
     if (!activeDatasetId || !group) return null;
@@ -158,7 +163,8 @@ export function useGroupBreakdown(
       metricTemplates: templates,
       virtualMetrics,
       groupByColumn: groupByColumn ?? undefined,
-      groupByDateGranularity: isDateMode ? dateGranularity : undefined,
+      groupByDateColumn,
+      groupByDateGranularity: isTimeMode ? dateGranularity : undefined,
       validColumns,
       pgSchema,
       pgTable,
@@ -166,7 +172,8 @@ export function useGroupBreakdown(
   }, [
     activeDatasetId, group, groupId, encryptedConnection, currentPath,
     dashboardGroupsConfig, templates, virtualMetrics,
-    groupByColumn, isDateMode, dateGranularity, validColumns, pgSchema, pgTable,
+    groupByColumn, groupByDateColumn, isTimeMode, dateGranularity,
+    validColumns, pgSchema, pgTable,
   ]);
 
   const buildCacheKey = useCallback((): CacheKey | null => {
@@ -192,8 +199,8 @@ export function useGroupBreakdown(
 
   const drillDown = useCallback(
     (label: string) => {
-      // В режиме временно́й группировки метка — не значение уровня иерархии
-      if (dateGranularity !== null) return;
+      // В двумерном режиме label — значение уровня иерархии, спуск валиден;
+      // в режиме «только время» nextLevel === null, и спуск невозможен.
       if (!nextLevel) return;
       const newFilter: HierarchyFilterValue = {
         levelId: nextLevel.id,
@@ -204,7 +211,7 @@ export function useGroupBreakdown(
       };
       setCurrentPath(prev => [...prev, newFilter]);
     },
-    [nextLevel, dateGranularity]
+    [nextLevel]
   );
 
   const resetToLevel = useCallback((levelIndex: number) => {
@@ -231,5 +238,6 @@ export function useGroupBreakdown(
     dateColumn,
     dateGranularity,
     setDateGranularity,
+    isTwoDimensional,
   };
 }

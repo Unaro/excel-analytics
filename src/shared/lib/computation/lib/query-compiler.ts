@@ -217,6 +217,7 @@ export function compileQuery(
     metricTemplates,
     tableName,
     groupByColumn,
+    groupByDateColumn,
     groupByDateGranularity,
     validColumns,
   } = params;
@@ -240,30 +241,55 @@ export function compileQuery(
   const whereConditions: string[] = [];
   const calculatedMetrics: CalculatedMetricEntry[] = [];
 
+  // ── Измерения группировки ──────────────────────────────────
+  // Категориальное (groupByColumn) и временно́е (groupByDateColumn +
+  // granularity) измерения независимы:
+  //  - только категория → _group_label = колонка (как раньше);
+  //  - только дата     → _group_label = date_trunc-метка (1-D путь
+  //    потребителей сохраняется);
+  //  - оба             → двумерная группировка: _group_label = категория,
+  //    _date_label = date_trunc-метка.
   let safeGroupByColumn: string | undefined;
-  // Выражение для SELECT-метки и GROUP BY: обычная колонка либо date_trunc
-  let groupByExpr: string | undefined;
-  // true — сортировать breakdown хронологически (по метке), а не по метрике
+  // Выражения для GROUP BY (по числу активных измерений)
+  const groupByExprs: string[] = [];
+  // true — сортировать breakdown хронологически, а не по первой метрике
   let orderByDateLabel = false;
+  // true — в SELECT есть отдельная колонка _date_label (двумерный режим)
+  let hasDateLabelColumn = false;
 
-  if (groupByColumn) {
-    if (isColumnValid(groupByColumn)) {
-      safeGroupByColumn = groupByColumn;
-      if (groupByDateGranularity && DATE_GRANULARITIES.has(groupByDateGranularity)) {
-        groupByExpr = buildDateLabelExpr(groupByColumn, groupByDateGranularity, dialect);
-        orderByDateLabel = true;
-      } else {
-        if (groupByDateGranularity) {
-          logger.warn(
-            `[query-compiler] Blocked invalid date granularity: ${groupByDateGranularity}`
-          );
-        }
-        groupByExpr = quote(groupByColumn);
-      }
-      baseSelectParts.push(`${groupByExpr} AS "_group_label"`);
+  let dateExpr: string | undefined;
+  if (groupByDateColumn && isColumnValid(groupByDateColumn)) {
+    if (groupByDateGranularity && DATE_GRANULARITIES.has(groupByDateGranularity)) {
+      dateExpr = buildDateLabelExpr(groupByDateColumn, groupByDateGranularity, dialect);
     } else {
-      baseSelectParts.push(`NULL AS "_group_label"`);
+      logger.warn(
+        `[query-compiler] Blocked invalid date granularity: ${groupByDateGranularity}`
+      );
     }
+  }
+
+  if (groupByColumn && isColumnValid(groupByColumn)) {
+    safeGroupByColumn = groupByColumn;
+    const labelExpr = quote(groupByColumn);
+    groupByExprs.push(labelExpr);
+    baseSelectParts.push(`${labelExpr} AS "_group_label"`);
+
+    if (dateExpr) {
+      // Двумерный режим: время — вторая колонка метки
+      groupByExprs.push(dateExpr);
+      baseSelectParts.push(`${dateExpr} AS "_date_label"`);
+      hasDateLabelColumn = true;
+      orderByDateLabel = true;
+    }
+  } else if (dateExpr) {
+    // Только время: метка группы — временно́й интервал
+    safeGroupByColumn = groupByDateColumn;
+    groupByExprs.push(dateExpr);
+    baseSelectParts.push(`${dateExpr} AS "_group_label"`);
+    orderByDateLabel = true;
+  } else if (groupByColumn) {
+    // Категориальная колонка не прошла whitelist
+    baseSelectParts.push(`NULL AS "_group_label"`);
   }
   baseSelectParts.push(`COUNT(*) AS "_record_count"`);
 
@@ -479,7 +505,7 @@ export function compileQuery(
       whereConditions.length > 0
         ? `WHERE ${whereConditions.join(' AND ')}`
         : '',
-      groupByExpr ? `GROUP BY ${groupByExpr}` : '',
+      groupByExprs.length > 0 ? `GROUP BY ${groupByExprs.join(', ')}` : '',
     ]
       .filter(Boolean)
       .join(' ');
@@ -521,7 +547,10 @@ export function compileQuery(
     let orderByClause = '';
     let limitClause = '';
     if (safeGroupByColumn) {
-      if (orderByDateLabel) {
+      if (hasDateLabelColumn) {
+        // Двумерный режим: хронология, внутри интервала — по категории
+        orderByClause = `ORDER BY "_date_label" ASC, "_group_label" ASC`;
+      } else if (orderByDateLabel) {
         // Временна́я группировка — хронологический порядок по метке
         orderByClause = `ORDER BY "_group_label" ASC`;
       } else {
@@ -565,7 +594,9 @@ export function compileQuery(
     let orderByClause = '';
     let limitClause = '';
     if (safeGroupByColumn) {
-      if (orderByDateLabel) {
+      if (hasDateLabelColumn) {
+        orderByClause = `ORDER BY "_date_label" ASC, "_group_label" ASC`;
+      } else if (orderByDateLabel) {
         orderByClause = `ORDER BY "_group_label" ASC`;
       } else {
         const firstMetricAlias = baseSelectParts.find(
@@ -589,7 +620,7 @@ export function compileQuery(
       whereConditions.length > 0
         ? `WHERE ${whereConditions.join(' AND ')}`
         : '',
-      groupByExpr ? `GROUP BY ${groupByExpr}` : '',
+      groupByExprs.length > 0 ? `GROUP BY ${groupByExprs.join(', ')}` : '',
       orderByClause,
       limitClause,
     ]
