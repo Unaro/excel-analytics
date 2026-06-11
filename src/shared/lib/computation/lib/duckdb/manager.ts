@@ -525,4 +525,5 @@ export class DuckDBWorkerManager {
   }
 }
 
+/** Синглтон-менеджер DuckDB-WASM воркера (единственная точка доступа к БД). */
 export const duckdbManager = new DuckDBWorkerManager();
