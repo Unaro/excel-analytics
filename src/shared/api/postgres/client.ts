@@ -9,6 +9,14 @@ export interface PgConnectionConfig {
   user: string;
   password: string;
   ssl?: boolean;
+  /**
+   * Отключает проверку TLS-сертификата сервера (rejectUnauthorized: false).
+   *
+   * Опасно: открывает MITM-атаку на соединение. Допустимо только для
+   * самоподписанных сертификатов в доверенной сети и требует явного
+   * согласия пользователя (чекбокс с предупреждением в форме подключения).
+   */
+  sslAllowInvalidCerts?: boolean;
 }
 
 function tryParseFloat(val: string): number | null {
@@ -76,7 +84,11 @@ export function createPgClient(config: PgConnectionConfig) {
     database: config.database,
     user: config.user,
     password: config.password,
-    ssl: config.ssl ? { rejectUnauthorized: false } : false,
+    // Сертификат проверяется по умолчанию; отключение проверки — только
+    // явным opt-out (sslAllowInvalidCerts) с предупреждением в UI.
+    ssl: config.ssl
+      ? { rejectUnauthorized: !config.sslAllowInvalidCerts }
+      : false,
     max: 1,
     idle_timeout: 2,
     connect_timeout: 20,

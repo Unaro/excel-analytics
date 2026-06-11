@@ -13,7 +13,15 @@ interface PostgresConnectionFormProps {
 }
 
 export function PostgresConnectionForm({ onConnected }: PostgresConnectionFormProps) {
-  const [form, setForm] = useState({ host: '', port: '5432', database: '', user: '', password: '', ssl: false });
+  const [form, setForm] = useState({
+    host: '',
+    port: '5432',
+    database: '',
+    user: '',
+    password: '',
+    ssl: false,
+    sslAllowInvalidCerts: false,
+  });
   const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -79,6 +87,36 @@ export function PostgresConnectionForm({ onConnected }: PostgresConnectionFormPr
           <label className="text-xs font-medium mb-1 block text-slate-500">Пароль</label>
           <Input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" />
         </div>
+        {form.ssl && (
+          <div className="col-span-2">
+            <div className="flex items-start gap-2">
+              <input
+                id="ssl-allow-invalid"
+                type="checkbox"
+                checked={form.sslAllowInvalidCerts}
+                onChange={e => setForm(f => ({ ...f, sslAllowInvalidCerts: e.target.checked }))}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600"
+              />
+              <label htmlFor="ssl-allow-invalid" className="text-sm text-slate-500">
+                Доверять недействительным сертификатам (самоподписанные)
+              </label>
+            </div>
+            {form.sslAllowInvalidCerts && (
+              <div className="mt-2 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 p-2 rounded-lg">
+                <AlertCircle size={14} className="shrink-0" />
+                Проверка сертификата отключена: соединение уязвимо к перехвату
+                (MITM). Используйте только в доверенной сети.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2 text-xs text-slate-500 bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg">
+        <Lock size={14} className="shrink-0" />
+        Пароль хранится только в текущей сессии браузера и передаётся серверу
+        приложения при каждом запросе. Не используйте учётные записи с правами
+        записи.
       </div>
 
       {error && (

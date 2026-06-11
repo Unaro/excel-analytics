@@ -22,6 +22,7 @@ export const PgConfigSchema = z.object({
   user: z.string().min(1, 'Пользователь обязателен'),
   password: z.string(),
   ssl: z.boolean().optional().default(false),
+  sslAllowInvalidCerts: z.boolean().optional().default(false),
 });
 
 /**
