@@ -11,6 +11,19 @@ import { sortBreakdownItems as sortBreakdown } from '../lib/sort-breakdown';
 import { useGroupViewState } from '../model/use-group-view-state';
 import { useGroupPath } from '@/shared/lib/hooks/use-group-path';
 import { useGroupBreakdown } from '../model/use-group-breakdown';
+import { CalendarClock } from 'lucide-react';
+import { Select, SelectOption } from '@/shared/ui/select';
+import type { DateGranularity } from '@/shared/lib/computation/lib/types';
+
+/** Подписи размерностей временно́й группировки. */
+const GRANULARITY_LABELS: Record<DateGranularity, string> = {
+  minute: 'минуты',
+  hour: 'часы',
+  day: 'дни',
+  week: 'недели',
+  month: 'месяцы',
+  year: 'годы',
+};
 
 interface GroupViewContentProps {
   groupId: string;
@@ -32,6 +45,9 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     drillDown,
     resetToLevel,
     resetAll,
+    dateColumn,
+    dateGranularity,
+    setDateGranularity,
   } = useGroupBreakdown(groupId, path);
 
   const {
@@ -88,14 +104,37 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         onToggleMetric={handleToggleMetric}
       />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-slate-900 dark:text-white">
           Визуализации
         </h2>
-        <ChartTypeSelector
-          selected={chartTypes}
-          onChange={handleChartTypesChange}
-        />
+        <div className="flex items-center gap-3">
+          {dateColumn && (
+            <div className="flex items-center gap-2">
+              <CalendarClock size={16} className="text-indigo-500 shrink-0" />
+              <Select
+                className="w-44 h-9 text-sm"
+                value={dateGranularity ?? ''}
+                onChange={e =>
+                  setDateGranularity(
+                    (e.target.value || null) as DateGranularity | null
+                  )
+                }
+              >
+                <SelectOption value="">По иерархии</SelectOption>
+                {(Object.keys(GRANULARITY_LABELS) as DateGranularity[]).map(g => (
+                  <SelectOption key={g} value={g}>
+                    По дате: {GRANULARITY_LABELS[g]}
+                  </SelectOption>
+                ))}
+              </Select>
+            </div>
+          )}
+          <ChartTypeSelector
+            selected={chartTypes}
+            onChange={handleChartTypesChange}
+          />
+        </div>
       </div>
 
       {error && (
@@ -120,7 +159,12 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           summary={summary}
           virtualMetrics={summaryVirtualMetrics}
           metricMetas={baseVirtualMetrics}
-          nextLevel={nextLevel}
+          nextLevel={dateGranularity ? null : nextLevel}
+          dimensionLabel={
+            dateGranularity && dateColumn
+              ? `${dateColumn.displayName} · ${GRANULARITY_LABELS[dateGranularity]}`
+              : undefined
+          }
           onDrillDown={drillDown}
           activeMetricIds={activeMetricIds}
           groupId={groupId}

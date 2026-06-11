@@ -44,6 +44,10 @@ export const ClientComputeParamsSchema = z.object({
   metricTemplates: z.array(MetricTemplateSchema).max(500),
   virtualMetrics: z.array(VirtualMetricSchema).max(50),
   groupByColumn: z.string().max(255).optional(),
+  // Временна́я группировка: enum, т.к. значение попадает в date_trunc('<g>',…)
+  groupByDateGranularity: z
+    .enum(['minute', 'hour', 'day', 'week', 'month', 'year'])
+    .optional(),
   validColumns: z.array(z.string()).optional(),
   pgSchema: z.string().min(1).max(255),
   pgTable: z.string().min(1).max(255),

@@ -13,7 +13,7 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import type { CacheKey } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
-import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
+import type { ClientComputeParams, DateGranularity } from '@/shared/lib/computation/lib/types';
 import type {
   GroupMetric,
   HierarchyFilterValue,
@@ -42,6 +42,11 @@ export interface GroupBreakdownResult {
   drillDown: (label: string) => void;
   resetToLevel: (levelIndex: number) => void;
   resetAll: () => void;
+  /** Первая колонка датасета с классификацией «Дата» (null — нет таких). */
+  dateColumn: ColumnConfig | null;
+  /** Активная размерность временно́й группировки (null — группировка по иерархии). */
+  dateGranularity: DateGranularity | null;
+  setDateGranularity: (g: DateGranularity | null) => void;
 }
 
 export function useGroupBreakdown(
@@ -49,6 +54,7 @@ export function useGroupBreakdown(
   initialPath: HierarchyFilterValue[] = []
 ): GroupBreakdownResult {
   const [currentPath, setCurrentPath] = useState<HierarchyFilterValue[]>(initialPath);
+  const [dateGranularity, setDateGranularity] = useState<DateGranularity | null>(null);
 
   const {
     activeDatasetId,
@@ -115,7 +121,16 @@ export function useGroupBreakdown(
   }, [group, templates]);
 
   const filtersHash = useMemo(() => generateFiltersHash(currentPath), [currentPath]);
-  const groupByColumn = nextLevel?.columnName;
+
+  // Временна́я группировка: вместо следующего уровня иерархии breakdown
+  // строится по дата-колонке с выбранной размерностью (date_trunc в SQL).
+  // Текущие фильтры пути продолжают применяться в WHERE.
+  const dateColumn = useMemo(
+    () => columnConfigs.find(c => c.classification === 'date') ?? null,
+    [columnConfigs]
+  );
+  const isDateMode = dateGranularity !== null && dateColumn !== null;
+  const groupByColumn = isDateMode ? dateColumn.columnName : nextLevel?.columnName;
 
   const configHash = useMemo(() => {
     return (
@@ -124,9 +139,11 @@ export function useGroupBreakdown(
         metricTemplates: templates,
         dashboardGroupsConfig,
         virtualMetrics,
-      }) + (groupByColumn ? `:gb:${groupByColumn}` : '')
+      }) +
+      (groupByColumn ? `:gb:${groupByColumn}` : '') +
+      (isDateMode ? `:dg:${dateGranularity}` : '')
     );
-  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn]);
+  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn, isDateMode, dateGranularity]);
 
   const buildParams = useCallback((): ClientComputeParams | null => {
     if (!activeDatasetId || !group) return null;
@@ -141,6 +158,7 @@ export function useGroupBreakdown(
       metricTemplates: templates,
       virtualMetrics,
       groupByColumn: groupByColumn ?? undefined,
+      groupByDateGranularity: isDateMode ? dateGranularity : undefined,
       validColumns,
       pgSchema,
       pgTable,
@@ -148,7 +166,7 @@ export function useGroupBreakdown(
   }, [
     activeDatasetId, group, groupId, encryptedConnection, currentPath,
     dashboardGroupsConfig, templates, virtualMetrics,
-    groupByColumn, validColumns, pgSchema, pgTable,
+    groupByColumn, isDateMode, dateGranularity, validColumns, pgSchema, pgTable,
   ]);
 
   const buildCacheKey = useCallback((): CacheKey | null => {
@@ -174,6 +192,8 @@ export function useGroupBreakdown(
 
   const drillDown = useCallback(
     (label: string) => {
+      // В режиме временно́й группировки метка — не значение уровня иерархии
+      if (dateGranularity !== null) return;
       if (!nextLevel) return;
       const newFilter: HierarchyFilterValue = {
         levelId: nextLevel.id,
@@ -184,7 +204,7 @@ export function useGroupBreakdown(
       };
       setCurrentPath(prev => [...prev, newFilter]);
     },
-    [nextLevel]
+    [nextLevel, dateGranularity]
   );
 
   const resetToLevel = useCallback((levelIndex: number) => {
@@ -208,5 +228,8 @@ export function useGroupBreakdown(
     drillDown,
     resetToLevel,
     resetAll,
+    dateColumn,
+    dateGranularity,
+    setDateGranularity,
   };
 }

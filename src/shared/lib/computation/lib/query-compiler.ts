@@ -6,6 +6,7 @@ import type {
   QueryParam,
   ClientComputeParams,
   MetricAggregationMeta,
+  DateGranularity,
 } from './types';
 import {
   FormulaToSqlCompiler,
@@ -72,6 +73,53 @@ function buildAggregateExpr(
       : `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${castedCol})`;
   }
   return `${fn}(${castedCol})`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Временна́я группировка (groupByDateGranularity)
+//
+// Значение размерности уходит в SQL внутри date_trunc('<g>', …) —
+// поэтому строго whitelist'ится; формат метки фиксирован на размерность,
+// чтобы текстовая сортировка ASC совпадала с хронологической.
+// ─────────────────────────────────────────────────────────────
+const DATE_GRANULARITIES = new Set<DateGranularity>([
+  'minute', 'hour', 'day', 'week', 'month', 'year',
+]);
+
+const DUCKDB_DATE_LABEL_FORMATS: Record<DateGranularity, string> = {
+  minute: '%Y-%m-%d %H:%M',
+  hour: '%Y-%m-%d %H:00',
+  day: '%Y-%m-%d',
+  week: '%Y-%m-%d',
+  month: '%Y-%m',
+  year: '%Y',
+};
+
+const PG_DATE_LABEL_FORMATS: Record<DateGranularity, string> = {
+  minute: 'YYYY-MM-DD HH24:MI',
+  hour: 'YYYY-MM-DD HH24:00',
+  day: 'YYYY-MM-DD',
+  week: 'YYYY-MM-DD',
+  month: 'YYYY-MM',
+  year: 'YYYY',
+};
+
+/**
+ * Выражение метки временно́й группы: date_trunc по размерности,
+ * отформатированный в строку. Для DuckDB колонка приводится через
+ * TRY_CAST (невалидные значения дают NULL и отфильтровываются
+ * по пустой метке на стороне потребителя breakdown).
+ */
+function buildDateLabelExpr(
+  columnName: string,
+  granularity: DateGranularity,
+  dialect: ComputeDialect
+): string {
+  const col = quote(columnName);
+  if (dialect === 'duckdb') {
+    return `strftime(date_trunc('${granularity}', TRY_CAST(${col} AS TIMESTAMP)), '${DUCKDB_DATE_LABEL_FORMATS[granularity]}')`;
+  }
+  return `to_char(date_trunc('${granularity}', ${col}::timestamp), '${PG_DATE_LABEL_FORMATS[granularity]}')`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -169,6 +217,7 @@ export function compileQuery(
     metricTemplates,
     tableName,
     groupByColumn,
+    groupByDateGranularity,
     validColumns,
   } = params;
 
@@ -192,11 +241,26 @@ export function compileQuery(
   const calculatedMetrics: CalculatedMetricEntry[] = [];
 
   let safeGroupByColumn: string | undefined;
+  // Выражение для SELECT-метки и GROUP BY: обычная колонка либо date_trunc
+  let groupByExpr: string | undefined;
+  // true — сортировать breakdown хронологически (по метке), а не по метрике
+  let orderByDateLabel = false;
 
   if (groupByColumn) {
     if (isColumnValid(groupByColumn)) {
-      baseSelectParts.push(`${quote(groupByColumn)} AS "_group_label"`);
       safeGroupByColumn = groupByColumn;
+      if (groupByDateGranularity && DATE_GRANULARITIES.has(groupByDateGranularity)) {
+        groupByExpr = buildDateLabelExpr(groupByColumn, groupByDateGranularity, dialect);
+        orderByDateLabel = true;
+      } else {
+        if (groupByDateGranularity) {
+          logger.warn(
+            `[query-compiler] Blocked invalid date granularity: ${groupByDateGranularity}`
+          );
+        }
+        groupByExpr = quote(groupByColumn);
+      }
+      baseSelectParts.push(`${groupByExpr} AS "_group_label"`);
     } else {
       baseSelectParts.push(`NULL AS "_group_label"`);
     }
@@ -415,7 +479,7 @@ export function compileQuery(
       whereConditions.length > 0
         ? `WHERE ${whereConditions.join(' AND ')}`
         : '',
-      safeGroupByColumn ? `GROUP BY ${quote(safeGroupByColumn)}` : '',
+      groupByExpr ? `GROUP BY ${groupByExpr}` : '',
     ]
       .filter(Boolean)
       .join(' ');
@@ -457,17 +521,22 @@ export function compileQuery(
     let orderByClause = '';
     let limitClause = '';
     if (safeGroupByColumn) {
-      const firstMetricAlias = availableAliases.find(
-        (a) =>
-          a.includes('__') &&
-          a !== '_group_label' &&
-          a !== '_record_count' &&
-          !a.startsWith('base_') &&
-          !a.startsWith('__fb_') &&
-          !a.startsWith('__agg_')
-      );
-      if (firstMetricAlias) {
-        orderByClause = `ORDER BY ${quote(firstMetricAlias)} DESC`;
+      if (orderByDateLabel) {
+        // Временна́я группировка — хронологический порядок по метке
+        orderByClause = `ORDER BY "_group_label" ASC`;
+      } else {
+        const firstMetricAlias = availableAliases.find(
+          (a) =>
+            a.includes('__') &&
+            a !== '_group_label' &&
+            a !== '_record_count' &&
+            !a.startsWith('base_') &&
+            !a.startsWith('__fb_') &&
+            !a.startsWith('__agg_')
+        );
+        if (firstMetricAlias) {
+          orderByClause = `ORDER BY ${quote(firstMetricAlias)} DESC`;
+        }
       }
       limitClause = `LIMIT ${BREAKDOWN_LIMIT + 1}`;
     }
@@ -496,16 +565,20 @@ export function compileQuery(
     let orderByClause = '';
     let limitClause = '';
     if (safeGroupByColumn) {
-      const firstMetricAlias = baseSelectParts.find(
-        (p) =>
-          p.includes('__') &&
-          !p.includes('_record_count') &&
-          !p.startsWith('NULL') &&
-          !p.includes(FIELD_DEP_PREFIX)
-      );
-      if (firstMetricAlias) {
-        const match = firstMetricAlias.match(/AS\s+"([^"]+)"/);
-        if (match) orderByClause = `ORDER BY ${quote(match[1])} DESC`;
+      if (orderByDateLabel) {
+        orderByClause = `ORDER BY "_group_label" ASC`;
+      } else {
+        const firstMetricAlias = baseSelectParts.find(
+          (p) =>
+            p.includes('__') &&
+            !p.includes('_record_count') &&
+            !p.startsWith('NULL') &&
+            !p.includes(FIELD_DEP_PREFIX)
+        );
+        if (firstMetricAlias) {
+          const match = firstMetricAlias.match(/AS\s+"([^"]+)"/);
+          if (match) orderByClause = `ORDER BY ${quote(match[1])} DESC`;
+        }
       }
       limitClause = `LIMIT ${BREAKDOWN_LIMIT + 1}`;
     }
@@ -516,7 +589,7 @@ export function compileQuery(
       whereConditions.length > 0
         ? `WHERE ${whereConditions.join(' AND ')}`
         : '',
-      safeGroupByColumn ? `GROUP BY ${quote(safeGroupByColumn)}` : '',
+      groupByExpr ? `GROUP BY ${groupByExpr}` : '',
       orderByClause,
       limitClause,
     ]

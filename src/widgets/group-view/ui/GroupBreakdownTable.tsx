@@ -26,6 +26,11 @@ interface GroupBreakdownTableProps {
   onSortChange: (config: SortConfig) => void;
   groupId: string;
   groupMetricIds: string[];
+  /**
+   * Метка измерения при временно́й группировке (например «Дата · месяц»).
+   * Передаётся вместе с nextLevel=null: drill-down по датам невозможен.
+   */
+  dimensionLabel?: string;
 }
 
 export const GroupBreakdownTable = memo(function GroupBreakdownTable({
@@ -40,6 +45,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
   onSortChange,
   groupId,
   groupMetricIds,
+  dimensionLabel,
 }: GroupBreakdownTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -93,6 +99,8 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
           <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
             {nextLevel ? (
               <>Разбивка по: <Badge variant="outline">{nextLevel.displayName}</Badge></>
+            ) : dimensionLabel ? (
+              <>Разбивка по: <Badge variant="outline">{dimensionLabel}</Badge></>
             ) : (
               <>Сводные данные (достигнут лист)</>
             )}
@@ -130,7 +138,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                 onClick={() => toggleSort('label')}
               >
                 <div className="flex items-center gap-1">
-                  {nextLevel?.displayName || 'Элемент'}
+                  {nextLevel?.displayName || dimensionLabel || 'Элемент'}
                   <SortIcon active={sortConfig?.key === 'label'} direction={sortConfig?.direction ?? 'desc'} />
                 </div>
               </th>

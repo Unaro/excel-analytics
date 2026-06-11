@@ -199,6 +199,44 @@ describe('compileQuery: группировка', () => {
     expect(sql).toContain(`LIMIT ${BREAKDOWN_LIMIT + 1}`);
   });
 
+  it('groupByDateGranularity: date_trunc-метка, GROUP BY по выражению, хронологический ORDER BY', () => {
+    const params = makeParams({
+      groupByColumn: 'created_at',
+      groupByDateGranularity: 'month',
+      validColumns: ['created_at', 'revenue'],
+    });
+
+    const duck = compileQuery(params, 'duckdb');
+    expect(duck.sql).toContain(
+      `strftime(date_trunc('month', TRY_CAST("created_at" AS TIMESTAMP)), '%Y-%m') AS "_group_label"`
+    );
+    expect(duck.sql).toContain(
+      `GROUP BY strftime(date_trunc('month', TRY_CAST("created_at" AS TIMESTAMP)), '%Y-%m')`
+    );
+    expect(duck.sql).toContain('ORDER BY "_group_label" ASC');
+    expect(duck.sql).toContain(`LIMIT ${BREAKDOWN_LIMIT + 1}`);
+
+    const pg = compileQuery(params, 'postgres');
+    expect(pg.sql).toContain(
+      `to_char(date_trunc('month', "created_at"::timestamp), 'YYYY-MM') AS "_group_label"`
+    );
+    expect(pg.sql).toContain('ORDER BY "_group_label" ASC');
+  });
+
+  it('невалидная размерность даты отбрасывается — обычная группировка по колонке', () => {
+    const params = makeParams({
+      groupByColumn: 'created_at',
+      // тип обходится намеренно: значение могло прийти из недоверенного ввода
+      groupByDateGranularity: 'second; DROP TABLE x' as never,
+      validColumns: ['created_at', 'revenue'],
+    });
+    const { sql } = compileQuery(params, 'duckdb');
+    expect(sql).not.toContain('DROP TABLE');
+    expect(sql).not.toContain('date_trunc');
+    expect(sql).toContain(`"created_at" AS "_group_label"`);
+    expect(sql).toContain('GROUP BY "created_at"');
+  });
+
   it('невалидный groupByColumn деградирует в NULL AS "_group_label"', () => {
     const params = makeParams({
       groupByColumn: 'hacked',

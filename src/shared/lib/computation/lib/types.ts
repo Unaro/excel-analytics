@@ -33,10 +33,25 @@ export interface ClientComputeParams {
   metricTemplates: MetricTemplate[];
   virtualMetrics: VirtualMetric[];
   groupByColumn?: string;
+  /**
+   * Размерность временно́й группировки. Если задана, groupByColumn
+   * трактуется как дата-колонка: метка группы строится через
+   * date_trunc(granularity, col), сортировка — хронологическая.
+   */
+  groupByDateGranularity?: DateGranularity;
   validColumns?: string[];
   pgSchema?: string;
   pgTable?: string;
 }
+
+/** Размерность временно́й группировки breakdown. */
+export type DateGranularity =
+  | 'minute'
+  | 'hour'
+  | 'day'
+  | 'week'
+  | 'month'
+  | 'year';
 
 export interface CompiledFormulaMeta {
   groupId: string;
