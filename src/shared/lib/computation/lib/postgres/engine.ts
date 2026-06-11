@@ -15,13 +15,7 @@ import type {
 } from '@/shared/lib/types/computation';
 import { computePgMetrics } from '@/shared/api/server-actions';
 import { aggregateProcessedRows } from '../aggregation';
-
-/**
- * Безопасное экранирование SQL-идентификаторов.
- */
-function quoteIdent(id: string): string {
-  return `"${id.replace(/"/g, '""')}"`;
-}
+import { qualifiedTableName } from '../sql-utils';
 
 function buildAggregateMetadataMap(
   params: ClientComputeParams
@@ -67,7 +61,6 @@ export class PgEngine implements IComputeEngine {
       );
     }
 
-    const realTableName = `${quoteIdent(pgSchema)}.${quoteIdent(pgTable)}`;
     const start = Date.now();
 
     const decryptedConfig = await decryptConfig<PgConnectionConfig>(encryptedConfig);
@@ -76,8 +69,9 @@ export class PgEngine implements IComputeEngine {
       throw new DOMException('Aborted', 'AbortError');
     }
 
-    const pgParams: ClientComputeParams = { ...params, tableName: realTableName };
-    const response = await computePgMetrics(pgParams, decryptedConfig);
+    // Сервер игнорирует клиентские tableName/validColumns и строит их сам
+    // из information_schema (защита от SQL-инъекции) — см. pg-compute.ts.
+    const response = await computePgMetrics(params, decryptedConfig);
 
     if (signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
@@ -88,7 +82,19 @@ export class PgEngine implements IComputeEngine {
     }
 
     const rows = response.rows as Record<string, unknown>[];
-    const compiled = compileQuery(pgParams, 'postgres');
+
+    // Локальная перекомпиляция только ради метаданных пост-обработки
+    // (formulas, aggregateMetadata) — SQL на клиенте не исполняется.
+    // validColumns берём из ответа сервера, чтобы метаданные совпадали
+    // с фактически исполненным запросом.
+    const compiled = compileQuery(
+      {
+        ...params,
+        tableName: qualifiedTableName(pgSchema, pgTable),
+        validColumns: response.validColumns,
+      },
+      'postgres'
+    );
     const processedRows = postProcessAggregates(rows, compiled);
     const totalRecords = computeTotalRecordCount(rows);
 

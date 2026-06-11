@@ -11,8 +11,7 @@ import {
   createFormulaToSqlContext,
   wrapWithCoalesce,
 } from './formula-to-sql';
-
-const quote = (id: string) => `"${id.replace(/"/g, '""')}"`;
+import { quoteIdent as quote } from './sql-utils';
 
 // ─────────────────────────────────────────────────────────────
 // Whitelist SQL-операторов для WHERE
@@ -134,6 +133,19 @@ function topologicalSortCalculated(
 // ─────────────────────────────────────────────────────────────
 // Главная функция
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * Компилирует параметры дашборда в SQL-запрос (DuckDB или PostgreSQL).
+ *
+ * Безопасность:
+ * - для `postgres` список `validColumns` ОБЯЗАТЕЛЕН (whitelist колонок
+ *   с сервера из information_schema) — без него запрос не компилируется;
+ * - для `duckdb` (in-browser БД) whitelist опционален: при отсутствии
+ *   колонки доверяются, при наличии — фильтруются;
+ * - значения фильтров для PG уходят позиционными параметрами `$n`,
+ *   для DuckDB — экранируются инлайн;
+ * - все идентификаторы экранируются через quoteIdent.
+ */
 export function compileQuery(
   params: ClientComputeParams,
   dialect: ComputeDialect
@@ -147,6 +159,13 @@ export function compileQuery(
     groupByColumn,
     validColumns,
   } = params;
+
+  if (dialect === 'postgres' && !validColumns) {
+    throw new Error(
+      '[query-compiler] validColumns обязателен для PostgreSQL: ' +
+        'whitelist колонок должен приходить с сервера (information_schema)'
+    );
+  }
 
   const isColumnValid = (colName: string): boolean =>
     !validColumns || validColumns.includes(colName);

@@ -46,6 +46,29 @@ export function normalizePgRow(row: Record<string, unknown>): DatasetRow {
   return normalized;
 }
 
+/**
+ * Выполняет операцию с PG-клиентом, гарантированно закрывая соединение.
+ *
+ * Единая точка управления жизненным циклом соединения для Server Actions.
+ */
+export async function withPgClient<T>(
+  config: PgConnectionConfig,
+  fn: (sql: ReturnType<typeof createPgClient>) => Promise<T>
+): Promise<T> {
+  let sql: ReturnType<typeof createPgClient> | null = null;
+  try {
+    sql = createPgClient(config);
+    return await fn(sql);
+  } finally {
+    if (sql) {
+      await sql.end({ timeout: 2 }).catch(() => {});
+    }
+  }
+}
+
+/**
+ * Создаёт клиент подключения к PostgreSQL.
+ */
 export function createPgClient(config: PgConnectionConfig) {
   return postgres({
     host: config.host,
