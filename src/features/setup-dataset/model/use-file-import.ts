@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { syncFromFile } from '@/entities/dataset';
+import { syncFromFile } from './sync-engine';
 import { toast } from '@/shared/ui/toast';
 
 export interface UseFileImportReturn {

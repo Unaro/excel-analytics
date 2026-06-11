@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { syncFromPostgres } from '@/entities/dataset';
+import { syncFromPostgres } from '@/features/setup-dataset';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { Table, Loader2, Check, Database, AlertCircle } from 'lucide-react';

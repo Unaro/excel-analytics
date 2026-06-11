@@ -4,7 +4,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
-import { refreshPgDataset } from '@/entities/dataset';
+import { refreshPgDataset } from '@/features/setup-dataset';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 

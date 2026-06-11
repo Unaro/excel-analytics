@@ -18,7 +18,7 @@
 'use client';
 
 import { nanoid } from 'nanoid';
-import { useDatasetStore } from './store';
+import { useDatasetStore } from '@/entities/dataset';
 import { useColumnConfigStore } from '@/entities/column-config';
 import { toast } from 'sonner';
 import { decryptConfig, encryptConfig } from '@/shared/lib/utils/crypto';
@@ -30,14 +30,14 @@ import {
   testPgConnection,
 } from '@/shared/api/server-actions';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
-import type { ReplaceFileResult } from './types';
+import type { ReplaceFileResult } from '@/entities/dataset';
 import { del, set } from 'idb-keyval';
 
 // ─────────────────────────────────────────────────────────────
 // Чистые функции из shared/services
 // ─────────────────────────────────────────────────────────────
 import { mergeColumnConfigs } from '@/shared/lib/services';
-import { generateColumnConfigsFromPgSchema } from '../lib/type-mapper';
+import { generateColumnConfigsFromPgSchema } from '@/entities/dataset';
 import { DatasetRow } from '@/shared/lib/types';
 
 // ─────────────────────────────────────────────────────────────

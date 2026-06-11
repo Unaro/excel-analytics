@@ -2,7 +2,7 @@
 'use client';
 
 import { useCallback } from 'react';
-import { replaceDatasetFile } from '@/entities/dataset';
+import { replaceDatasetFile } from './sync-engine';
 import { toast } from 'sonner';
 import { useDashboardFilterReconciler } from './use-dashboard-filter-reconciler';
 

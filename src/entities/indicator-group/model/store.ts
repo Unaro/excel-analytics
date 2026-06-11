@@ -1,12 +1,8 @@
-// lib/stores/indicator-group-store.ts
+// entities/indicator-group/model/store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
 import { FieldBinding, GroupMetric, IndicatorGroup } from '@/entities/metric';
-import { useDashboardStore } from '@/entities/dashboard';
-import { useDatasetStore } from '@/entities/dataset';
-import { createComputationCache } from '@/shared/lib/storage';
-import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 
 interface IndicatorGroupState {
   groups: IndicatorGroup[];
@@ -68,32 +64,17 @@ export const useIndicatorGroupStore = create<IndicatorGroupState>()(
         }));
       },
       
+      /**
+       * Удаляет группу ТОЛЬКО из собственного состояния.
+       *
+       * Каскадная очистка (дашборды, кэш вычислений, UI-конфиги метрик) —
+       * ответственность оркестратора features/delete-group: entity не должен
+       * знать о других entity и слое кэша.
+       */
       deleteGroup: (id) => {
         set((state) => ({
           groups: state.groups.filter((group) => group.id !== id),
         }));
-
-        const { dashboards, removeIndicatorGroup } = useDashboardStore.getState();
-        dashboards.forEach(dashboard => {
-          if (dashboard.indicatorGroups.some(g => g.groupId === id)) {
-            removeIndicatorGroup(dashboard.id, id);
-          }
-        });
-
-        const datasets = useDatasetStore.getState().datasets;
-        Object.entries(datasets).forEach(([datasetId, ds]) => {
-          createComputationCache(ds.sourceType ?? 'file')
-            .clearByDashboard(datasetId, ds.id)
-            .catch(() => {});
-        });
-
-        // Каскадная очистка UI-настроек метрик (colorConfig и др.)
-        try {
-          const { clearGroupConfigs } = useGroupMetricConfigStore.getState();
-          clearGroupConfigs(id);
-        } catch {
-          // Игнорируем, если стор не инициализирован
-        }
       },
       duplicateGroup: (id) => {
         const group = get().getGroup(id);
