@@ -21,7 +21,7 @@ import { logger } from '@/shared/lib/logger';
 import { nanoid } from 'nanoid';
 import { useDatasetStore } from '@/entities/dataset';
 import { useColumnConfigStore } from '@/entities/column-config';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 import { decryptConfig, encryptConfig } from '@/shared/lib/utils/crypto';
 import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';
 import { createComputationCache } from '@/shared/lib/storage';

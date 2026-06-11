@@ -4,7 +4,7 @@ import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Card } from '@/shared/ui/card';
 import { Database, CheckCircle2, AlertCircle, Loader2, Lock } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
 import { testPgConnection } from '@/shared/api/server-actions';
 
@@ -59,8 +59,8 @@ export function PostgresConnectionForm({ onConnected }: PostgresConnectionFormPr
         <h2>Подключение к PostgreSQL</h2>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="col-span-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="sm:col-span-2">
           <label className="text-xs font-medium mb-1 block text-slate-500">Хост</label>
           <Input value={form.host} onChange={e => setForm(f => ({ ...f, host: e.target.value }))} placeholder="localhost или IP" />
         </div>
@@ -75,7 +75,7 @@ export function PostgresConnectionForm({ onConnected }: PostgresConnectionFormPr
             <span className="ml-2 text-sm text-slate-500">Требовать SSL</span>
           </div>
         </div>
-        <div className="col-span-2">
+        <div className="sm:col-span-2">
           <label className="text-xs font-medium mb-1 block text-slate-500">База данных</label>
           <Input value={form.database} onChange={e => setForm(f => ({ ...f, database: e.target.value }))} placeholder="analytics_db" />
         </div>
@@ -88,7 +88,7 @@ export function PostgresConnectionForm({ onConnected }: PostgresConnectionFormPr
           <Input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" />
         </div>
         {form.ssl && (
-          <div className="col-span-2">
+          <div className="sm:col-span-2">
             <div className="flex items-start gap-2">
               <input
                 id="ssl-allow-invalid"

@@ -5,7 +5,8 @@ import { AggregateFunction, useMetricTemplateStore } from '@/entities/metric';
 import { Check, X } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
-import { toast } from 'sonner';
+import { Select, SelectOption } from '@/shared/ui/select';
+import { toast } from '@/shared/ui/toast';
 import { VisualFormulaBuilder } from './VisualFormulaBuilder';
 import { useFormulaValidation } from '@/entities/formula';
 
@@ -90,20 +91,19 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
       </div>
 
       {type === 'aggregate' ? (
-        <div className="grid grid-cols-2 gap-4 animate-in fade-in">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in">
           <div>
             <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">Функция</label>
-            <select 
-              className="flex h-10 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-50"
-              value={aggFunc} 
+            <Select
+              value={aggFunc}
               onChange={e => setAggFunc(e.target.value as AggregateFunction)}
             >
-              <option value="SUM">Сумма (SUM)</option>
-              <option value="AVG">Среднее (AVG)</option>
-              <option value="COUNT">Количество (COUNT)</option>
-              <option value="MAX">Максимум (MAX)</option>
-              <option value="MIN">Минимум (MIN)</option>
-            </select>
+              <SelectOption value="SUM">Сумма (SUM)</SelectOption>
+              <SelectOption value="AVG">Среднее (AVG)</SelectOption>
+              <SelectOption value="COUNT">Количество (COUNT)</SelectOption>
+              <SelectOption value="MAX">Максимум (MAX)</SelectOption>
+              <SelectOption value="MIN">Минимум (MIN)</SelectOption>
+            </Select>
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">Переменная</label>

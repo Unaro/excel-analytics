@@ -3,7 +3,7 @@
 
 import { useCallback, useState } from 'react';
 import { replaceDatasetFile } from './sync-engine';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 import { useDashboardFilterReconciler } from './use-dashboard-filter-reconciler';
 
 interface UseDatasetReplaceProps {

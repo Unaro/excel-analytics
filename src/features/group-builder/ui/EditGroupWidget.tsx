@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { GroupBuilderUI } from './GroupBuilderUI';
 import { useGroupBuilder } from '../model/use-group-builder';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 
 interface EditGroupWidgetProps {
   groupId: string;

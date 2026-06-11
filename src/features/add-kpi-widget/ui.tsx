@@ -3,6 +3,8 @@
 import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
+import { Input } from '@/shared/ui/input';
+import { Select, SelectOption, SelectGroup } from '@/shared/ui/select';
 import { Plus, ArrowRight } from 'lucide-react';
 import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
 import { useMetricTemplateStore } from '@/entities/metric';
@@ -10,7 +12,7 @@ import { useColumnConfigStore } from '@/entities/column-config';
 import { SearchableSelect } from '@/shared/ui/searchable-select';
 import { useDatasetStore } from '@/entities/dataset';
 import { useShallow } from 'zustand/react/shallow';
-import { ColumnConfig } from '@/shared/lib/types';
+import { extractVariables } from '@/shared/lib/utils/formula';
 
 interface AddKPIDialogProps {
   dashboardId: string;
@@ -26,7 +28,7 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
   const [bindings, setBindings] = useState<Record<string, string>>({});
   const [customName, setCustomName] = useState('');
 
-  const templates = useMetricTemplateStore(s => s.templates);``
+  const templates = useMetricTemplateStore(s => s.templates);
   const addWidget = useDashboardStore(s => s.addKPIWidget);
   const kpiWidgets = useDashboardStore(useShallow(s => s.getDashboard(dashboardId)?.kpiWidgets ?? EMPTY_KPI_WIDGETS));
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
@@ -34,14 +36,15 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
 
   const selectedTemplate = templates.find(t => t.id === selectedTemplateId);
 
+  // Та же логика извлечения переменных, что и в редакторе группы
+  // (use-group-builder): mathjs-AST через extractVariables вместо
+  // самодельного regex, который принимал имена функций за переменные.
   const requiredVariables = useMemo(() => {
     if (!selectedTemplate) return [];
     if (selectedTemplate.type === 'aggregate') {
       return [selectedTemplate.aggregateField || 'value'];
-    } else {
-      const vars = selectedTemplate.formula?.match(/[a-zA-Z_][a-zA-Z0-9_]*/g) || [];
-      return vars.filter(v => !['SUM', 'AVG', 'MAX', 'MIN', 'ROUND', 'ABS'].includes(v.toUpperCase()));
     }
+    return selectedTemplate.formula ? extractVariables(selectedTemplate.formula) : [];
   }, [selectedTemplate]);
 
   const handleSubmit = () => {
@@ -65,9 +68,6 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
     setCustomName('');
   };
 
-  // Общие стили для инпутов, чтобы они выглядели одинаково
-  const inputStyles = "flex h-10 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 disabled:opacity-50";
-
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if(!v) reset(); }}>
       <DialogTrigger asChild>
@@ -90,30 +90,22 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
              <div className="grid gap-2">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Шаблон метрики</label>
                 
-                {/* 2. ФИКС СЕЛЕКТА: Явные стили для select и option */}
-                <select 
-                  className={inputStyles}
+                <Select
                   value={selectedTemplateId}
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
                 >
-                  <option value="" disabled className="bg-white dark:bg-slate-900 text-slate-500">Выберите из списка...</option>
-                  
-                  <optgroup label="Агрегации" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 font-bold">
+                  <SelectOption value="" disabled>Выберите из списка...</SelectOption>
+                  <SelectGroup label="Агрегации">
                     {templates.filter(t => t.type === 'aggregate').map(t => (
-                      <option key={t.id} value={t.id} className="text-slate-700 dark:text-slate-300 font-normal">
-                        {t.name}
-                      </option>
+                      <SelectOption key={t.id} value={t.id}>{t.name}</SelectOption>
                     ))}
-                  </optgroup>
-                  
-                  <optgroup label="Формулы" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-200 font-bold">
+                  </SelectGroup>
+                  <SelectGroup label="Формулы">
                     {templates.filter(t => t.type === 'calculated').map(t => (
-                      <option key={t.id} value={t.id} className="text-slate-700 dark:text-slate-300 font-normal">
-                        {t.name}
-                      </option>
+                      <SelectOption key={t.id} value={t.id}>{t.name}</SelectOption>
                     ))}
-                  </optgroup>
-                </select>
+                  </SelectGroup>
+                </Select>
              </div>
              <div className="flex justify-end">
                <Button 
@@ -131,8 +123,7 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
           <div className="space-y-5 py-4">
              <div className="grid gap-2">
                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Отображаемое название</label>
-               <input 
-                 className={inputStyles}
+               <Input
                  value={customName}
                  onChange={e => setCustomName(e.target.value)}
                  placeholder={selectedTemplate.name}
@@ -156,30 +147,31 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
                     </div>
 
                     {selectedTemplate.type === 'aggregate' ? (
-                      <SearchableSelect 
+                      <SearchableSelect
                          value={bindings[variable] || ''}
                          onChange={(val) => setBindings(prev => ({ ...prev, [variable]: val }))}
-                         options={columnConfigs.map((c: ColumnConfig) => ({
-                           value: c.columnName,
-                           label: c.displayName,
-                           subLabel: c.alias
-                         }))}
+                         options={columnConfigs
+                           .filter(c => c.classification === 'numeric')
+                           .map(c => ({
+                             value: c.columnName,
+                             label: c.displayName,
+                             subLabel: c.alias
+                           }))}
                          placeholder="Выберите колонку..."
-                         className="w-full" // Убедись, что SearchableSelect поддерживает className
+                         className="w-full"
                       />
                     ) : (
-                      <select
-                        className={inputStyles}
+                      <Select
                         value={bindings[variable] || ''}
                         onChange={(e) => setBindings(prev => ({ ...prev, [variable]: e.target.value }))}
                       >
-                         <option value="" disabled className="bg-white dark:bg-slate-900">Выберите виджет...</option>
+                         <SelectOption value="" disabled>Выберите виджет...</SelectOption>
                          {kpiWidgets.map(w => (
-                           <option key={w.id} value={w.id} className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300">
+                           <SelectOption key={w.id} value={w.id}>
                              {w.customName || templates.find(t => t.id === w.templateId)?.name || 'Без названия'}
-                           </option>
+                           </SelectOption>
                          ))}
-                      </select>
+                      </Select>
                     )}
                  </div>
                ))}

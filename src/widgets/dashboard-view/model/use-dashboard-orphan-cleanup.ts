@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 
 /**
  * Автоматически удаляет привязки к группам, которые были удалены.

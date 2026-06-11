@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useState } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 import { removeDatasetCompletely } from './remove-dataset';
 
 interface UseDatasetManagerProps {

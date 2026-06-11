@@ -1,7 +1,7 @@
 'use client';
 import { useState, useCallback } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 
 export function useDeleteDashboard() {
   const [deleteId, setDeleteId] = useState<string | null>(null);

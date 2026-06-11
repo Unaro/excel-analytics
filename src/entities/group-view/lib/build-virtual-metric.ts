@@ -21,7 +21,10 @@ export function buildVirtualMetric(
     'Metric';
   const displayFormat = template?.displayFormat || 'number';
   const decimalPlaces = template?.decimalPlaces || 2;
-  const unit = template?.suffix || template?.prefix;
+  // Приоритет у единицы, заданной пользователем для метрики в редакторе
+  // группы; suffix/prefix шаблона — запасной вариант. Раньше metric.unit
+  // игнорировался, и заданные единицы нигде не отображались.
+  const unit = metric.unit || template?.suffix || template?.prefix;
   return {
     id: buildVmIdFromFields(groupId, metric.id, name, displayFormat, decimalPlaces, unit),
     name,

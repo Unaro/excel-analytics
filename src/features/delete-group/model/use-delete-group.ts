@@ -5,7 +5,7 @@ import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import { createComputationCache } from '@/shared/lib/storage';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 
 /**
  * Оркестратор каскадного удаления группы показателей.

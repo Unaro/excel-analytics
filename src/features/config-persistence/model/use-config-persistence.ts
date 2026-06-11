@@ -19,7 +19,7 @@ import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { Dashboard, useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
 import { createComputationCache } from '@/shared/lib/storage';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 import { useRouter } from 'next/navigation';
 import { DatasetConfigExport } from '@/entities/export-package';
 import {

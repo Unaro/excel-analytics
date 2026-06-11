@@ -45,7 +45,7 @@ export function MappingRow({
 
   return (
     <tr className="group hover:bg-slate-50 dark:hover:bg-slate-900/50">
-      <td className="px-4 py-3 font-medium text-sm sticky left-0 bg-white dark:bg-slate-950 group-hover:bg-slate-50 border-r dark:border-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+      <td className="px-4 py-3 font-medium text-sm sticky left-0 bg-white dark:bg-slate-950 group-hover:bg-slate-50 dark:group-hover:bg-slate-900/50 border-r dark:border-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
         {fullGroup.name}
       </td>
       {virtualMetrics.map(vm => {

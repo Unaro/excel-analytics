@@ -2,7 +2,7 @@
 import { logger } from '@/shared/lib/logger';
 import { useState, useCallback } from 'react';
 import { clear as clearIdb } from 'idb-keyval';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 
 /**
  * Управляет полным сбросом системы:

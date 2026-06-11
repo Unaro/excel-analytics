@@ -56,6 +56,14 @@ export function useDashboardBuilder(existingDashboardId?: string) {
     setVirtualMetrics(prev => prev.filter(vm => vm.id !== id));
   }, []);
 
+  // Единица измерения колонки дашборда: отображалась (formatValue,
+  // таблица метрик), но задать её в билдере было негде.
+  const updateVirtualMetricUnit = useCallback((id: string, unit: string) => {
+    setVirtualMetrics(prev => prev.map(vm =>
+      vm.id === id ? { ...vm, unit: unit || undefined } : vm
+    ));
+  }, []);
+
   const reorderVirtualMetrics = useCallback((newOrder: VirtualMetric[]) => {
     const reordered = newOrder.map((vm, idx) => ({ ...vm, order: idx }));
     setVirtualMetrics(reordered);
@@ -121,13 +129,25 @@ export function useDashboardBuilder(existingDashboardId?: string) {
     return addDashboard(dashboardData, targetDatasetId);
   }, [name, description, virtualMetrics, dashboardGroups, existingDashboardId, existingDashboard, addDashboard, updateDashboard, activeDatasetId]);
   
+  // В выпадающий список добавления попадают только группы текущего датасета
+  // (группы без datasetId — legacy — не скрываем, иначе их нельзя добавить
+  // нигде). Полный список нужен MappingRow: дашборд мог содержать группу
+  // другого датасета, её строка не должна ломаться.
+  const targetDatasetId = activeDatasetId || existingDashboard?.datasetId;
+  const availableGroups = useMemo(
+    () => allGroups.filter(g => !g.datasetId || g.datasetId === targetDatasetId),
+    [allGroups, targetDatasetId]
+  );
+
   return {
     name, setName,
     description, setDescription,
     virtualMetrics, addVirtualMetric, removeVirtualMetric, reorderVirtualMetrics,
+    updateVirtualMetricUnit,
     dashboardGroups, addGroupToDashboard, removeGroupFromDashboard,
     updateBinding,
     saveDashboard,
-    availableGroups: allGroups
+    availableGroups,
+    allGroups,
   };
 }

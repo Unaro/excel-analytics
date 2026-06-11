@@ -5,7 +5,7 @@ import { useMetricTemplateStore } from '@/entities/metric';
 import { Plus, Trash2, Calculator, FunctionSquare } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 import { TemplateForm } from '@/features/metric-template';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 

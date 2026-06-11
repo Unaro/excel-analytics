@@ -24,7 +24,7 @@ const handleFileUpload = useCallback(async (file: File): Promise<boolean> => {
     
     setIsUploading(true);
     const toastId = 'file-import-' + Date.now();
-    toast.loading('Чтение файла (может занять время)...', toastId);
+    toast.loading('Чтение файла (может занять время)...', { id: toastId });
     
     return new Promise<boolean>((resolve) => {
       setTimeout(async () => {

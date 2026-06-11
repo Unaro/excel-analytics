@@ -22,8 +22,9 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
   const {
     name, setName, description, setDescription,
     virtualMetrics, addVirtualMetric, removeVirtualMetric, reorderVirtualMetrics,
+    updateVirtualMetricUnit,
     dashboardGroups, addGroupToDashboard, removeGroupFromDashboard, updateBinding,
-    availableGroups
+    availableGroups, allGroups,
   } = builder;
 
   const [newVmName, setNewVmName] = useState('');
@@ -52,6 +53,13 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
         </div>
         <span className="font-medium text-sm truncate">{vm.name}</span>
       </div>
+      <Input
+        placeholder="ед. (чел.)"
+        value={vm.unit ?? ''}
+        maxLength={10}
+        onChange={(e) => updateVirtualMetricUnit(vm.id, e.target.value)}
+        className="h-7 w-20 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shrink-0 mr-1"
+      />
       <Button
         variant="ghost"
         size="icon"
@@ -168,7 +176,7 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
                       key={groupConf.groupId}
                       groupConfig={groupConf}
                       virtualMetrics={virtualMetrics}
-                      allGroups={availableGroups}
+                      allGroups={allGroups}
                       onUpdateBinding={updateBinding}
                       onRemove={() => removeGroupFromDashboard(groupConf.groupId)}
                     />

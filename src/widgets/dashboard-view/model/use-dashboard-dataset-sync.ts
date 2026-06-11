@@ -7,7 +7,7 @@ import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
 import { refreshPgDataset } from '@/features/setup-dataset';
 import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 
 export function useDashboardDatasetSync(dashboardId: string) {
   const router = useRouter();

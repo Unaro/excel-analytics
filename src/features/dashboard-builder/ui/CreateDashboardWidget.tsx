@@ -2,7 +2,7 @@
 import { useRouter } from 'next/navigation';
 import { DashboardBuilderUI } from './DashboardBuilderUI';
 import { useDashboardBuilder } from '../model/use-dashboard-builder';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 
 export function CreateDashboardWidget() {
   const router = useRouter();

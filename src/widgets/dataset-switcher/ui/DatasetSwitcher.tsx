@@ -11,7 +11,7 @@ import {
   Loader2, Plus, RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 import { refreshPgDataset, removeDatasetCompletely } from '@/features/setup-dataset';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 
