@@ -40,7 +40,9 @@ const fsdBoundaries = {
         rules: [
           { from: "app", allow: ["widgets", "features", "entities", "shared"] },
           { from: "widgets", allow: ["features", "entities", "shared"] },
-          { from: "features", allow: ["entities", "shared"] },
+          // features → features: осознанное исключение (FSD cross-import
+          // через public API): билдеры компонуют фичу metric-template.
+          { from: "features", allow: ["features", "entities", "shared"] },
           { from: "entities", allow: ["entities", "shared"] },
           { from: "shared", allow: ["shared"] },
         ],

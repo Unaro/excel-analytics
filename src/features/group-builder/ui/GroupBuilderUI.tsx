@@ -8,7 +8,7 @@ import { Input } from '@/shared/ui/input';
 import { Card } from '@/shared/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
 import { Select, SelectOption, SelectGroup } from '@/shared/ui/select';
-import { TemplateForm } from '@/features/CreateMetricTemplate';
+import { TemplateForm } from '@/features/metric-template';
 import { useDatasetStore } from '@/entities/dataset';
 import { DragDropList, RenderItemProps } from '@/shared/ui/drag-drop-list';
 import { MetricRow } from './MetricRow';

@@ -6,7 +6,7 @@ import { Plus, Trash2, Calculator, FunctionSquare } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { toast } from 'sonner';
-import { TemplateForm } from '@/features/CreateMetricTemplate';
+import { TemplateForm } from '@/features/metric-template';
 
 export function TemplateManager() {
   const { templates, deleteTemplate } = useMetricTemplateStore();
