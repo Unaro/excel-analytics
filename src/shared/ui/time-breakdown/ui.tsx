@@ -17,7 +17,7 @@
 import { memo, useMemo, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer,
+  Legend, ResponsiveContainer, ReferenceLine, Label,
 } from 'recharts';
 import { Search, AlertTriangle, ChevronRight, TrendingUp } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
@@ -25,6 +25,9 @@ import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { checkRule, COLOR_STYLES } from '@/shared/lib/utils/metric-colors';
+import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
+import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
 import type { VirtualMetric } from '@/shared/lib/validators';
 
@@ -157,6 +160,23 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
 
   const currentMetric = metricOptions.find(m => m.id === effectiveMetricId);
 
+  // Пороговые линии условного форматирования выбранной метрики
+  // (метаданные метрики должны нести colorConfig)
+  const thresholds = useMemo(
+    () => groupThresholdsByValue(metricMetas, [effectiveMetricId]),
+    [metricMetas, effectiveMetricId]
+  );
+  const colorRules = currentMetric?.colorConfig?.rules;
+
+  /** CSS-классы окраски ячейки по правилам условного форматирования. */
+  const cellColorClass = (item: BreakdownItem | undefined): string | null => {
+    if (!colorRules || colorRules.length === 0) return null;
+    const v = metricValue(item);
+    if (v === null) return null;
+    const rule = colorRules.find(r => checkRule(v, r.operator, r.value, r.value2));
+    return rule ? COLOR_STYLES[rule.color] : null;
+  };
+
   if (rows.length === 0 || dates.length === 0) {
     return (
       <Card className="p-12 text-center text-slate-400">
@@ -237,6 +257,27 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               }
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
+            {thresholds.map((group, gi) => (
+              <ReferenceLine
+                key={`threshold-${gi}`}
+                y={group.y}
+                stroke={group.primaryColor}
+                strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
+                strokeWidth={group.isOverlap ? 2 : 1.5}
+                opacity={0.7}
+                ifOverflow="extendDomain"
+              >
+                <Label
+                  content={(props) => (
+                    <ThresholdLabel
+                      viewBox={props.viewBox as { x: number; y: number; width: number; height: number }}
+                      value={group.y}
+                      group={group}
+                    />
+                  )}
+                />
+              </ReferenceLine>
+            ))}
             {chartLabels.map((label, i) => (
               <Line
                 key={label}
@@ -308,11 +349,21 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                     )}
                   </span>
                 </td>
-                {dates.map(d => (
-                  <td key={d} className="px-4 py-2 text-sm text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                    {metricFormatted(row.cells.get(d))}
-                  </td>
-                ))}
+                {dates.map(d => {
+                  const item = row.cells.get(d);
+                  return (
+                    <td key={d} className="px-4 py-2 text-sm text-right whitespace-nowrap">
+                      <span
+                        className={cn(
+                          'font-mono text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded-md',
+                          cellColorClass(item)
+                        )}
+                      >
+                        {metricFormatted(item)}
+                      </span>
+                    </td>
+                  );
+                })}
                 <td className="px-4 py-2 text-sm text-right font-mono font-semibold text-slate-900 dark:text-slate-100">
                   {formatCompactNumber(row.total)}
                 </td>

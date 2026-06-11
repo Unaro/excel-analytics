@@ -31,8 +31,13 @@ export function checkRule(value: number, operator: ConditionOperator, threshold:
     case '<=': return value <= threshold;
     case '==': return value === threshold;
     case '!=': return value !== threshold;
-    case 'between':
-      return value >= threshold && value <= (threshold2 ?? threshold);
+    case 'between': {
+      // Границы нормализуются: правило работает и при «перепутанных»
+      // min/max (пользователь ввёл 10..5)
+      const lo = Math.min(threshold, threshold2 ?? threshold);
+      const hi = Math.max(threshold, threshold2 ?? threshold);
+      return value >= lo && value <= hi;
+    }
     default: return false;
   }
 }

@@ -157,7 +157,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
       {!isComputing && isTwoDimensional && breakdown && breakdown.length > 0 && (
         <TimeBreakdownSection
           items={breakdown}
-          metricMetas={baseVirtualMetrics}
+          metricMetas={virtualMetrics}
           activeMetricIds={activeMetricIds}
           dimensionTitle={nextLevel?.displayName ?? 'Элемент'}
           dateTitle={

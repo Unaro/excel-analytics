@@ -70,7 +70,17 @@ export const RuleCard = memo(function RuleCard({
         {/* Select оператора */}
         <select
           value={rule.operator}
-          onChange={(e) => onUpdate(rule.id, { operator: e.target.value as ConditionOperator })}
+          onChange={(e) => {
+            const operator = e.target.value as ConditionOperator;
+            // «Между» без инициализации второй границы давало вырожденный
+            // диапазон [value, value]: линия порога строилась, окраска — нет
+            onUpdate(rule.id, {
+              operator,
+              ...(operator === 'between' && rule.value2 === undefined
+                ? { value2: rule.value }
+                : {}),
+            });
+          }}
           className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-xs py-1.5 px-2 w-[100px] focus:ring-1 focus:ring-indigo-500 outline-none"
           {...stopDragEvents}
         >

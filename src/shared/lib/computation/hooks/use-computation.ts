@@ -49,6 +49,12 @@ function isAbortError(err: unknown): boolean {
  *   - Debounce для защиты от spam-запросов
  *   - Автоматическое кэширование через IComputationCache
  *   - Корректную обработку ошибок с фильтрацией AbortError
+ *
+ * Контракт перезапуска: авто-исполнение триггерится ТОЛЬКО изменением
+ * `deps` (контентные хеши) и смены датасета/синхронизации. `buildParams` /
+ * `buildCacheKey` читаются через ref — их identity не влияет на эффект,
+ * поэтому ререндеры вызывающего хука (например, правка условного
+ * форматирования, живущего рядом с данными) не запускают пересчёт.
  */
 export function useComputation({
   activeDatasetId,
@@ -69,6 +75,16 @@ export function useComputation({
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Колбэки в ref: identity buildParams/buildCacheKey не должна
+  // пересоздавать executeInternal и триггерить авто-эффект (п.9 аудита
+  // ядра — двойной триггер и пересчёт при правке условного форматирования)
+  const buildParamsRef = useRef(buildParams);
+  const buildCacheKeyRef = useRef(buildCacheKey);
+  useEffect(() => {
+    buildParamsRef.current = buildParams;
+    buildCacheKeyRef.current = buildCacheKey;
+  });
+
   const engine: IComputeEngine = useMemo(
     () => createComputeEngine(sourceType),
     [sourceType]
@@ -83,8 +99,8 @@ export function useComputation({
     async (force = false): Promise<void> => {
       if (!activeDatasetId || isSyncing) return;
 
-      const params = buildParams();
-      const cacheKey = buildCacheKey();
+      const params = buildParamsRef.current();
+      const cacheKey = buildCacheKeyRef.current();
       if (!params || !cacheKey) return;
 
       const currentVersion = ++requestVersionRef.current;
@@ -96,11 +112,10 @@ export function useComputation({
       abortControllerRef.current = controller;
       const { signal } = controller;
 
-      setIsComputing(true);
       setError(null);
 
       try {
-        // 1. Проверяем кэш
+        // 1. Проверяем кэш — попадание не показывает спиннер вовсе
         if (!force) {
           const cached = await cache.get(cacheKey);
           // Проверка после async-операции
@@ -111,6 +126,8 @@ export function useComputation({
             return;
           }
         }
+
+        setIsComputing(true);
 
         // 2. Инициализируем engine
         await engine.initialize(activeDatasetId);
@@ -140,7 +157,7 @@ export function useComputation({
         setIsComputing(false);
       }
     },
-    [activeDatasetId, isSyncing, buildParams, buildCacheKey, cache, engine]
+    [activeDatasetId, isSyncing, cache, engine]
   );
 
   const execute = useCallback(async (): Promise<void> => {
@@ -156,7 +173,7 @@ export function useComputation({
 
   const recalculate = useCallback(async (): Promise<void> => {
     if (!activeDatasetId) return;
-    const cacheKey = buildCacheKey();
+    const cacheKey = buildCacheKeyRef.current();
     if (cacheKey) {
       try {
         await cache.invalidate(cacheKey);
@@ -165,7 +182,7 @@ export function useComputation({
       }
     }
     await executeInternal(true);
-  }, [activeDatasetId, buildCacheKey, cache, executeInternal]);
+  }, [activeDatasetId, cache, executeInternal]);
 
   // Auto-execute при изменении зависимостей
   useEffect(() => {
