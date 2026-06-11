@@ -1,9 +1,9 @@
 'use client';
 import Link from 'next/link';
-import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useDatasetStore } from '@/entities/dataset';
 import { useDeleteGroup } from '@/features/delete-group';
-import { Plus, Layers, Edit, Trash2, Database } from 'lucide-react';
+import { Plus, Layers, Edit, Trash2, Database, ArrowUpRight } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
@@ -70,7 +70,12 @@ function GroupListContent() {
                 </div>
                 <div>
                   <h3 className="font-bold text-lg text-slate-900 dark:text-white">
-                    {group.name}
+                    <Link
+                      href={`/groups/${group.id}`}
+                      className="hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                    >
+                      {group.name}
+                    </Link>
                   </h3>
                   <div className="flex gap-3 mt-1 text-sm text-slate-500 dark:text-slate-400">
                     <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-xs">
@@ -91,6 +96,16 @@ function GroupListContent() {
                 </div>
               </div>
               <div className="flex items-center gap-3 opacity-70 group-hover:opacity-100 transition-opacity">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                  asChild
+                >
+                  <Link href={`/groups/${group.id}`}>
+                    <ArrowUpRight size={14} className="mr-2" /> Открыть
+                  </Link>
+                </Button>
                 <Button variant="outline" size="sm" asChild>
                   <Link href={`/groups/${group.id}/edit`}>
                     <Edit size={14} className="mr-2" /> Изменить

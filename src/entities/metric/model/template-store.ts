@@ -1,6 +1,7 @@
 // lib/stores/metric-template-store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createMigration } from '@/shared/lib/storage/migration';
 import { nanoid } from 'nanoid';
 import { MetricTemplate } from '@/shared/lib/validators';
 
@@ -97,6 +98,8 @@ export const useMetricTemplateStore = create<MetricTemplateState>()(
     {
       name: 'metric-template-storage',
       version: 1,
+      // v0 (до версионирования) → v1: шаблоны совместимы — переносим как есть.
+      migrate: createMigration({ 1: (state) => state }),
     }
   )
 );

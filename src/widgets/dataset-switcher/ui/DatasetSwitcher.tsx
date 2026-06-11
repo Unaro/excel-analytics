@@ -1,5 +1,6 @@
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import * as Popover from '@radix-ui/react-popover';
@@ -10,34 +11,41 @@ import {
   Loader2, Plus, RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
-import { toast } from 'sonner';
-import { refreshPgDataset } from '@/entities/dataset/model/sync-engine';
+import { toast } from '@/shared/ui/toast';
+import { refreshPgDataset, removeDatasetCompletely } from '@/features/setup-dataset';
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 
 interface DatasetSwitcherProps {
   isDisabled?: boolean;
 }
 
+/**
+ * Индикатор статуса PG-подключения.
+ *
+ * Определён на уровне модуля: объявление компонента внутри рендера
+ * пересоздаёт его тип каждый кадр и сбрасывает state/DOM поддерева.
+ */
+function StatusDot({ status }: { status?: string }) {
+  if (status === 'online') return <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />;
+  if (status === 'offline') return <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)] animate-pulse" />;
+  if (status === 'checking') return <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />;
+  return <span className="w-2 h-2 rounded-full bg-slate-400" />;
+}
+
 export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
   const [open, setOpen] = useState(false);
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const router = useRouter();
   const pathname = usePathname();
 
   const datasets = useDatasetStore(s => s.datasets);
   const activeId = useDatasetStore(s => s.activeDatasetId);
   const switchDataset = useDatasetStore(s => s.switchDataset);
-  const removeDataset = useDatasetStore(s => s.removeDataset);
   const isSyncing = useDatasetStore(s => s.isSyncing);
 
   const activeDataset = activeId ? datasets[activeId] : null;
   const datasetList = Object.values(datasets);
-
-  const StatusDot = ({ status }: { status?: string }) => {
-    if (status === 'online') return <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" />;
-    if (status === 'offline') return <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)] animate-pulse" />;
-    if (status === 'checking') return <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />;
-    return <span className="w-2 h-2 rounded-full bg-slate-400" />;
-  };
 
   const handleSwitch = (id: string) => {
     if (isDisabled) return;
@@ -53,25 +61,28 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
 
   const handleRemove = (id: string, name: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const confirmed = window.confirm(
-      `Удалить датасет "${name}"?\n⚠️ Это удалит только данные.\nНастройки дашбордов, метрики и группы сохранятся.`
-    );
-    if (confirmed) {
-      removeDataset(id);
-      toast.info(`Датасет "${name}" удален`);
-      if (id === activeId) {
-        const remainingIds = Object.keys(datasets).filter(k => k !== id);
-        if (remainingIds.length > 0) {
-          switchDataset(remainingIds[0]);
-        } else {
-          if (pathname?.startsWith('/setup')) {
-            sessionStorage.setItem('setup-step', 'upload');
-          }
-          router.push('/setup');
+    setRemoveTarget({ id, name });
+  };
+
+  const confirmRemove = async () => {
+    if (!removeTarget) return;
+    const { id, name } = removeTarget;
+    // Полная очистка артефактов (DuckDB-таблица, Arrow в IDB, кэш, конфиги)
+    await removeDatasetCompletely(id);
+    toast.info(`Датасет "${name}" удален`);
+    if (id === activeId) {
+      const remainingIds = Object.keys(datasets).filter(k => k !== id);
+      if (remainingIds.length > 0) {
+        switchDataset(remainingIds[0]);
+      } else {
+        if (pathname?.startsWith('/setup')) {
+          sessionStorage.setItem('setup-step', 'upload');
         }
+        router.push('/setup');
       }
-      setOpen(false);
     }
+    setRemoveTarget(null);
+    setOpen(false);
   };
 
   const handleAddNew = () => {
@@ -90,7 +101,7 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
         }
       }
     } catch (err) {
-      console.error('[DatasetSwitcher] Refresh failed:', err);
+      logger.error('[DatasetSwitcher] Refresh failed:', err);
     } finally {
       setRefreshingId(null);
     }
@@ -304,6 +315,14 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
           </div>
         </Popover.Content>
       </Popover.Portal>
+      <ConfirmDialog
+        open={removeTarget !== null}
+        onOpenChange={(v) => !v && setRemoveTarget(null)}
+        title={`Удалить датасет «${removeTarget?.name ?? ''}»?`}
+        description="Будут удалены данные, кэш вычислений и настройки колонок. Настройки дашбордов, метрики и группы сохранятся."
+        variant="destructive"
+        onConfirm={confirmRemove}
+      />
     </Popover.Root>
   );
 }

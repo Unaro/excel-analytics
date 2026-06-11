@@ -1,12 +1,13 @@
 // widgets/dashboard-view/model/use-dashboard-dataset-sync.ts
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { useEffect, useState, useCallback } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
-import { refreshPgDataset } from '@/entities/dataset/model/sync-engine';
+import { refreshPgDataset } from '@/features/setup-dataset';
 import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 
 export function useDashboardDatasetSync(dashboardId: string) {
   const router = useRouter();
@@ -45,7 +46,7 @@ export function useDashboardDatasetSync(dashboardId: string) {
         toast.error('Не удалось обновить датасет');
       }
     } catch (err) {
-      console.error('[DashboardDatasetSync] Refresh failed:', err);
+      logger.error('[DashboardDatasetSync] Refresh failed:', err);
       toast.error('Ошибка синхронизации');
     } finally {
       setRefreshingDataset(false);

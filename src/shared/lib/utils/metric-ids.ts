@@ -14,6 +14,11 @@ export function vmDedupeKey(
   return `${groupId}::${metricId}::${name}::${format}::${decimals}::${unit ?? ''}`;
 }
 
+/**
+ * Строит детерминированный ID виртуальной метрики из ключа дедупликации
+ * (sha256, первые 16 hex-символов) — одинаковые метрики при повторном
+ * импорте получают одинаковые ID.
+ */
 export function buildDeterministicVmId(key: string): string {
   const hash = createHash('sha256').update(key).digest('hex').slice(0, 16);
   return `vm-${hash}`;

@@ -3,8 +3,8 @@
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { Layers, Filter, Loader2 } from 'lucide-react';
-import { MetricCell } from '@/entities/metric/ui/metric-cell';
-import { MetricConfigPopover } from '@/features/ConfigureTableMetric';
+import { MetricCell } from '@/entities/metric';
+import { MetricConfigPopover } from '@/features/configure-table-metric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
 import { GroupComputationResult } from '@/entities/metric';

@@ -1,19 +1,20 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useDatasetStore } from '@/entities/dataset';
 import { useHierarchyStore, type HierarchyLevel } from '@/entities/hierarchy';
-import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useMetricTemplateStore, type IndicatorGroup } from '@/entities/metric';
-import { useColumnConfigStore } from '@/entities/columnConfig';
-import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
+import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import {
   buildVirtualMetric,
   useDatasetInfo,
-} from '@/entities/groupView';
+} from '@/entities/group-view';
 import { useShallow } from 'zustand/react/shallow';
 import type { CacheKey } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
-import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
+import type { ClientComputeParams, DateGranularity } from '@/shared/lib/computation/lib/types';
 import type {
   GroupMetric,
   HierarchyFilterValue,
@@ -22,7 +23,7 @@ import type {
   VirtualMetric,
 } from '@/shared/lib/validators';
 import type { ColumnConfig } from '@/shared/lib/types';
-import { useComputation } from '@/widgets/shared/model/use-computation';
+import { useComputation } from '@/shared/lib/computation/hooks/use-computation';
 import type { GroupComputationResult } from '@/shared/lib/types/computation';
 
 const EMPTY_LEVELS: HierarchyLevel[] = [];
@@ -42,6 +43,13 @@ export interface GroupBreakdownResult {
   drillDown: (label: string) => void;
   resetToLevel: (levelIndex: number) => void;
   resetAll: () => void;
+  /** Первая колонка датасета с классификацией «Дата» (null — нет таких). */
+  dateColumn: ColumnConfig | null;
+  /** Активная размерность временно́й группировки (null — только иерархия). */
+  dateGranularity: DateGranularity | null;
+  setDateGranularity: (g: DateGranularity | null) => void;
+  /** true — двумерный режим: следующий уровень иерархии × время. */
+  isTwoDimensional: boolean;
 }
 
 export function useGroupBreakdown(
@@ -49,6 +57,7 @@ export function useGroupBreakdown(
   initialPath: HierarchyFilterValue[] = []
 ): GroupBreakdownResult {
   const [currentPath, setCurrentPath] = useState<HierarchyFilterValue[]>(initialPath);
+  const [dateGranularity, setDateGranularity] = useState<DateGranularity | null>(null);
 
   const {
     activeDatasetId,
@@ -61,6 +70,15 @@ export function useGroupBreakdown(
 
   const group = useIndicatorGroupStore(s => s.getGroup(groupId));
   const templates = useMetricTemplateStore(useShallow(s => s.templates)) ?? EMPTY_TEMPLATES;
+
+  // Авто-переключение на датасет группы — как на странице дашборда
+  // (use-dashboard-dataset-sync): страница группы всегда работает
+  // с привязанными данными, а не со случайно активным датасетом.
+  useEffect(() => {
+    if (!group?.datasetId) return;
+    if (group.datasetId === activeDatasetId) return;
+    useDatasetStore.getState().switchDataset(group.datasetId);
+  }, [group?.datasetId, activeDatasetId]);
 
   const levels = useHierarchyStore(
     useShallow(s => (activeDatasetId ? s.getLevels(activeDatasetId) : EMPTY_LEVELS))
@@ -115,7 +133,19 @@ export function useGroupBreakdown(
   }, [group, templates]);
 
   const filtersHash = useMemo(() => generateFiltersHash(currentPath), [currentPath]);
+
+  // Временна́я группировка ДОБАВЛЯЕТСЯ к текущему уровню иерархии:
+  //  - есть следующий уровень → двумерный режим (категория × время);
+  //  - достигнут лист → одномерная разбивка по временны́м интервалам.
+  // Текущие фильтры пути продолжают применяться в WHERE.
+  const dateColumn = useMemo(
+    () => columnConfigs.find(c => c.classification === 'date') ?? null,
+    [columnConfigs]
+  );
+  const isTimeMode = dateGranularity !== null && dateColumn !== null;
+  const isTwoDimensional = isTimeMode && nextLevel !== null;
   const groupByColumn = nextLevel?.columnName;
+  const groupByDateColumn = isTimeMode ? dateColumn.columnName : undefined;
 
   const configHash = useMemo(() => {
     return (
@@ -124,9 +154,11 @@ export function useGroupBreakdown(
         metricTemplates: templates,
         dashboardGroupsConfig,
         virtualMetrics,
-      }) + (groupByColumn ? `:gb:${groupByColumn}` : '')
+      }) +
+      (groupByColumn ? `:gb:${groupByColumn}` : '') +
+      (isTimeMode ? `:dc:${groupByDateColumn}:dg:${dateGranularity}` : '')
     );
-  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn]);
+  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn, isTimeMode, groupByDateColumn, dateGranularity]);
 
   const buildParams = useCallback((): ClientComputeParams | null => {
     if (!activeDatasetId || !group) return null;
@@ -141,6 +173,8 @@ export function useGroupBreakdown(
       metricTemplates: templates,
       virtualMetrics,
       groupByColumn: groupByColumn ?? undefined,
+      groupByDateColumn,
+      groupByDateGranularity: isTimeMode ? dateGranularity : undefined,
       validColumns,
       pgSchema,
       pgTable,
@@ -148,7 +182,8 @@ export function useGroupBreakdown(
   }, [
     activeDatasetId, group, groupId, encryptedConnection, currentPath,
     dashboardGroupsConfig, templates, virtualMetrics,
-    groupByColumn, validColumns, pgSchema, pgTable,
+    groupByColumn, groupByDateColumn, isTimeMode, dateGranularity,
+    validColumns, pgSchema, pgTable,
   ]);
 
   const buildCacheKey = useCallback((): CacheKey | null => {
@@ -174,6 +209,8 @@ export function useGroupBreakdown(
 
   const drillDown = useCallback(
     (label: string) => {
+      // В двумерном режиме label — значение уровня иерархии, спуск валиден;
+      // в режиме «только время» nextLevel === null, и спуск невозможен.
       if (!nextLevel) return;
       const newFilter: HierarchyFilterValue = {
         levelId: nextLevel.id,
@@ -208,5 +245,9 @@ export function useGroupBreakdown(
     drillDown,
     resetToLevel,
     resetAll,
+    dateColumn,
+    dateGranularity,
+    setDateGranularity,
+    isTwoDimensional,
   };
 }

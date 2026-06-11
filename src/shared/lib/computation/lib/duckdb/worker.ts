@@ -1,8 +1,9 @@
 /// <reference lib="webworker" />
 
+import { logger } from '@/shared/lib/logger';
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { tableFromIPC, tableFromJSON } from 'apache-arrow';
-import { compileQuery } from '../query-compiler';
+import { compileQuery, BREAKDOWN_LIMIT } from '../query-compiler';
 import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
 import { getActiveFilter, formatValue } from '../utils';
 import { transliterate } from '@/shared/lib/utils/translit';
@@ -118,6 +119,11 @@ export interface ReloadArrowPayload {
   buffer: Uint8Array;
 }
 
+export interface CancelPayload {
+  /** id COMPUTE-сообщения, результат которого больше не нужен. */
+  targetId: number;
+}
+
 export type WorkerMessage =
   | { type: 'REGISTER_ARROW'; id: number; payload: RegisterArrowPayload }
   | { type: 'COMPUTE'; id: number; payload: ComputePayload }
@@ -129,6 +135,7 @@ export type WorkerMessage =
   | { type: 'CHECK_TABLE'; id: number; payload: CheckTablePayload }
   | { type: 'RELOAD_ARROW'; id: number; payload: ReloadArrowPayload }
   | { type: 'EXPORT_ARROW_CHUNKED'; id: number; payload: ExportArrowPayload }
+  | { type: 'CANCEL'; id: number; payload: CancelPayload }
 
 // ─────────────────────────────────────────────────────────────
 // 2. ХЕЛПЕРЫ
@@ -173,7 +180,7 @@ async function loadWorkerScript(workerUrl: string): Promise<Worker> {
   try {
     return new Worker(workerUrl);
   } catch (directErr) {
-    console.warn('[DuckDB] Direct worker load failed, using blob fallback:', directErr);
+    logger.warn('[DuckDB] Direct worker load failed, using blob fallback:', directErr);
   }
   const response = await fetch(workerUrl);
   if (!response.ok) {
@@ -194,21 +201,21 @@ async function initDB(): Promise<void> {
   initPromise = (async () => {
     try {
       const worker = await loadWorkerScript(EH_BUNDLE.mainWorker);
-      const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
-      db = new duckdb.AsyncDuckDB(logger, worker);
+      const duckdbLogger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
+      db = new duckdb.AsyncDuckDB(duckdbLogger, worker);
       await db.instantiate(EH_BUNDLE.mainModule);
       conn = await db.connect();
-      console.log('[DuckDB] ✅ Initialized with EH bundle');
+      logger.debug('[DuckDB] ✅ Initialized with EH bundle');
       preparedStatementCache.bind(conn);
     } catch (ehError) {
-      console.warn('[DuckDB] EH bundle failed, falling back to MVP:', ehError);
+      logger.warn('[DuckDB] EH bundle failed, falling back to MVP:', ehError);
       try {
         const worker = await loadWorkerScript(MVP_BUNDLE.mainWorker);
-        const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
-        db = new duckdb.AsyncDuckDB(logger, worker);
+        const duckdbLogger = new duckdb.ConsoleLogger(duckdb.LogLevel.WARNING);
+        db = new duckdb.AsyncDuckDB(duckdbLogger, worker);
         await db.instantiate(MVP_BUNDLE.mainModule);
         conn = await db.connect();
-        console.log('[DuckDB] ✅ Initialized with MVP bundle (fallback)');
+        logger.debug('[DuckDB] ✅ Initialized with MVP bundle (fallback)');
       } catch (mvpError) {
         initPromise = null;
         throw new Error(
@@ -227,8 +234,28 @@ async function initDB(): Promise<void> {
 // 4. ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ
 // ─────────────────────────────────────────────────────────────
 
+// id COMPUTE-задач, отменённых менеджером (AbortSignal в хуках).
+// Пока COMPUTE ждёт `await conn.query()` (SQL исполняется во внутреннем
+// воркере duckdb-wasm), наш event loop свободен и успевает принять CANCEL —
+// контрольные точки в COMPUTE прерывают задачу между этапами.
+const cancelledComputeIds = new Set<number>();
+
+function markCancelled(targetId: number): void {
+  // CANCEL для уже завершённой задачи оставил бы запись навсегда —
+  // страхуемся от неограниченного роста.
+  if (cancelledComputeIds.size > 500) cancelledComputeIds.clear();
+  cancelledComputeIds.add(targetId);
+}
+
 self.onmessage = async (e: MessageEvent) => {
   const { type, payload, id } = e.data as WorkerMessage;
+
+  // CANCEL обрабатываем до initDB: отмена не должна ждать инициализации.
+  // Ответ не шлём — менеджер уже отклонил промис задачи на своей стороне.
+  if (type === 'CANCEL') {
+    markCancelled(payload.targetId);
+    return;
+  }
 
   try {
     await initDB();
@@ -261,6 +288,16 @@ self.onmessage = async (e: MessageEvent) => {
       const { dashboardId, dashboardGroupsConfig, virtualMetrics, filters, groupByColumn } = params;
       const tableName = buildTableName(params.datasetId);
 
+      // Контрольная точка отмены: true — задача снята, ответ уже отправлен.
+      const abortIfCancelled = (): boolean => {
+        if (!cancelledComputeIds.has(id)) return false;
+        cancelledComputeIds.delete(id);
+        self.postMessage({ id, success: false, error: 'AbortError' });
+        return true;
+      };
+
+      if (abortIfCancelled()) return;
+
       // ─── ПОЛУЧАЕМ РЕАЛЬНУЮ СХЕМУ ИЗ DUCKDB ─────────────────
       let effectiveParams = params;
       try {
@@ -268,7 +305,7 @@ self.onmessage = async (e: MessageEvent) => {
         const realColumns = schemaResult.toArray().map(
           (r) => (r as Record<string, unknown>)['column_name'] as string
         );
-        console.log(
+        logger.debug(
           `[Worker] 🔍 DESCRIBE ${tableName}: ${realColumns.length} columns`,
           realColumns
         );
@@ -276,7 +313,7 @@ self.onmessage = async (e: MessageEvent) => {
           effectiveParams = { ...params, validColumns: realColumns };
         }
       } catch (schemaErr) {
-        console.warn(
+        logger.warn(
           `[Worker] ⚠️ DESCRIBE failed for ${tableName}, falling back to params.validColumns:`,
           schemaErr
         );
@@ -284,7 +321,10 @@ self.onmessage = async (e: MessageEvent) => {
 
       const compiled = compileQuery(effectiveParams, 'duckdb');
 
-      console.log(`[Worker] 📝 Compiled SQL (${compiled.sql.length} chars):`, compiled.sql.slice(0, 200) + '...');
+      logger.debug(`[Worker] 📝 Compiled SQL (${compiled.sql.length} chars):`, compiled.sql.slice(0, 200) + '...');
+
+      // Отмена могла прийти, пока ждали DESCRIBE — не запускаем тяжёлый SQL
+      if (abortIfCancelled()) return;
 
       const prepared = await preparedStatementCache.getOrCreate(compiled.sql);
       let table: Awaited<ReturnType<duckdb.AsyncDuckDBConnection['query']>>;
@@ -295,7 +335,19 @@ self.onmessage = async (e: MessageEvent) => {
         table = await conn!.query(compiled.sql);
       }
 
-      const rows = table.toArray() as Record<string, unknown>[];
+      // SQL уже исполнен, но пост-обработка и сериализация результата
+      // отменённой задачи никому не нужны
+      if (abortIfCancelled()) return;
+
+      const allRows = table.toArray() as Record<string, unknown>[];
+      // Есть ли группировка (категориальная и/или временна́я)
+      const hasGrouping = !!(groupByColumn || params.groupByDateColumn);
+      // SQL запрашивает BREAKDOWN_LIMIT + 1 строк: наличие лишней строки —
+      // признак усечения. Обрезаем ДО пост-обработки, чтобы сводка («Итого»)
+      // и breakdown считались по одному набору строк.
+      const breakdownTruncated =
+        hasGrouping && allRows.length > BREAKDOWN_LIMIT;
+      const rows = breakdownTruncated ? allRows.slice(0, BREAKDOWN_LIMIT) : allRows;
       const processedRows = postProcessAggregates(rows, compiled);
 
       const computeTotalRecordCount = (sqlRows: Record<string, unknown>[]): number => {
@@ -316,7 +368,7 @@ self.onmessage = async (e: MessageEvent) => {
         .map(cfg => {
           const groupDef = effectiveParams.groups.find(g => g.id === cfg.groupId);
 
-          const breakdownItems = groupByColumn
+          const breakdownItems = hasGrouping
             ? processedRows
                 .map((processed, idx) => {
                   const rawLabel = rows[idx]['_group_label'];
@@ -324,6 +376,11 @@ self.onmessage = async (e: MessageEvent) => {
                     rawLabel === null || rawLabel === undefined
                       ? ''
                       : String(rawLabel).trim();
+                  const rawDate = rows[idx]['_date_label'];
+                  const dateLabel =
+                    rawDate === null || rawDate === undefined
+                      ? undefined
+                      : String(rawDate).trim();
                   const rowRc = rows[idx]['_record_count'];
                   const recordCount =
                     typeof rowRc === 'number'
@@ -360,13 +417,13 @@ self.onmessage = async (e: MessageEvent) => {
                       sourceMetricId: binding.metricId,
                     };
                   });
-                  return { label, recordCount, virtualMetrics: groupVirtualMetrics };
+                  return { label, dateLabel, recordCount, virtualMetrics: groupVirtualMetrics };
                 })
                 .filter(item => item.label !== '')
             : undefined;
 
           let summaryProcessed: Record<string, number | null>;
-          if (groupByColumn) {
+          if (hasGrouping) {
             summaryProcessed = aggregateProcessedRows(
               processedRows,
               compiled.aggregateMetadata,
@@ -413,6 +470,7 @@ self.onmessage = async (e: MessageEvent) => {
             groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
             virtualMetrics: groupVirtualMetrics,
             breakdown: breakdownItems,
+            breakdownTruncated,
             recordCount: computeTotalRecordCount(rows),
             computedAt: Date.now(),
           };
@@ -445,7 +503,7 @@ self.onmessage = async (e: MessageEvent) => {
           throw new Error('Файл пуст или не содержит валидных данных');
         }
 
-        console.log(
+        logger.debug(
           `[Worker] 📄 Parsed ${flatRows.length} rows, ${headers.length} columns from ${fileName}`
         );
 
@@ -518,13 +576,13 @@ self.onmessage = async (e: MessageEvent) => {
             toNumber((countResult.toArray()[0] as Record<string, unknown>).cnt) ?? 0
           );
           
-          console.log(
+          logger.debug(
             `[Worker] ✅ Batched insert completed: ${totalBatches} batches, ` +
             `${actualRows.toLocaleString()} rows in table (expected: ${flatRows.length.toLocaleString()})`
           );
           
           if (actualRows !== flatRows.length) {
-            console.warn(
+            logger.warn(
               `[Worker] ⚠️ Row count mismatch! Expected ${flatRows.length}, got ${actualRows}. ` +
               `Some batches may have failed silently.`
             );
@@ -651,7 +709,7 @@ self.onmessage = async (e: MessageEvent) => {
           },
         });
       } catch (err) {
-        console.error('[Worker] IMPORT_EXCEL failed:', err);
+        logger.error('[Worker] IMPORT_EXCEL failed:', err);
         self.postMessage({
           id,
           success: false,
@@ -707,7 +765,7 @@ self.onmessage = async (e: MessageEvent) => {
 
         self.postMessage({ id, success: true, result: rows });
       } catch (err) {
-        console.error('[Worker] GET_PREVIEW failed:', err);
+        logger.error('[Worker] GET_PREVIEW failed:', err);
         self.postMessage({
           id,
           success: false,
@@ -750,7 +808,7 @@ self.onmessage = async (e: MessageEvent) => {
           arrowBuffer.buffer as ArrayBuffer,
         ]);
       } catch (err) {
-        console.error('[Worker] EXPORT_ARROW failed:', err);
+        logger.error('[Worker] EXPORT_ARROW failed:', err);
         self.postMessage({
           id,
           success: false,
@@ -768,10 +826,10 @@ self.onmessage = async (e: MessageEvent) => {
       try {
         await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
         preparedStatementCache.invalidateForTable(tableName);
-        console.log(`[Worker] Dropped table: ${tableName}`);
+        logger.debug(`[Worker] Dropped table: ${tableName}`);
         self.postMessage({ id, success: true });
       } catch (err) {
-        console.error('[Worker] DROP_TABLE failed:', err);
+        logger.error('[Worker] DROP_TABLE failed:', err);
         self.postMessage({
           id,
           success: false,
@@ -818,7 +876,7 @@ self.onmessage = async (e: MessageEvent) => {
                 ? Number(cnt) > 0
                 : false;
         } catch (checkErr) {
-          console.warn('[Worker] PING table check failed:', checkErr);
+          logger.warn('[Worker] PING table check failed:', checkErr);
           tableExists = false;
         }
       }
@@ -882,7 +940,7 @@ self.onmessage = async (e: MessageEvent) => {
           chunkIndex++;
         }
       } catch (err) {
-        console.error('[Worker] EXPORT_ARROW_CHUNKED failed:', err);
+        logger.error('[Worker] EXPORT_ARROW_CHUNKED failed:', err);
         self.postMessage({
           id,
           success: false,
@@ -921,7 +979,7 @@ self.onmessage = async (e: MessageEvent) => {
 
         self.postMessage({ id, success: true, result: { exists } });
       } catch (err) {
-        console.error('[Worker] CHECK_TABLE failed:', err);
+        logger.error('[Worker] CHECK_TABLE failed:', err);
         self.postMessage({ id, success: true, result: { exists: false } });
       }
       return;
@@ -943,7 +1001,7 @@ self.onmessage = async (e: MessageEvent) => {
       const arrowTable = tableFromIPC(buffer);
       await conn.insertArrowTable(arrowTable, { name: tableName });
 
-      console.log(`[Worker] ♻️ Table ${tableName} reloaded from Arrow buffer`);
+      logger.debug(`[Worker] ♻️ Table ${tableName} reloaded from Arrow buffer`);
       self.postMessage({ id, success: true });
       return;
     }
@@ -952,11 +1010,11 @@ self.onmessage = async (e: MessageEvent) => {
     const isCatalogError = message.includes('Catalog Error');
 
     if (isCatalogError) {
-      console.warn(
+      logger.warn(
         `[Worker] Transient table error (will auto-retry): ${message.split('\n')[0]}`
       );
     } else {
-      console.error('[Worker] Query failed:', error);
+      logger.error('[Worker] Query failed:', error);
     }
 
     self.postMessage({ id, success: false, error: message });

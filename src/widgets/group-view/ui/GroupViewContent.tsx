@@ -11,6 +11,20 @@ import { sortBreakdownItems as sortBreakdown } from '../lib/sort-breakdown';
 import { useGroupViewState } from '../model/use-group-view-state';
 import { useGroupPath } from '@/shared/lib/hooks/use-group-path';
 import { useGroupBreakdown } from '../model/use-group-breakdown';
+import { CalendarClock } from 'lucide-react';
+import { Select, SelectOption } from '@/shared/ui/select';
+import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
+import type { DateGranularity } from '@/shared/lib/computation/lib/types';
+
+/** Подписи размерностей временно́й группировки. */
+const GRANULARITY_LABELS: Record<DateGranularity, string> = {
+  minute: 'минуты',
+  hour: 'часы',
+  day: 'дни',
+  week: 'недели',
+  month: 'месяцы',
+  year: 'годы',
+};
 
 interface GroupViewContentProps {
   groupId: string;
@@ -32,6 +46,10 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     drillDown,
     resetToLevel,
     resetAll,
+    dateColumn,
+    dateGranularity,
+    setDateGranularity,
+    isTwoDimensional,
   } = useGroupBreakdown(groupId, path);
 
   const {
@@ -60,10 +78,19 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     }
   }, [currentPath, path, setPath]);
 
+  // Одномерные потребители не должны видеть устаревшие 2-D строки:
+  // при выключении разбивки по дате isTwoDimensional меняется мгновенно,
+  // а result обновляется асинхронно — без фильтра label'ы дублируются
+  // (один элемент × каждый интервал) и ломают key-семантику таблицы.
+  const oneDimBreakdown = useMemo(
+    () => breakdown?.filter(item => item.dateLabel === undefined),
+    [breakdown]
+  );
+
   const chartBreakdown = useMemo(() => {
-    if (!breakdown || !sortConfig) return breakdown ?? [];
-    return sortBreakdown(breakdown, sortConfig.key, sortConfig.direction);
-  }, [breakdown, sortConfig]);
+    if (!oneDimBreakdown || !sortConfig) return oneDimBreakdown ?? [];
+    return sortBreakdown(oneDimBreakdown, sortConfig.key, sortConfig.direction);
+  }, [oneDimBreakdown, sortConfig]);
 
   const summaryVirtualMetrics = summary?.virtualMetrics ?? [];
 
@@ -88,14 +115,37 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         onToggleMetric={handleToggleMetric}
       />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-slate-900 dark:text-white">
           Визуализации
         </h2>
-        <ChartTypeSelector
-          selected={chartTypes}
-          onChange={handleChartTypesChange}
-        />
+        <div className="flex items-center gap-3">
+          {dateColumn && (
+            <div className="flex items-center gap-2">
+              <CalendarClock size={16} className="text-indigo-500 shrink-0" />
+              <Select
+                className="w-44 h-9 text-sm"
+                value={dateGranularity ?? ''}
+                onChange={e =>
+                  setDateGranularity(
+                    (e.target.value || null) as DateGranularity | null
+                  )
+                }
+              >
+                <SelectOption value="">Без разбивки по дате</SelectOption>
+                {(Object.keys(GRANULARITY_LABELS) as DateGranularity[]).map(g => (
+                  <SelectOption key={g} value={g}>
+                    + по дате: {GRANULARITY_LABELS[g]}
+                  </SelectOption>
+                ))}
+              </Select>
+            </div>
+          )}
+          <ChartTypeSelector
+            selected={chartTypes}
+            onChange={handleChartTypesChange}
+          />
+        </div>
       </div>
 
       {error && (
@@ -112,15 +162,38 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         </div>
       )}
 
-      {!isComputing && breakdown && breakdown.length > 0 && (
+      {/* Двумерный режим: иерархия × время — pivot + линии */}
+      {!isComputing && isTwoDimensional && breakdown && breakdown.length > 0 && (
+        <TimeBreakdownSection
+          items={breakdown}
+          metricMetas={virtualMetrics}
+          activeMetricIds={activeMetricIds}
+          dimensionTitle={nextLevel?.displayName ?? 'Элемент'}
+          dateTitle={
+            dateColumn && dateGranularity
+              ? `${dateColumn.displayName} · ${GRANULARITY_LABELS[dateGranularity]}`
+              : 'Дата'
+          }
+          truncated={summary?.breakdownTruncated}
+          onRowClick={drillDown}
+        />
+      )}
+
+      {/* Одномерные режимы: иерархия ИЛИ время (на листе) */}
+      {!isComputing && !isTwoDimensional && oneDimBreakdown && oneDimBreakdown.length > 0 && (
         <GroupBreakdownTable
-          breakdown={breakdown}
+          breakdown={oneDimBreakdown}
           sortConfig={sortConfig}
           onSortChange={setSortConfig}
           summary={summary}
           virtualMetrics={summaryVirtualMetrics}
           metricMetas={baseVirtualMetrics}
-          nextLevel={nextLevel}
+          nextLevel={dateGranularity ? null : nextLevel}
+          dimensionLabel={
+            dateGranularity && dateColumn
+              ? `${dateColumn.displayName} · ${GRANULARITY_LABELS[dateGranularity]}`
+              : undefined
+          }
           onDrillDown={drillDown}
           activeMetricIds={activeMetricIds}
           groupId={groupId}
@@ -128,7 +201,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         />
       )}
 
-      {!isComputing && chartBreakdown.length > 0 && (
+      {!isComputing && !isTwoDimensional && chartBreakdown.length > 0 && (
         <GroupChartsPanel
           breakdown={chartBreakdown}
           virtualMetrics={summaryVirtualMetrics}

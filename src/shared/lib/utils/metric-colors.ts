@@ -1,5 +1,5 @@
 import { ConditionOperator } from "@/shared/ui/rule-card";
-import { FormattingRule } from "./fortmating-rules";
+import { FormattingRule } from "./formatting-rules";
 
 export const COLOR_STYLES: Record<MetricColor, string> = {
   emerald: "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20",
@@ -19,6 +19,10 @@ export const METRIC_COLOR_HEX: Record<MetricColor, string> = {
   slate:   '#94a3b8',
 };
 
+/**
+ * Проверяет значение против оператора правила условного форматирования.
+ * `between` — включающий диапазон [threshold, threshold2].
+ */
 export function checkRule(value: number, operator: ConditionOperator, threshold: number, threshold2?: number): boolean {
   switch (operator) {
     case '>': return value > threshold;
@@ -27,8 +31,13 @@ export function checkRule(value: number, operator: ConditionOperator, threshold:
     case '<=': return value <= threshold;
     case '==': return value === threshold;
     case '!=': return value !== threshold;
-    case 'between':
-      return value >= threshold && value <= (threshold2 ?? threshold);
+    case 'between': {
+      // Границы нормализуются: правило работает и при «перепутанных»
+      // min/max (пользователь ввёл 10..5)
+      const lo = Math.min(threshold, threshold2 ?? threshold);
+      const hi = Math.max(threshold, threshold2 ?? threshold);
+      return value >= lo && value <= hi;
+    }
     default: return false;
   }
 }

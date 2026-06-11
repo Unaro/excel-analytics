@@ -5,12 +5,15 @@ import { useMetricTemplateStore } from '@/entities/metric';
 import { Plus, Trash2, Calculator, FunctionSquare } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
-import { toast } from 'sonner';
-import { TemplateForm } from '@/features/CreateMetricTemplate';
+import { toast } from '@/shared/ui/toast';
+import { TemplateForm } from '@/features/metric-template';
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 
 export function TemplateManager() {
-  const { templates, deleteTemplate } = useMetricTemplateStore();
+  const templates = useMetricTemplateStore(s => s.templates);
+  const deleteTemplate = useMetricTemplateStore(s => s.deleteTemplate);
   const [isCreating, setIsCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   return (
     <div className="space-y-6">
@@ -60,13 +63,7 @@ export function TemplateManager() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                onClick={() => {
-                  const isConfirmed = confirm(`Вы уверены, что хотите удалить шаблон "${template.name}"?`);
-                  if (isConfirmed) {
-                    deleteTemplate(template.id);
-                    toast.success('Шаблон удален');
-                  }
-                }}
+                onClick={() => setDeleteTarget({ id: template.id, name: template.name })}
               >
                 <Trash2 size={14} />
               </Button>
@@ -74,6 +71,21 @@ export function TemplateManager() {
           </Card>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(v) => !v && setDeleteTarget(null)}
+        title={`Удалить шаблон «${deleteTarget?.name ?? ''}»?`}
+        description="Метрики групп, использующие этот шаблон, перестанут вычисляться."
+        variant="destructive"
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteTemplate(deleteTarget.id);
+            toast.success('Шаблон удален');
+            setDeleteTarget(null);
+          }
+        }}
+      />
     </div>
   );
 }

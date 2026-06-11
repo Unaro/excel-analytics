@@ -3,7 +3,7 @@
 import { useCallback, useRef } from 'react';
 import { useConfigPersistence } from '@/features/config-persistence';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 
 interface SetupWizardActionsParams {
   setStep: (step: 'manager' | 'upload' | 'columns') => void;

@@ -9,6 +9,14 @@ export interface PgConnectionConfig {
   user: string;
   password: string;
   ssl?: boolean;
+  /**
+   * Отключает проверку TLS-сертификата сервера (rejectUnauthorized: false).
+   *
+   * Опасно: открывает MITM-атаку на соединение. Допустимо только для
+   * самоподписанных сертификатов в доверенной сети и требует явного
+   * согласия пользователя (чекбокс с предупреждением в форме подключения).
+   */
+  sslAllowInvalidCerts?: boolean;
 }
 
 function tryParseFloat(val: string): number | null {
@@ -46,6 +54,29 @@ export function normalizePgRow(row: Record<string, unknown>): DatasetRow {
   return normalized;
 }
 
+/**
+ * Выполняет операцию с PG-клиентом, гарантированно закрывая соединение.
+ *
+ * Единая точка управления жизненным циклом соединения для Server Actions.
+ */
+export async function withPgClient<T>(
+  config: PgConnectionConfig,
+  fn: (sql: ReturnType<typeof createPgClient>) => Promise<T>
+): Promise<T> {
+  let sql: ReturnType<typeof createPgClient> | null = null;
+  try {
+    sql = createPgClient(config);
+    return await fn(sql);
+  } finally {
+    if (sql) {
+      await sql.end({ timeout: 2 }).catch(() => {});
+    }
+  }
+}
+
+/**
+ * Создаёт клиент подключения к PostgreSQL.
+ */
 export function createPgClient(config: PgConnectionConfig) {
   return postgres({
     host: config.host,
@@ -53,7 +84,11 @@ export function createPgClient(config: PgConnectionConfig) {
     database: config.database,
     user: config.user,
     password: config.password,
-    ssl: config.ssl ? { rejectUnauthorized: false } : false,
+    // Сертификат проверяется по умолчанию; отключение проверки — только
+    // явным opt-out (sslAllowInvalidCerts) с предупреждением в UI.
+    ssl: config.ssl
+      ? { rejectUnauthorized: !config.sslAllowInvalidCerts }
+      : false,
     max: 1,
     idle_timeout: 2,
     connect_timeout: 20,

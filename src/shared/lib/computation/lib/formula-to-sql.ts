@@ -1,14 +1,43 @@
-import {
-  parse,
-  MathNode,
-  FunctionNode,
-  OperatorNode,
-  ParenthesisNode,
-  ConstantNode,
-  SymbolNode,
-  ConditionalNode,
-} from 'mathjs';
+import { parse, MathNode } from 'mathjs';
 import type { ComputeDialect } from './types';
+
+// ─────────────────────────────────────────────────────────────
+// Структурные контракты AST-нод mathjs.
+//
+// Диспетчеризация идёт по строковому полю `node.type` (стабильная
+// часть API mathjs), а НЕ по instanceof: классы нод ломаются при
+// минификации и не гарантированы между версиями библиотеки.
+// Интерфейсы ниже описывают только используемые поля.
+// ─────────────────────────────────────────────────────────────
+
+interface ConstantNodeShape {
+  value: unknown;
+}
+
+interface SymbolNodeShape {
+  name: string;
+}
+
+interface OperatorNodeShape {
+  op: string;
+  fn: string;
+  args: MathNode[];
+}
+
+interface FunctionNodeShape {
+  fn: MathNode;
+  args: MathNode[];
+}
+
+interface ParenthesisNodeShape {
+  content: MathNode;
+}
+
+interface ConditionalNodeShape {
+  condition: MathNode;
+  trueExpr: MathNode;
+  falseExpr: MathNode;
+}
 
 // ─────────────────────────────────────────────────────────────
 // Публичные типы
@@ -104,13 +133,16 @@ function isValidSqlConstant(
 }
 
 /**
- * Проверяет, что fn в FunctionNode — это статический SymbolNode (имя функции).
+ * Проверяет, что fn в FunctionNode — это статический символ (имя функции).
  * mathjs допускает dynamic calls (fn как expression), но SQL их не поддерживает.
  */
 function isStaticFunctionCall(
   fn: MathNode
-): fn is SymbolNode & { name: string } {
-  return fn instanceof SymbolNode && typeof fn.name === 'string';
+): fn is MathNode & SymbolNodeShape {
+  return (
+    fn.type === 'SymbolNode' &&
+    typeof (fn as unknown as SymbolNodeShape).name === 'string'
+  );
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -133,28 +165,33 @@ export class FormulaToSqlCompiler {
   }
 
   // ─── Dispatcher ───────────────────────────────────────────
-  // instanceof-проверки гарантируют наличие полей нод.
-  // Обращаемся к полям напрямую — без промежуточных интерфейсов.
+  // Диспетчеризация по node.type (строковый дискриминатор mathjs):
+  // устойчиво к минификации и смене версии библиотеки, в отличие
+  // от instanceof. Один неопознанный узел раньше ронял ВСЕ
+  // calculated-метрики в медленный mathjs-fallback (п.12 аудита).
   private visit(node: MathNode): string {
-    if (node instanceof ConstantNode) {
-      return this.visitConstant(node.value);
+    switch (node.type) {
+      case 'ConstantNode':
+        return this.visitConstant((node as unknown as ConstantNodeShape).value);
+      case 'SymbolNode':
+        return this.visitSymbol((node as unknown as SymbolNodeShape).name);
+      case 'OperatorNode': {
+        const op = node as unknown as OperatorNodeShape;
+        return this.visitOperator(op.op, op.fn, op.args);
+      }
+      case 'FunctionNode': {
+        const fn = node as unknown as FunctionNodeShape;
+        return this.visitFunction(fn.fn, fn.args);
+      }
+      case 'ParenthesisNode':
+        return `(${this.visit((node as unknown as ParenthesisNodeShape).content)})`;
+      case 'ConditionalNode': {
+        const cond = node as unknown as ConditionalNodeShape;
+        return this.visitConditional(cond.condition, cond.trueExpr, cond.falseExpr);
+      }
+      default:
+        throw new Error(`Unsupported AST node type: "${node.type}"`);
     }
-    if (node instanceof SymbolNode) {
-      return this.visitSymbol(node.name);
-    }
-    if (node instanceof OperatorNode) {
-      return this.visitOperator(node.op, node.fn, node.args);
-    }
-    if (node instanceof FunctionNode) {
-      return this.visitFunction(node.fn, node.args);
-    }
-    if (node instanceof ParenthesisNode) {
-      return `(${this.visit(node.content)})`;
-    }
-    if (node instanceof ConditionalNode) {
-      return this.visitConditional(node.condition, node.trueExpr, node.falseExpr);
-    }
-    throw new Error(`Unsupported AST node type: "${node.type}"`);
   }
 
   // ─── Constants ────────────────────────────────────────────
@@ -245,6 +282,10 @@ export class FormulaToSqlCompiler {
 // ─────────────────────────────────────────────────────────────
 // Фабрика контекста
 // ─────────────────────────────────────────────────────────────
+/**
+ * Собирает контекст компиляции формулы: карты «алиас → SQL-выражение»
+ * для полей и метрик-зависимостей + целевой диалект.
+ */
 export function createFormulaToSqlContext(
   fieldAliases: Map<string, string>,
   metricAliases: Map<string, string>,
@@ -253,6 +294,10 @@ export function createFormulaToSqlContext(
   return { fieldAliases, metricAliases, dialect };
 }
 
+/**
+ * Оборачивает SQL-выражение в COALESCE(expr, 0) — NULL-зависимости
+ * формул считаются нулями (как в mathjs-fallback'е).
+ */
 export function wrapWithCoalesce(sqlExpr: string): string {
   return `COALESCE(${sqlExpr}, 0)`;
 }

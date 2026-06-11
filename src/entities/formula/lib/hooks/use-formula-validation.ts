@@ -1,7 +1,7 @@
 'use client';
 import { useState, useCallback, useMemo } from 'react';
 import { MathNode } from 'mathjs';
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { useDatasetStore } from '@/entities/dataset';
 import { extractVariables, validateFormula } from '@/shared/lib/math/safe-math';
 import { ColumnConfig } from '@/shared/lib/types';

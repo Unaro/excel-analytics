@@ -32,11 +32,31 @@ export interface ClientComputeParams {
   dashboardGroupsConfig: IndicatorGroupInDashboard[];
   metricTemplates: MetricTemplate[];
   virtualMetrics: VirtualMetric[];
+  /** Категориальное измерение breakdown (обычно следующий уровень иерархии). */
   groupByColumn?: string;
+  /**
+   * Дата-колонка временно́го измерения. Работает в паре
+   * с groupByDateGranularity:
+   *  - только дата → метка группы (`_group_label`) — временно́й интервал;
+   *  - дата + groupByColumn → двумерная группировка: `_group_label` —
+   *    значение категории, `_date_label` — интервал (BreakdownItem.dateLabel).
+   */
+  groupByDateColumn?: string;
+  /** Размерность временно́й группировки (date_trunc), требует groupByDateColumn. */
+  groupByDateGranularity?: DateGranularity;
   validColumns?: string[];
   pgSchema?: string;
   pgTable?: string;
 }
+
+/** Размерность временно́й группировки breakdown. */
+export type DateGranularity =
+  | 'minute'
+  | 'hour'
+  | 'day'
+  | 'week'
+  | 'month'
+  | 'year';
 
 export interface CompiledFormulaMeta {
   groupId: string;

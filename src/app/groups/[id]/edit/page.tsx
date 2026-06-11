@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { EditGroupWidget } from '@/features/edit-group';
+import { EditGroupWidget } from '@/features/group-builder';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 
 export default function EditGroupPage({ params }: { params: Promise<{ id: string }> }) {

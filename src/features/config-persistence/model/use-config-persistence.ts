@@ -10,17 +10,18 @@
 
 'use client';
 
+import { logger } from '@/shared/lib/logger';
 import { useCallback } from 'react';
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { useHierarchyStore } from '@/entities/hierarchy';
 import { useMetricTemplateStore } from '@/entities/metric';
-import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { Dashboard, useDashboardStore } from '@/entities/dashboard';
 import { useDatasetStore } from '@/entities/dataset';
 import { createComputationCache } from '@/shared/lib/storage';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 import { useRouter } from 'next/navigation';
-import { DatasetConfigExport } from '@/entities/exportPackage/types';
+import { DatasetConfigExport } from '@/entities/export-package';
 import {
   DatasetConfigExportSchema,
   HierarchyFilterValue,
@@ -29,7 +30,7 @@ import {
   VirtualMetric,
   VirtualMetricBindingInDashboard,
 } from '@/shared/lib/validators';
-import { GroupMetricConfig, useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
+import { GroupMetricConfig, useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import {
   buildConfigExportPayload,
   processConfigImport,
@@ -154,7 +155,7 @@ export function useConfigPersistence() {
         );
         router.refresh();
       } catch (e) {
-        console.error('[ConfigImport] Error:', e);
+        logger.error('[ConfigImport] Error:', e);
         const message =
           e instanceof ConfigImportError
             ? e.message
@@ -194,12 +195,12 @@ async function invalidateComputationCache(datasetId: string): Promise<void> {
     const fileCache = createComputationCache('file');
     await fileCache.clear(datasetId);
   } catch (err) {
-    console.warn('[ConfigImport] File cache invalidation failed:', err);
+    logger.warn('[ConfigImport] File cache invalidation failed:', err);
   }
   try {
     const pgCache = createComputationCache('postgres');
     await pgCache.clear(datasetId);
   } catch (err) {
-    console.warn('[ConfigImport] PG cache invalidation failed:', err);
+    logger.warn('[ConfigImport] PG cache invalidation failed:', err);
   }
 }

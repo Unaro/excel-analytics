@@ -9,7 +9,7 @@ import type {
   VirtualMetric,
   VirtualMetricBindingInDashboard,
 } from '@/shared/lib/validators';
-import { KPIWidget } from '@/shared/shared/lib/types/dashboard';
+import { KPIWidget } from '@/shared/lib/types/dashboard';
 
 export const KPI_VIRTUAL_GROUP_ID = 'kpi_virtual_group';
 
@@ -20,6 +20,11 @@ export interface CompiledKPI {
   widgetToVmMap: Map<string, string>;
 }
 
+/**
+ * Компилирует KPI-виджеты дашборда в параметры вычисления: синтетическая
+ * группа KPI_VIRTUAL_GROUP_ID с метрикой на каждый виджет + виртуальные
+ * метрики и их привязки. widgetToVmMap связывает виджет с VM для отрисовки.
+ */
 export function compileKPIsToComputeParams(
   widgets: KPIWidget[],
   templates: MetricTemplate[]

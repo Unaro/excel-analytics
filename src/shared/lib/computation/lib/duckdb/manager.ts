@@ -1,3 +1,4 @@
+import { logger } from '@/shared/lib/logger';
 import type { DatasetRow, ColumnConfig } from '@/shared/lib/types/dataset';
 import type { ClientComputeParams } from '../types';
 import type { DashboardComputationResult } from '@/shared/lib/types/computation';
@@ -57,6 +58,10 @@ interface WorkerEventMap {
     payload: { datasetId: string; buffer: Uint8Array };
     response: void;
   };
+  CANCEL: {
+    payload: { targetId: number };
+    response: void;
+  };
 }
 
 interface WorkerResponseMessage {
@@ -109,7 +114,7 @@ export class DuckDBWorkerManager {
       this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 
       this.worker.onerror = (event) => {
-        console.error('[DuckDBManager] Worker error:', event);
+        logger.error('[DuckDBManager] Worker error:', event);
         this.handleWorkerDisconnect('Worker onerror: ' + event.message);
       };
 
@@ -132,7 +137,7 @@ export class DuckDBWorkerManager {
   }
 
   private handleWorkerDisconnect(reason: string) {
-    console.warn(`[DuckDBManager] Worker disconnected: ${reason}`);
+    logger.warn(`[DuckDBManager] Worker disconnected: ${reason}`);
     for (const [id, cb] of this.callbacks.entries()) {
       cb.reject(new Error(`Worker disconnected: ${reason}`));
       this.callbacks.delete(id);
@@ -142,15 +147,46 @@ export class DuckDBWorkerManager {
     this.setStatus('disconnected');
   }
 
+  /**
+   * Отправляет сообщение воркеру и ждёт ответ с тем же id.
+   *
+   * `signal` обеспечивает сквозную отмену (п.3 аудита ядра): при abort
+   * промис отклоняется AbortError, а воркеру уходит CANCEL — он выбросит
+   * задачу из очереди или прервёт её на ближайшей контрольной точке.
+   */
   private dispatch<K extends keyof WorkerEventMap>(
     type: K,
     payload: WorkerEventMap[K]['payload'],
     transfer: Transferable[] = [],
-    timeoutMs: number = 30000
+    timeoutMs: number = 30000,
+    signal?: AbortSignal
   ): Promise<WorkerEventMap[K]['response']> {
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException('Aborted', 'AbortError'));
+        return;
+      }
+
       const id = ++this.messageCounter;
+
+      const onAbort = () => {
+        clearTimeout(timer);
+        this.callbacks.delete(id);
+        try {
+          this.worker?.postMessage({
+            type: 'CANCEL',
+            payload: { targetId: id },
+            id: ++this.messageCounter,
+          });
+        } catch {
+          // Воркер уже мёртв — промис всё равно отклоняем
+        }
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+
       const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
         this.callbacks.delete(id);
         this.handleWorkerDisconnect(`Timeout after ${timeoutMs}ms on ${type}`);
         reject(new Error(`Worker timeout: ${type}`));
@@ -159,10 +195,12 @@ export class DuckDBWorkerManager {
       this.callbacks.set(id, {
         resolve: (value: unknown) => {
           clearTimeout(timer);
+          signal?.removeEventListener('abort', onAbort);
           resolve(value as WorkerEventMap[K]['response']);
         },
         reject: (reason: Error) => {
           clearTimeout(timer);
+          signal?.removeEventListener('abort', onAbort);
           reject(reason);
         },
       });
@@ -171,6 +209,7 @@ export class DuckDBWorkerManager {
         this.getWorker().postMessage({ type, payload, id }, transfer);
       } catch (err) {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
         this.callbacks.delete(id);
         this.handleWorkerDisconnect(
           err instanceof Error ? err.message : 'postMessage failed'
@@ -217,7 +256,7 @@ export class DuckDBWorkerManager {
     }
 
     if (pingResult?.alive && pingResult.dbInitialized && !pingResult.tableExists) {
-      console.log(
+      logger.debug(
         `[DuckDBManager] ⚠️ Worker alive but table missing for ${datasetId}. Reloading...`
       );
       this.setStatus('loading');
@@ -226,13 +265,13 @@ export class DuckDBWorkerManager {
         this.setStatus('ready');
         return true;
       } catch (err) {
-        console.error('[DuckDBManager] Table reload failed:', err);
+        logger.error('[DuckDBManager] Table reload failed:', err);
         this.setStatus('error');
         return false;
       }
     }
 
-    console.log(
+    logger.debug(
       `[DuckDBManager] ♻️ Full auto-recovery for dataset ${datasetId} ` +
         `(alive=${pingResult?.alive}, dbInit=${pingResult?.dbInitialized})`
     );
@@ -245,7 +284,7 @@ export class DuckDBWorkerManager {
       this.setStatus('ready');
       return true;
     } catch (err) {
-      console.error('[DuckDBManager] Recovery failed:', err);
+      logger.error('[DuckDBManager] Recovery failed:', err);
       this.setStatus('error');
       return false;
     }
@@ -265,7 +304,7 @@ export class DuckDBWorkerManager {
     }
 
     try {
-      return await this.dispatch('COMPUTE', { params });
+      return await this.dispatch('COMPUTE', { params }, [], 30000, signal);
     } catch (err) {
       if (signal?.aborted || (err instanceof Error && err.name === 'AbortError')) {
         throw err;
@@ -284,10 +323,10 @@ export class DuckDBWorkerManager {
             throw new DOMException('Aborted', 'AbortError');
           }
 
-          return await this.dispatch('COMPUTE', { params });
+          return await this.dispatch('COMPUTE', { params }, [], 30000, signal);
         } catch (retryErr) {
           if (signal?.aborted) throw retryErr;
-          console.error('[DuckDBManager] COMPUTE retry failed after recovery:', retryErr);
+          logger.error('[DuckDBManager] COMPUTE retry failed after recovery:', retryErr);
           throw retryErr;
         }
       }
@@ -524,4 +563,5 @@ export class DuckDBWorkerManager {
   }
 }
 
+/** Синглтон-менеджер DuckDB-WASM воркера (единственная точка доступа к БД). */
 export const duckdbManager = new DuckDBWorkerManager();

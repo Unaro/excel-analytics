@@ -1,8 +1,7 @@
 'use client';
 
-import { use, useMemo, useCallback } from 'react';
+import { use, useMemo, useState } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
-import { useHierarchyTree } from '@/entities/hierarchy';
 import { HierarchyTree } from '@/widgets/hierarchy-filter';
 import { KPIGrid } from '@/widgets/kpi-grid';
 import { DashboardMetricsTable } from '@/widgets/dashboard-metrics-table';
@@ -17,8 +16,22 @@ import { useDashboardOrphanCleanup } from '../model';
 import { useDashboardDatasetSync } from '../model';
 import { useDashboardComputation } from '../model';
 import { useDashboardViewState } from '../model';
-import { flattenDashboardResult } from '@/entities/metric/lib/flatten-dashboard-result';
-import { Loader2 } from 'lucide-react';
+import { flattenDashboardResult } from '@/entities/metric';
+import { Loader2, CalendarClock } from 'lucide-react';
+import { Select, SelectOption } from '@/shared/ui/select';
+import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
+import type { DateGranularity } from '@/shared/lib/computation/lib/types';
+import type { BreakdownItem } from '@/shared/lib/types/computation';
+
+/** Подписи размерностей временно́й группировки. */
+const GRANULARITY_LABELS: Record<DateGranularity, string> = {
+  minute: 'минуты',
+  hour: 'часы',
+  day: 'дни',
+  week: 'недели',
+  month: 'месяцы',
+  year: 'годы',
+};
 
 interface DashboardViewContentProps {
   params: Promise<{ id: string }>;
@@ -54,23 +67,24 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
     refreshDataset,
   } = useDashboardDatasetSync(dashboardId);
 
+  // Временна́я группировка: серии — группы дашборда, X — интервалы даты
+  const [dateGranularity, setDateGranularity] = useState<DateGranularity | null>(null);
+
   // Вычисление метрик дашборда
-  const { result, isComputing, error, recalculate } =
-    useDashboardComputation(dashboardId);
+  const { result, isComputing, error, recalculate, dateColumn } =
+    useDashboardComputation(dashboardId, { dateGranularity });
 
   // Данные дашборда
   const dashboard = useDashboardStore(
     useShallow(s => s.dashboards.find(d => d.id === dashboardId))
   );
 
-  const { currentPath } = useHierarchyTree(dashboardId);
-
+  // useShallow сравнивает РЕЗУЛЬТАТ селектора по shallow-равенству —
+  // мемоизировать сам селектор через useCallback не нужно (и вредно:
+  // лишняя обёртка скрывала суть сравнения).
   const hierarchyFilters = useDashboardStore(
     useShallow(
-      useCallback(
-        s => s.dashboards.find(d => d.id === dashboardId)?.hierarchyFilters ?? [],
-        [dashboardId]
-      )
+      s => s.dashboards.find(d => d.id === dashboardId)?.hierarchyFilters ?? []
     )
   );
 
@@ -83,6 +97,23 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
     () => flattenDashboardResult(result, dashboardVirtualMetrics),
     [result, dashboardVirtualMetrics]
   );
+
+  // Данные секции динамики: серия — группа дашборда, точка — интервал даты.
+  // В режиме дат breakdown каждой группы одномерен (метки — интервалы),
+  // конвертируем его в формат «категория × время» для TimeBreakdownSection.
+  const isTimeMode = dateGranularity !== null && !!dateColumn;
+  const timeItems = useMemo<BreakdownItem[]>(() => {
+    if (!isTimeMode || !result) return [];
+    return result.groups.flatMap(group =>
+      (group.breakdown ?? []).map(item => ({
+        label: group.groupName,
+        dateLabel: item.label,
+        recordCount: item.recordCount,
+        virtualMetrics: item.virtualMetrics,
+      }))
+    );
+  }, [isTimeMode, result]);
+  const timeTruncated = isTimeMode && !!result?.groups.some(g => g.breakdownTruncated);
 
   // Edge case: дашборд не найден
   if (!dashboard) {
@@ -142,7 +173,49 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
             />
           </ErrorBoundary>
 
-          {result && breakdown.length > 0 && (
+          {/* Переключатель временно́й группировки (виден при дата-колонке) */}
+          {dateColumn && (
+            <div className="flex items-center justify-end gap-2">
+              <CalendarClock size={16} className="text-indigo-500 shrink-0" />
+              <Select
+                className="w-52 h-9 text-sm"
+                value={dateGranularity ?? ''}
+                onChange={e =>
+                  setDateGranularity(
+                    (e.target.value || null) as DateGranularity | null
+                  )
+                }
+              >
+                <SelectOption value="">Без разбивки по дате</SelectOption>
+                {(Object.keys(GRANULARITY_LABELS) as DateGranularity[]).map(g => (
+                  <SelectOption key={g} value={g}>
+                    Динамика: {GRANULARITY_LABELS[g]}
+                  </SelectOption>
+                ))}
+              </Select>
+            </div>
+          )}
+
+          {/* Режим динамики: группы × время */}
+          {isTimeMode && !isComputing && timeItems.length > 0 && (
+            <ErrorBoundary label="Динамика по времени" onReset={recalculate}>
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <TimeBreakdownSection
+                  items={timeItems}
+                  metricMetas={dashboardVirtualMetrics}
+                  activeMetricIds={viewState.activeMetricIds}
+                  dimensionTitle="Группа"
+                  dateTitle={`${dateColumn?.displayName ?? 'Дата'} · ${
+                    dateGranularity ? GRANULARITY_LABELS[dateGranularity] : ''
+                  }`}
+                  truncated={timeTruncated}
+                />
+              </div>
+            </ErrorBoundary>
+          )}
+
+          {/* Обычный режим: чарты по сводкам групп */}
+          {!isTimeMode && result && breakdown.length > 0 && (
             <ErrorBoundary label="Графики" onReset={recalculate}>
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <ChartsSectionWidget
@@ -174,7 +247,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
               hiddenMetricIds={viewState.hiddenMetricIds}
               onToggleMetricVisibility={viewState.toggleMetricVisibility}
               getGroupHref={groupId =>
-                `/groups/${groupId}?filters=${encodeURIComponent(JSON.stringify(currentPath))}`
+                `/groups/${groupId}?filters=${encodeURIComponent(JSON.stringify(hierarchyFilters))}`
               }
               className="mt-6"
             />

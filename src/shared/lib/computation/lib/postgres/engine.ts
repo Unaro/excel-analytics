@@ -3,7 +3,7 @@ import type {
   IComputeEngine,
   MetricAggregationMeta,
 } from '../types';
-import { compileQuery } from '../query-compiler';
+import { compileQuery, BREAKDOWN_LIMIT } from '../query-compiler';
 import { getActiveFilter, formatValue, computeTotalRecordCount } from '../utils';
 import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
 import { decryptConfig } from '@/shared/lib/utils/crypto';
@@ -15,13 +15,7 @@ import type {
 } from '@/shared/lib/types/computation';
 import { computePgMetrics } from '@/shared/api/server-actions';
 import { aggregateProcessedRows } from '../aggregation';
-
-/**
- * Безопасное экранирование SQL-идентификаторов.
- */
-function quoteIdent(id: string): string {
-  return `"${id.replace(/"/g, '""')}"`;
-}
+import { qualifiedTableName } from '../sql-utils';
 
 function buildAggregateMetadataMap(
   params: ClientComputeParams
@@ -57,8 +51,10 @@ export class PgEngine implements IComputeEngine {
     const {
       dashboardId, encryptedConfig, dashboardGroupsConfig,
       virtualMetrics, filters, datasetId, groupByColumn,
-      pgSchema, pgTable,
+      groupByDateColumn, pgSchema, pgTable,
     } = params;
+    // Есть ли группировка (категориальная и/или временна́я)
+    const hasGrouping = !!(groupByColumn || groupByDateColumn);
 
     if (!encryptedConfig) throw new Error('Missing encryptedConfig for PostgreSQL');
     if (!pgSchema || !pgTable) {
@@ -67,7 +63,6 @@ export class PgEngine implements IComputeEngine {
       );
     }
 
-    const realTableName = `${quoteIdent(pgSchema)}.${quoteIdent(pgTable)}`;
     const start = Date.now();
 
     const decryptedConfig = await decryptConfig<PgConnectionConfig>(encryptedConfig);
@@ -76,8 +71,9 @@ export class PgEngine implements IComputeEngine {
       throw new DOMException('Aborted', 'AbortError');
     }
 
-    const pgParams: ClientComputeParams = { ...params, tableName: realTableName };
-    const response = await computePgMetrics(pgParams, decryptedConfig);
+    // Сервер игнорирует клиентские tableName/validColumns и строит их сам
+    // из information_schema (защита от SQL-инъекции) — см. pg-compute.ts.
+    const response = await computePgMetrics(params, decryptedConfig);
 
     if (signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
@@ -87,8 +83,26 @@ export class PgEngine implements IComputeEngine {
       throw new Error('PG query failed: no data returned');
     }
 
-    const rows = response.rows as Record<string, unknown>[];
-    const compiled = compileQuery(pgParams, 'postgres');
+    const allRows = response.rows as Record<string, unknown>[];
+    // SQL запрашивает BREAKDOWN_LIMIT + 1 строк: лишняя строка — признак
+    // усечения breakdown. Обрезаем ДО пост-обработки, чтобы сводка
+    // и breakdown считались по одному набору строк.
+    const breakdownTruncated =
+      hasGrouping && allRows.length > BREAKDOWN_LIMIT;
+    const rows = breakdownTruncated ? allRows.slice(0, BREAKDOWN_LIMIT) : allRows;
+
+    // Локальная перекомпиляция только ради метаданных пост-обработки
+    // (formulas, aggregateMetadata) — SQL на клиенте не исполняется.
+    // validColumns берём из ответа сервера, чтобы метаданные совпадали
+    // с фактически исполненным запросом.
+    const compiled = compileQuery(
+      {
+        ...params,
+        tableName: qualifiedTableName(pgSchema, pgTable),
+        validColumns: response.validColumns,
+      },
+      'postgres'
+    );
     const processedRows = postProcessAggregates(rows, compiled);
     const totalRecords = computeTotalRecordCount(rows);
 
@@ -119,21 +133,23 @@ export class PgEngine implements IComputeEngine {
             };
           });
 
-        const breakdown = groupByColumn
+        const breakdown = hasGrouping
           ? processedRows
               .map((processed, idx) => {
                 const rawLabel = rows[idx]['_group_label'];
                 const label = rawLabel == null ? '' : String(rawLabel).trim();
+                const rawDate = rows[idx]['_date_label'];
+                const dateLabel = rawDate == null ? undefined : String(rawDate).trim();
                 const rowRc = rows[idx]['_record_count'];
                 const recordCount =
                   typeof rowRc === 'number' ? rowRc
                   : typeof rowRc === 'bigint' ? Number(rowRc) : 0;
-                return { label, recordCount, virtualMetrics: buildVirtualMetrics(processed) };
+                return { label, dateLabel, recordCount, virtualMetrics: buildVirtualMetrics(processed) };
               })
               .filter(item => item.label !== '')
           : undefined;
 
-        const summaryProcessed = groupByColumn
+        const summaryProcessed = hasGrouping
           ? aggregateProcessedRows(processedRows, compiled.aggregateMetadata, compiled.formulas)
           : processedRows[0] || {};
 
@@ -142,6 +158,7 @@ export class PgEngine implements IComputeEngine {
           groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
           virtualMetrics: buildVirtualMetrics(summaryProcessed),
           breakdown,
+          breakdownTruncated,
           recordCount: totalRecords,
           computedAt: Date.now(),
         };

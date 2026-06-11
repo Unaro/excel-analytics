@@ -3,9 +3,11 @@
  * 
  * Предотвращает XSS атаки через выполнение вредоносного кода
  */
+import { logger } from '@/shared/lib/logger';
 import { create, all, parse, type MathNode, FunctionNode, SymbolNode } from 'mathjs';
 
 // Создаём инстанс mathjs
+/** Инстанс mathjs для вычисления пользовательских формул (см. validateFormula). */
 export const safeMath = create(all);
 
 // Белый список разрешённых функций для формул
@@ -166,7 +168,7 @@ export function safeEvaluate(
     }
     return null;
   } catch (error) {
-    console.error('Formula evaluation error:', error);
+    logger.error('Formula evaluation error:', error);
     return null;
   }
 }

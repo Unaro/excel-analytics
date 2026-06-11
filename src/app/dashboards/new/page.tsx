@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { CreateDashboardWidget } from '@/features/create-dashboard';
+import { CreateDashboardWidget } from '@/features/dashboard-builder';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import type { StaticPageProps } from '@/shared/lib/types/next';
 

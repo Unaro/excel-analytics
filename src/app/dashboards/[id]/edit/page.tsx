@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { EditDashboardWidget } from '@/features/edit-dashboard';
+import { EditDashboardWidget } from '@/features/dashboard-builder';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import type { DynamicPageProps } from '@/shared/lib/types/next';
 

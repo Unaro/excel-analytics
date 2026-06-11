@@ -3,18 +3,14 @@
 // Реэкспорт HierarchyFilterValue из shared для обратной совместимости.
 // ─────────────────────────────────────────────────────────────
 
-import type { HierarchyFilterValue } from '@/shared/lib/types/hierarchy';
+import type {
+  HierarchyFilterValue,
+  HierarchyLevel,
+} from '@/shared/lib/types/hierarchy';
 
-
-/**
- * Один уровень иерархии (например: Страна -> Город -> Район).
- */
-export interface HierarchyLevel {
-  id: string;
-  columnName: string;
-  displayName: string;
-  order: number;
-}
+// HierarchyLevel перенесён в shared/lib/types/hierarchy (нужен сервисам
+// экспорта/импорта конфигурации) — ре-экспорт для обратной совместимости.
+export type { HierarchyLevel };
 
 /**
  * Узел в дереве иерархии (для UI).

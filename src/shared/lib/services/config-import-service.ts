@@ -15,8 +15,8 @@ import {
   type VirtualMetric,
   type VirtualMetricBindingInDashboard,
 } from '@/shared/lib/validators';
-import { FormattingRule } from '../utils/fortmating-rules';
-import type { Dashboard } from '@/entities/dashboard/model/types';
+import { FormattingRule } from '../utils/formatting-rules';
+import type { Dashboard } from '@/shared/lib/types/dashboard';
 
 // ─────────────────────────────────────────────────────────────
 // Публичные типы
@@ -243,6 +243,13 @@ function rebuildDashboard(
 // Публичная функция
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Импортирует JSON-конфигурацию датасета: валидация Zod-схемой,
+ * дедупликация ID виртуальных метрик (суффикс _imp_N при конфликте),
+ * мерж с существующими дашбордами/группами целевого датасета.
+ *
+ * @throws ConfigImportError при невалидном JSON или несоответствии схеме.
+ */
 export function processConfigImport(
   fileContent: string,
   context: ConfigImportContext

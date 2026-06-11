@@ -1,15 +1,15 @@
 'use client';
 
 import { memo, useEffect, useMemo, useState } from 'react';
-import { Search, ChevronRight, Layers } from 'lucide-react';
+import { Search, ChevronRight, Layers, AlertTriangle } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { cn } from '@/shared/lib/utils';
 import { BreakdownItem, VirtualMetricValue, GroupComputationResult } from '@/entities/metric';
 import { HierarchyLevel } from '@/entities/hierarchy';
 import { VirtualMetric } from '@/shared/lib/validators';
-import { GroupMetricConfigPopover } from '@/features/ConfigureGroupMetric';
-import { GroupMetricCell } from '@/entities/groupMetricConfig';
+import { GroupMetricConfigPopover } from '@/features/configure-group-metric';
+import { GroupMetricCell } from '@/entities/group-metric-config';
 import { SortIcon } from '@/shared/ui/sort-icon';
 import { sortBreakdownItems } from '../lib/sort-breakdown';
 import type { SortConfig } from '../model/types';
@@ -26,6 +26,11 @@ interface GroupBreakdownTableProps {
   onSortChange: (config: SortConfig) => void;
   groupId: string;
   groupMetricIds: string[];
+  /**
+   * Метка измерения при временно́й группировке (например «Дата · месяц»).
+   * Передаётся вместе с nextLevel=null: drill-down по датам невозможен.
+   */
+  dimensionLabel?: string;
 }
 
 export const GroupBreakdownTable = memo(function GroupBreakdownTable({
@@ -40,6 +45,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
   onSortChange,
   groupId,
   groupMetricIds,
+  dimensionLabel,
 }: GroupBreakdownTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -93,13 +99,22 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
           <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
             {nextLevel ? (
               <>Разбивка по: <Badge variant="outline">{nextLevel.displayName}</Badge></>
+            ) : dimensionLabel ? (
+              <>Разбивка по: <Badge variant="outline">{dimensionLabel}</Badge></>
             ) : (
               <>Сводные данные (достигнут лист)</>
             )}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {breakdown.length} элементов {breakdown.length >= 100 && '(лимит 100)'}
+            {breakdown.length} элементов
           </p>
+          {summary?.breakdownTruncated && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+              <AlertTriangle size={12} className="shrink-0" />
+              Разбивка усечена: показаны первые {breakdown.length} значений.
+              Строки за пределами лимита не учтены в таблице и «Итого» — уточните фильтры.
+            </p>
+          )}
         </div>
         <div className="relative w-64">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -123,7 +138,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                 onClick={() => toggleSort('label')}
               >
                 <div className="flex items-center gap-1">
-                  {nextLevel?.displayName || 'Элемент'}
+                  {nextLevel?.displayName || dimensionLabel || 'Элемент'}
                   <SortIcon active={sortConfig?.key === 'label'} direction={sortConfig?.direction ?? 'desc'} />
                 </div>
               </th>
@@ -174,7 +189,9 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
           <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800/50">
             {sortedBreakdown.map((item) => (
               <tr
-                key={item.label}
+                // Составной ключ: во время переключения режимов breakdown
+                // может транзиентно содержать 2-D строки с повторяющимся label
+                key={`${item.label} ${item.dateLabel ?? ''}`}
                 onClick={() => nextLevel && onDrillDown(item.label)}
                 className={cn(
                   "group",

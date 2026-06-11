@@ -1,6 +1,7 @@
 // lib/stores/dashboard-store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { createMigration } from '@/shared/lib/storage/migration';
 import { nanoid } from 'nanoid';
 import type { Dashboard, DashboardWidget, KPIWidget } from './types';
 import type { HierarchyFilterValue, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
@@ -555,6 +556,21 @@ export const useDashboardStore = create<DashboardState>()(
     {
       name: 'dashboard-storage',
       version: 2,
+      migrate: createMigration<DashboardState>({
+        // v1 → v2: дашборды получили опциональные коллекции — гарантируем
+        // их наличие, чтобы старые данные не падали на .map/.find.
+        2: (state) => ({
+          ...state,
+          dashboards: ((state.dashboards as Dashboard[] | undefined) ?? []).map((d) => ({
+            ...d,
+            virtualMetrics: d.virtualMetrics ?? [],
+            hierarchyFilters: d.hierarchyFilters ?? [],
+            indicatorGroups: d.indicatorGroups ?? [],
+            widgets: d.widgets ?? [],
+            kpiWidgets: d.kpiWidgets ?? [],
+          })),
+        }),
+      }),
     }
   )
 );

@@ -26,6 +26,49 @@ import { SortableItem, DragDropListProps, RenderItemProps } from './types';
 import { createPortal } from 'react-dom';
 
 // ─────────────────────────────────────────────────────────────
+// Сенсоры, игнорирующие интерактивные элементы.
+//
+// Стандартные сенсоры dnd-kit вешают обработчики на весь draggable-узел:
+// KeyboardSensor перехватывал Space/Enter из вложенных инпутов
+// (preventDefault — пробел нельзя было ввести в название метрики),
+// а PointerSensor начинал drag при клике в поле ввода.
+// ─────────────────────────────────────────────────────────────
+function isInteractiveElement(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    !!target.closest(
+      'input, textarea, select, button, a, [contenteditable="true"], [data-no-dnd]'
+    )
+  );
+}
+
+class SmartPointerSensor extends PointerSensor {
+  static activators = [
+    {
+      eventName: 'onPointerDown' as const,
+      handler: ({ nativeEvent }: React.PointerEvent): boolean =>
+        nativeEvent.isPrimary &&
+        nativeEvent.button === 0 &&
+        !isInteractiveElement(nativeEvent.target),
+    },
+  ];
+}
+
+type KeyboardActivator = (typeof KeyboardSensor)['activators'][0];
+
+class SmartKeyboardSensor extends KeyboardSensor {
+  static activators: KeyboardActivator[] = [
+    {
+      eventName: 'onKeyDown' as const,
+      handler: (event, options, context) => {
+        if (isInteractiveElement(event.target)) return false;
+        return KeyboardSensor.activators[0].handler(event, options, context);
+      },
+    },
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────
 // ВСПОМОГАТЕЛЬНЫЙ: Sortable Item Wrapper (Generic)
 // ─────────────────────────────────────────────────────────────
 function SortableItemWrapper<T extends SortableItem>({
@@ -90,13 +133,13 @@ export function DragDropList<T extends SortableItem>({
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(SmartPointerSensor, {
       activationConstraint: {
         delay: dragDelay,
         tolerance: 5,
       },
     }),
-    useSensor(KeyboardSensor)
+    useSensor(SmartKeyboardSensor)
   );
 
   const strategy =

@@ -16,7 +16,7 @@ import { useCallback } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { useDashboardStore } from '@/entities/dashboard';
 import { reconcileHierarchyFilters } from '@/shared/lib/services';
-import { toast } from 'sonner';
+import { toast } from '@/shared/ui/toast';
 
 /**
  * Хук для согласования фильтров дашборда после изменения структуры данных.

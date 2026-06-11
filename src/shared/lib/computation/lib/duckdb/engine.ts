@@ -1,3 +1,4 @@
+import { logger } from '@/shared/lib/logger';
 import type { DashboardComputationResult } from '@/shared/lib/types/computation';
 import type { ClientComputeParams, IComputeEngine } from '../types';
 import { duckdbManager } from './manager';
@@ -24,7 +25,7 @@ export class DuckDbEngine implements IComputeEngine {
         arrowBuffer = buf;
       }
     } catch (err) {
-      console.warn('[DuckDbEngine] Failed to load Arrow buffer for retry:', err);
+      logger.warn('[DuckDbEngine] Failed to load Arrow buffer for retry:', err);
     }
 
     const result = await duckdbManager.computeDashboard(duckParams, arrowBuffer, signal);

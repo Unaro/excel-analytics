@@ -7,22 +7,14 @@ interface ThemeProviderProps extends React.ComponentProps<typeof NextThemesProvi
   children: React.ReactNode;
 }
 
+/**
+ * Обёртка над next-themes.
+ *
+ * Ранее содержала useState/useEffect с «isReady», обе ветки которого
+ * рендерили одно и то же (п.13 аудита) — no-op удалён: next-themes
+ * сам корректно обрабатывает SSR/гидрацию через suppressHydrationWarning
+ * на html-элементе.
+ */
 export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
-  const [isReady, setIsReady] = React.useState(false);
-
-  React.useEffect(() => {
-    setIsReady(true);
-  }, []);
-
-  // Во время первого рендера (SSR/hydration) возвращаем фрагмент без провайдера
-  // Это предотвращает ошибки useContext при билде
-  if (!isReady) {
-    return (
-      <NextThemesProvider {...props}>
-        {children}
-      </NextThemesProvider>
-    );
-  }
-
   return <NextThemesProvider {...props}>{children}</NextThemesProvider>;
 }

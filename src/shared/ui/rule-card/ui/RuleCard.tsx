@@ -1,6 +1,6 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Copy, Trash2 } from 'lucide-react';
 import { COLOR_STYLES, METRIC_COLOR_HEX, MetricColor } from '@/shared/lib/utils/metric-colors';
 import { cn } from '@/shared/lib/utils';
@@ -13,6 +13,52 @@ export const stopDragEvents = {
   onTouchStart: (e: React.TouchEvent) => e.stopPropagation(),
 };
 
+const RULE_INPUT_CLASS =
+  'w-full min-w-[50px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-xs py-1.5 px-2 focus:ring-1 focus:ring-indigo-500 outline-none';
+
+/**
+ * Числовой инпут порога с поддержкой десятичных значений.
+ *
+ * type="number" + parseFloat на каждом onChange затирали промежуточный
+ * ввод («2.» → «2»), из-за чего нецелые пороги было невозможно набрать.
+ * Пока поле в фокусе, показывается сырой текст (включая «2.» и «2,5»),
+ * валидные числа коммитятся сразу; по blur — каноничное значение.
+ */
+function RuleNumberInput({
+  value,
+  onCommit,
+  placeholder,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  placeholder?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState('');
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={focused ? text : String(value)}
+      onFocus={() => {
+        setFocused(true);
+        setText(String(value));
+      }}
+      onBlur={() => setFocused(false)}
+      onChange={(e) => {
+        const t = e.target.value;
+        setText(t);
+        const n = parseFloat(t.replace(',', '.'));
+        if (!isNaN(n)) onCommit(n);
+      }}
+      placeholder={placeholder}
+      className={RULE_INPUT_CLASS}
+      {...stopDragEvents}
+    />
+  );
+}
+
 export const RuleCard = memo(function RuleCard({
   item: rule,
   index,
@@ -22,7 +68,6 @@ export const RuleCard = memo(function RuleCard({
   onUpdate,
   onRemove,
   onDuplicate,
-  parseNumber,
 }: RuleCardProps) {
   return (
     <div
@@ -70,7 +115,17 @@ export const RuleCard = memo(function RuleCard({
         {/* Select оператора */}
         <select
           value={rule.operator}
-          onChange={(e) => onUpdate(rule.id, { operator: e.target.value as ConditionOperator })}
+          onChange={(e) => {
+            const operator = e.target.value as ConditionOperator;
+            // «Между» без инициализации второй границы давало вырожденный
+            // диапазон [value, value]: линия порога строилась, окраска — нет
+            onUpdate(rule.id, {
+              operator,
+              ...(operator === 'between' && rule.value2 === undefined
+                ? { value2: rule.value }
+                : {}),
+            });
+          }}
           className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-xs py-1.5 px-2 w-[100px] focus:ring-1 focus:ring-indigo-500 outline-none"
           {...stopDragEvents}
         >
@@ -84,24 +139,18 @@ export const RuleCard = memo(function RuleCard({
 
         {/* Значения */}
         <div className="flex flex-1 gap-1 items-center">
-          <input
-            type="number"
+          <RuleNumberInput
             value={rule.value}
-            onChange={(e) => onUpdate(rule.id, { value: parseNumber(e.target.value) })}
-            className="w-full min-w-[50px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-xs py-1.5 px-2 focus:ring-1 focus:ring-indigo-500 outline-none"
+            onCommit={(n) => onUpdate(rule.id, { value: n })}
             placeholder="0"
-            {...stopDragEvents}
           />
           {rule.operator === 'between' && (
             <>
               <span className="text-slate-400 text-xs">-</span>
-              <input
-                type="number"
+              <RuleNumberInput
                 value={rule.value2 ?? 0}
-                onChange={(e) => onUpdate(rule.id, { value2: parseNumber(e.target.value) })}
-                className="w-full min-w-[50px] bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded text-xs py-1.5 px-2 focus:ring-1 focus:ring-indigo-500 outline-none"
+                onCommit={(n) => onUpdate(rule.id, { value2: n })}
                 placeholder="Max"
-                {...stopDragEvents}
               />
             </>
           )}

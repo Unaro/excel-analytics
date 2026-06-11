@@ -19,6 +19,7 @@
 //   т.к. не требует знания точного имени экспорта.
 // ─────────────────────────────────────────────────────────────
 
+import { logger } from '@/shared/lib/logger';
 import type * as duckdb from '@duckdb/duckdb-wasm';
 
 const MAX_CACHE_SIZE = 50;
@@ -91,7 +92,7 @@ export class PreparedStatementCache {
 
       return statement;
     } catch (err) {
-      console.warn('[PreparedStatementCache] Prepare failed:', err);
+      logger.warn('[PreparedStatementCache] Prepare failed:', err);
       return null;
     }
   }

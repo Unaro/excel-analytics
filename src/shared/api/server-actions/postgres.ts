@@ -1,42 +1,20 @@
 // shared/api/server-actions/postgres.ts
 'use server';
-import { z } from 'zod';
+import { logger } from '@/shared/lib/logger';
 import {
-  createPgClient,
+  withPgClient,
   normalizePgRow,
   PgConnectionConfig,
 } from '@/shared/api/postgres/client';
+import { PgConfigSchema } from './schemas';
 import type { DatasetRow } from '@/shared/lib/types/dataset';
-
-const PgConfigSchema = z.object({
-  host: z.string().min(1, 'Хост обязателен'),
-  port: z.coerce.number().int().min(1).max(65535),
-  database: z.string().min(1, 'Имя БД обязательно'),
-  user: z.string().min(1, 'Пользователь обязателен'),
-  password: z.string(),
-  ssl: z.boolean().optional().default(false),
-});
 
 const MAX_PREVIEW_LIMIT = 500;
 const MAX_SYNC_LIMIT = 50000;
 
+/** Валидирует недоверенный конфиг подключения, пришедший с клиента. */
 function validateConfig(raw: unknown): PgConnectionConfig {
   return PgConfigSchema.parse(raw);
-}
-
-async function withPgClient<T>(
-  config: PgConnectionConfig,
-  fn: (sql: ReturnType<typeof createPgClient>) => Promise<T>
-): Promise<T> {
-  let sql: ReturnType<typeof createPgClient> | null = null;
-  try {
-    sql = createPgClient(config);
-    return await fn(sql);
-  } finally {
-    if (sql) {
-      await sql.end({ timeout: 2 }).catch(() => {});
-    }
-  }
 }
 
 export async function testPgConnection(
@@ -49,7 +27,7 @@ export async function testPgConnection(
     });
     return { success: true };
   } catch (error) {
-    console.error('[PG] Connection test failed:', error);
+    logger.error('[PG] Connection test failed:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Не удалось подключиться',
@@ -114,7 +92,7 @@ export async function getPgSchema(
       };
     });
   } catch (error) {
-    console.error('[PG] Schema fetch failed:', error);
+    logger.error('[PG] Schema fetch failed:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Ошибка чтения схемы',
@@ -159,7 +137,7 @@ export async function fetchPgTableData(
       };
     });
   } catch (error) {
-    console.error('[PG] Data fetch failed:', error);
+    logger.error('[PG] Data fetch failed:', error);
     return {
       success: false,
       rows: [],
@@ -208,7 +186,7 @@ export async function refreshPgData(
       };
     });
   } catch (error) {
-    console.error('[PG] Refresh failed:', error);
+    logger.error('[PG] Refresh failed:', error);
     return {
       success: false,
       rows: [],

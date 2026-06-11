@@ -53,6 +53,11 @@ export interface VirtualMetricValue {
  */
 export interface BreakdownItem {
   label: string;
+  /**
+   * Метка временно́го интервала при двумерной группировке
+   * (категория × время). Отсутствует в одномерных режимах.
+   */
+  dateLabel?: string;
   recordCount: number;
   virtualMetrics: VirtualMetricValue[];
 }
@@ -68,6 +73,12 @@ export interface GroupComputationResult {
   recordCount: number;
   computedAt: number;
   breakdown?: BreakdownItem[];
+  /**
+   * true — breakdown усечён до BREAKDOWN_LIMIT строк (значений группировки
+   * больше лимита). UI обязан показать предупреждение: суммы по видимым
+   * строкам не сойдутся с «Итого».
+   */
+  breakdownTruncated?: boolean;
 }
 
 /**

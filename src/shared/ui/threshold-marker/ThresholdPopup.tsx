@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import * as Popover from '@radix-ui/react-popover';
 import { cn } from '@/shared/lib/utils';
 import { METRIC_COLOR_HEX, MetricColor } from '@/shared/lib/utils/metric-colors';
-import { FormattingRule } from '@/shared/lib/utils/fortmating-rules';
+import { FormattingRule } from '@/shared/lib/utils/formatting-rules';
 
 function getOperatorLabel(op: string): string {
   switch (op) {

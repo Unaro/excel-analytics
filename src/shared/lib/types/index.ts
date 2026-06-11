@@ -21,6 +21,26 @@ export type {
   ColumnStatistics,
 } from './dataset';
 
-export type { KPIWidget } from './dashboard';
+export type {
+  ColorConfig,
+  KPIWidget,
+  WidgetType,
+  ChartConfig,
+  TableConfig,
+  MetricCardConfig,
+  IndicatorGroupsTableConfig,
+  DashboardWidget,
+  Dashboard,
+} from './dashboard';
 
-export type { HierarchyFilterValue } from './hierarchy';
+export type {
+  AggregateFunction,
+  MetricType,
+  DisplayFormat,
+  MetricSourceType,
+  MetricDependency,
+} from './metric';
+
+export type { GroupMetricConfig } from './group-metric-config';
+
+export type { HierarchyFilterValue, HierarchyLevel } from './hierarchy';

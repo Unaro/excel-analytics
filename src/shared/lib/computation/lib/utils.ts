@@ -3,6 +3,11 @@ import type {
   VirtualMetricValue,
 } from '@/shared/lib/types/computation';
 
+/**
+ * Форматирует значение метрики для отображения по displayFormat шаблона:
+ * decimal/currency — локаль ru-RU, percent — ×100 со знаком %,
+ * scientific — экспоненциальная запись; null → «—»; unit добавляется суффиксом.
+ */
 export function formatValue(
   value: number | null,
   format: string,
@@ -41,6 +46,10 @@ export function formatValue(
   return unit && format !== 'percent' ? `${res} ${unit}` : res;
 }
 
+/**
+ * Возвращает активный (самый глубокий) фильтр иерархии в виде
+ * ActiveHierarchyFilter, либо null, если фильтры не заданы.
+ */
 export function getActiveFilter(
   filters: {
     levelId: string;
@@ -62,6 +71,10 @@ export function getActiveFilter(
   };
 }
 
+/**
+ * Собирает VirtualMetricValue из сырого числа: форматирование по настройкам
+ * виртуальной метрики + ссылка на метрику-источник.
+ */
 export function buildVirtualMetricValue(
   vm: {
     id: string;

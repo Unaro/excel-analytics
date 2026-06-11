@@ -1,4 +1,5 @@
 'use client';
+import { logger } from '@/shared/lib/logger';
 import { useEffect, useState, useMemo } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { createComputeEngine } from '@/shared/lib/computation/lib/engine-factory';
@@ -7,7 +8,7 @@ import { generateFiltersHash } from '@/shared/lib/utils/hash';
 import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { HierarchyFilterValue, IndicatorGroup, IndicatorGroupInDashboard, MetricTemplate, GroupMetric, VirtualMetric } from '@/shared/lib/validators';
 import { HierarchyNode, HierarchyLevel } from '@/entities/hierarchy/model/types';
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { ColumnConfig } from '@/shared/lib/types';
 
 const EMPTY_CONFIGS: ColumnConfig[] = [];
@@ -109,6 +110,10 @@ export function useHierarchyLevelNodes(
     }
 
     let cancelled = false;
+    // AbortController вместо одного лишь cancelled-флага: сигнал доходит
+    // до engine.compute → manager → CANCEL в воркер, и брошенные при быстром
+    // drill-down вычисления не дорабатывают зря (п.10 аудита ядра).
+    const controller = new AbortController();
     setIsLoading(true);
 
     const compute = async () => {
@@ -120,7 +125,14 @@ export function useHierarchyLevelNodes(
         filtersHash: `${filtersHash}:hierarchy`,
       };
 
-      const cached = await cache.get(cacheKey);
+      // Ошибка кэша не должна ронять эффект без setIsLoading(false) —
+      // при сбое просто считаем заново.
+      let cached: Awaited<ReturnType<typeof cache.get>> = null;
+      try {
+        cached = await cache.get(cacheKey);
+      } catch (err) {
+        logger.warn('[HierarchyNodes] Cache read failed, recomputing:', err);
+      }
       if (cached && !cancelled) {
         const res = cached.result;
         const breakdown = res.groups[0]?.breakdown ?? [];
@@ -156,7 +168,7 @@ export function useHierarchyLevelNodes(
         };
 
         await engine.initialize(activeDatasetId);
-        const result = await engine.compute(params);
+        const result = await engine.compute(params, controller.signal);
 
         if (cancelled) return;
 
@@ -175,7 +187,9 @@ export function useHierarchyLevelNodes(
 
         setNodes(mapped);
       } catch (err) {
-        console.error('[HierarchyNodes] Compute failed:', err);
+        // Отмена — штатный исход при размонтировании/смене уровня
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        logger.error('[HierarchyNodes] Compute failed:', err);
         if (!cancelled) setNodes([]);
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -184,7 +198,10 @@ export function useHierarchyLevelNodes(
 
     compute();
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [activeDatasetId, level, columnName, isSyncing, filtersHash, engine, cache, dataset, hasNextLevel, validColumns, totalRows,]);
 
   return { nodes, isLoading };
