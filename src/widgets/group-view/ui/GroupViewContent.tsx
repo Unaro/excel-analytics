@@ -78,10 +78,19 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     }
   }, [currentPath, path, setPath]);
 
+  // Одномерные потребители не должны видеть устаревшие 2-D строки:
+  // при выключении разбивки по дате isTwoDimensional меняется мгновенно,
+  // а result обновляется асинхронно — без фильтра label'ы дублируются
+  // (один элемент × каждый интервал) и ломают key-семантику таблицы.
+  const oneDimBreakdown = useMemo(
+    () => breakdown?.filter(item => item.dateLabel === undefined),
+    [breakdown]
+  );
+
   const chartBreakdown = useMemo(() => {
-    if (!breakdown || !sortConfig) return breakdown ?? [];
-    return sortBreakdown(breakdown, sortConfig.key, sortConfig.direction);
-  }, [breakdown, sortConfig]);
+    if (!oneDimBreakdown || !sortConfig) return oneDimBreakdown ?? [];
+    return sortBreakdown(oneDimBreakdown, sortConfig.key, sortConfig.direction);
+  }, [oneDimBreakdown, sortConfig]);
 
   const summaryVirtualMetrics = summary?.virtualMetrics ?? [];
 
@@ -171,9 +180,9 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
       )}
 
       {/* Одномерные режимы: иерархия ИЛИ время (на листе) */}
-      {!isComputing && !isTwoDimensional && breakdown && breakdown.length > 0 && (
+      {!isComputing && !isTwoDimensional && oneDimBreakdown && oneDimBreakdown.length > 0 && (
         <GroupBreakdownTable
-          breakdown={breakdown}
+          breakdown={oneDimBreakdown}
           sortConfig={sortConfig}
           onSortChange={setSortConfig}
           summary={summary}

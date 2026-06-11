@@ -189,7 +189,9 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
           <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800/50">
             {sortedBreakdown.map((item) => (
               <tr
-                key={item.label}
+                // Составной ключ: во время переключения режимов breakdown
+                // может транзиентно содержать 2-D строки с повторяющимся label
+                key={`${item.label} ${item.dateLabel ?? ''}`}
                 onClick={() => nextLevel && onDrillDown(item.label)}
                 className={cn(
                   "group",

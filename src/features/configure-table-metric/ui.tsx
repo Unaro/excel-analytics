@@ -88,11 +88,6 @@ export function MetricConfigPopover({ dashboardId, metricId }: MetricConfigPopov
     });
   }, [dashboardId, metricId, updateMetric, currentColorConfig]);
 
-  const parseNumber = useCallback((value: string): number => {
-    const parsed = parseFloat(value);
-    return isNaN(parsed) ? 0 : parsed;
-  }, []);
-
   if (!metric) return null;
 
   return (
@@ -162,7 +157,6 @@ export function MetricConfigPopover({ dashboardId, metricId }: MetricConfigPopov
                     onUpdate={updateRule}
                     onRemove={removeRule}
                     onDuplicate={duplicateRule}
-                    parseNumber={parseNumber}
                   />
                 )}
                 className="space-y-2"

@@ -93,11 +93,6 @@ export function GroupMetricConfigPopover({
     });
   }, [groupId, metricId, updateColorConfigAction, currentColorConfig]);
 
-  const parseNumber = useCallback((value: string): number => {
-    const parsed = parseFloat(value);
-    return isNaN(parsed) ? 0 : parsed;
-  }, []);
-
   // ─── RENDER ───
   return (
     <Popover.Root>
@@ -168,7 +163,6 @@ export function GroupMetricConfigPopover({
                     onUpdate={updateRule}
                     onRemove={removeRule}
                     onDuplicate={duplicateRule}
-                    parseNumber={parseNumber}
                   />
                 )}
                 className="space-y-2"

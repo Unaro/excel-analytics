@@ -5,7 +5,6 @@ export interface RuleCardProps extends RenderItemProps<FormattingRule> {
   onUpdate: (ruleId: string, updates: Partial<FormattingRule>) => void;
   onRemove: (ruleId: string) => void;
   onDuplicate: (rule: FormattingRule) => void;
-  parseNumber: (value: string) => number;
 }
 
 export type ConditionOperator = '>' | '>=' | '<' | '<=' | '==' | '!=' | 'between';
