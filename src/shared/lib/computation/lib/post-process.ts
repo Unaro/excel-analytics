@@ -98,10 +98,12 @@ function processRow(
 ): Record<string, number | null> {
   const results: Record<string, number | null> = {};
 
-  // Этап 1: Извлекаем значения из SQL
+  // Этап 1: Извлекаем значения из SQL.
+  // Служебные __agg_sum__/__agg_count__ СОХРАНЯЮТСЯ: по ним
+  // aggregateProcessedRows взвешенно пересчитывает AVG в сводке «Итого»
+  // (раньше они вырезались здесь, и итог AVG всегда был «—»).
   for (const [key, val] of Object.entries(row)) {
-    if (key === 'dummy' || key === '_group_label' || key === 'record_count') continue;
-    if (key.startsWith('__agg_sum__') || key.startsWith('__agg_count__')) continue;
+    if (key === 'dummy' || key === '_group_label' || key === '_date_label' || key === 'record_count') continue;
 
     if (formulas.has(key)) continue;
 
@@ -234,6 +236,10 @@ function buildMetricKeyIndex(
 
 /** Регистрирует ключ вида `${groupId}__${metricId}` в индексе зависимостей. */
 function registerMetricKey(index: Map<string, string>, key: string): void {
+  // Служебные суммы/счётчики AVG не являются значениями метрик —
+  // в индекс зависимостей не попадают (ключ __agg_sum__g__m тоже
+  // оканчивается на __m и иначе перехватил бы fallback).
+  if (key.startsWith('__agg_')) return;
   const sep = key.lastIndexOf('__');
   if (sep <= 0) return;
   const metricId = key.slice(sep + 2);

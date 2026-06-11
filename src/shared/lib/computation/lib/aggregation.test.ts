@@ -140,3 +140,50 @@ describe('aggregateProcessedRows: calculated-метрики', () => {
     expect(result['g1__mc']).toBe(1);
   });
 });
+
+describe('интеграция postProcessAggregates → aggregateProcessedRows', () => {
+  it('AVG в «Итого» взвешивается по __agg_sum__/__agg_count__, прошедшим пост-обработку', async () => {
+    const { postProcessAggregates } = await import('./post-process');
+
+    // Имитация SQL-строк group-by: служебные суммы/счётчики из компилятора.
+    // Регрессия: post-process вырезал __agg_*-ключи, и итог AVG был «—».
+    const sqlRows = [
+      {
+        _group_label: 'A',
+        _record_count: 4,
+        'g1__m1': 10,
+        '__agg_sum__g1__m1': 40n, // bigint, как отдаёт DuckDB
+        '__agg_count__g1__m1': 4n,
+      },
+      {
+        _group_label: 'B',
+        _record_count: 1,
+        'g1__m1': 50,
+        '__agg_sum__g1__m1': 50n,
+        '__agg_count__g1__m1': 1n,
+      },
+    ];
+
+    const compiled = {
+      sql: '',
+      formulas: noFormulas,
+      aggregateMetadata: meta({ 'g1__m1': 'AVG' }),
+      calculatedInSqlAliases: new Set<string>(),
+    };
+
+    const processed = postProcessAggregates(
+      sqlRows as Record<string, unknown>[],
+      compiled as never
+    );
+    // Служебные ключи дошли до агрегации числами
+    expect(processed[0]['__agg_sum__g1__m1']).toBe(40);
+
+    const summary = aggregateProcessedRows(
+      processed,
+      compiled.aggregateMetadata,
+      noFormulas
+    );
+    // Взвешенно: (40 + 50) / (4 + 1) = 18, а не среднее средних 30
+    expect(summary['g1__m1']).toBe(18);
+  });
+});
