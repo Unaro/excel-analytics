@@ -17,7 +17,7 @@ import { useDashboardOrphanCleanup } from '../model';
 import { useDashboardDatasetSync } from '../model';
 import { useDashboardComputation } from '../model';
 import { useDashboardViewState } from '../model';
-import { flattenDashboardResult } from '@/entities/metric/lib/flatten-dashboard-result';
+import { flattenDashboardResult } from '@/entities/metric';
 import { Loader2 } from 'lucide-react';
 
 interface DashboardViewContentProps {

@@ -11,9 +11,10 @@ import boundaries from "eslint-plugin-boundaries";
  *    (импорты внутри одного слайса не считаются нарушением);
  *  - entry-point: импорт чужого слайса только через его public API (index.ts).
  *
- * Severity `warn` — временно, на период рефакторинга (Phase 0–3):
- * в кодовой базе ~26 известных нарушений. После Phase 3d переключается
- * на `error` и становится блокирующим.
+ * Осознанные исключения (cross-import одного слоя через public API):
+ * widgets→widgets — композиция (dashboard-view встраивает kpi-grid и др.);
+ * features→features — билдеры компонуют фичу metric-template.
+ * Импорт мимо index.ts (entry-point) запрещён без исключений.
  */
 const fsdBoundaries = {
   files: ["src/**/*.{ts,tsx}"],
@@ -33,13 +34,13 @@ const fsdBoundaries = {
   },
   rules: {
     "boundaries/element-types": [
-      "warn",
+      "error",
       {
         default: "disallow",
         message: "FSD: слой «${file.type}» не может импортировать «${dependency.type}»",
         rules: [
           { from: "app", allow: ["widgets", "features", "entities", "shared"] },
-          { from: "widgets", allow: ["features", "entities", "shared"] },
+          { from: "widgets", allow: ["widgets", "features", "entities", "shared"] },
           // features → features: осознанное исключение (FSD cross-import
           // через public API): билдеры компонуют фичу metric-template.
           { from: "features", allow: ["features", "entities", "shared"] },
@@ -49,7 +50,7 @@ const fsdBoundaries = {
       },
     ],
     "boundaries/entry-point": [
-      "warn",
+      "error",
       {
         default: "disallow",
         message:

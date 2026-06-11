@@ -7,7 +7,7 @@ import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { toast } from 'sonner';
 import { VisualFormulaBuilder } from './VisualFormulaBuilder';
-import { useFormulaValidation } from '@/entities/formula/lib/hooks/use-formula-validation';
+import { useFormulaValidation } from '@/entities/formula';
 
 interface TemplateFormProps {
   onCancel: () => void;

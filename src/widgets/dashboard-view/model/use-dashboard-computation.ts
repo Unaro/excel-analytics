@@ -17,7 +17,7 @@ import type {
 } from '@/shared/lib/validators';
 import type { Dashboard } from '@/entities/dashboard';
 import type { CacheKey } from '@/shared/lib/storage';
-import { useComputation } from '@/widgets/shared/model/use-computation';
+import { useComputation } from '@/shared/lib/computation/hooks/use-computation';
 
 const EMPTY_FILTERS: HierarchyFilterValue[] = [];
 const EMPTY_DASHBOARD_GROUPS: IndicatorGroupInDashboard[] = [];

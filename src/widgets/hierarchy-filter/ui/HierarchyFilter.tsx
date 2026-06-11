@@ -9,9 +9,9 @@ import { useDashboardStore } from '@/entities/dashboard';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
 import { useShallow } from 'zustand/react/shallow';
-import { useFilterActions } from '@/features/hierarchy-filters/model/use-filter-actions';
+import { useFilterActions } from '@/features/hierarchy-filters';
 import { HierarchyFilterValue } from '@/shared/lib/validators';
-import { useHierarchyLevelNodes } from '@/entities/hierarchy/lib/hooks/use-hierarchy-level-nodes';
+import { useHierarchyLevelNodes } from '@/entities/hierarchy';
 
 const EMPTY_PATH: HierarchyFilterValue[] = [];
 

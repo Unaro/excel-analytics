@@ -12,3 +12,6 @@ export {
   syncFromPostgres,
   refreshPgDataset,
 } from './model/sync-engine';
+// Статус вычислительного движка датасета (DuckDB-WASM)
+export { useEngineStatus } from './lib/use-engine-status';
+export type { EngineStatusState } from './lib/use-engine-status';

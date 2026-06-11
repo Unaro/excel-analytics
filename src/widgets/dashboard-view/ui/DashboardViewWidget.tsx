@@ -3,7 +3,7 @@
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { DashboardViewContent } from './DashboardViewContent';
 import { EngineGate } from '@/shared/ui/engine-gate';
-import { useEngineStatus } from '@/widgets/shared/model';
+import { useEngineStatus } from '@/entities/dataset';
 import { ClientOnly } from '@/shared/ui/client-only';
 
 interface DashboardViewWidgetProps {

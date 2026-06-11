@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { toast } from 'sonner';
-import { refreshPgDataset } from '@/entities/dataset/model/sync-engine';
+import { refreshPgDataset } from '@/entities/dataset';
 
 interface DatasetSwitcherProps {
   isDisabled?: boolean;

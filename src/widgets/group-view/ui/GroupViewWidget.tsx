@@ -3,7 +3,7 @@
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { EngineGate } from '@/shared/ui/engine-gate';
 import { GroupViewContent } from './GroupViewContent';
-import { useEngineStatus } from '@/widgets/shared/model';
+import { useEngineStatus } from '@/entities/dataset';
 import { ClientOnly } from '@/shared/ui/client-only';
 
 interface GroupViewWidgetProps {

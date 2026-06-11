@@ -22,7 +22,7 @@ import type {
   VirtualMetric,
 } from '@/shared/lib/validators';
 import type { ColumnConfig } from '@/shared/lib/types';
-import { useComputation } from '@/widgets/shared/model/use-computation';
+import { useComputation } from '@/shared/lib/computation/hooks/use-computation';
 import type { GroupComputationResult } from '@/shared/lib/types/computation';
 
 const EMPTY_LEVELS: HierarchyLevel[] = [];

@@ -20,7 +20,7 @@ import { useDatasetStore } from '@/entities/dataset';
 import { createComputationCache } from '@/shared/lib/storage';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
-import { DatasetConfigExport } from '@/entities/export-package/types';
+import { DatasetConfigExport } from '@/entities/export-package';
 import {
   DatasetConfigExportSchema,
   HierarchyFilterValue,
