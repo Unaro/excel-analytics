@@ -10,3 +10,4 @@ export {
   syncFromPostgres,
   refreshPgDataset,
 } from './model/sync-engine';
+export { removeDatasetCompletely } from './model/remove-dataset';

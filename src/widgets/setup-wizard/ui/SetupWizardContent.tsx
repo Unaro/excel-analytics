@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { useDatasetManager } from '@/features/setup-dataset';
 import { useDatasetReplace } from '@/features/setup-dataset';
+import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
 
 import { useSetupWizardActions } from '../model/use-setup-wizard-actions';
@@ -29,7 +30,13 @@ import { useSetupWizard } from '../model/use-setup-wizard';
 export function SetupWizardContent() {
   const wizard = useSetupWizard();
 
-  const { handleDeleteDataset, handleSwitchAndNavigate } = useDatasetManager({
+  const {
+    pendingDeleteId,
+    requestDeleteDataset,
+    cancelDeleteDataset,
+    confirmDeleteDataset,
+    handleSwitchAndNavigate,
+  } = useDatasetManager({
     onNavigateToColumns: () => wizard.setStep('columns'),
     onNavigateToUpload: () => wizard.setStep('upload'),
   });
@@ -89,7 +96,7 @@ export function SetupWizardContent() {
             activeId={wizard.activeId}
             onAddNew={() => wizard.setStep('upload')}
             onSelect={handleSwitchAndNavigate}
-            onDelete={handleDeleteDataset}
+            onDelete={requestDeleteDataset}
             onReplace={handleReplaceFile}
             onImportConfig={handleImportConfig}
           />
@@ -109,6 +116,15 @@ export function SetupWizardContent() {
           <ColumnSetupStep isSyncing={wizard.isSyncing} />
         )}
       </Card>
+
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(v) => !v && cancelDeleteDataset()}
+        title="Удалить датасет?"
+        description="Будут удалены данные, кэш вычислений и настройки колонок. Настройки дашбордов, метрики и группы сохранятся."
+        variant="destructive"
+        onConfirm={confirmDeleteDataset}
+      />
     </div>
   );
 }

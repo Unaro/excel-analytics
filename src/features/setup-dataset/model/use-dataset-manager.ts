@@ -1,13 +1,21 @@
 'use client';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { toast } from 'sonner';
+import { removeDatasetCompletely } from './remove-dataset';
 
 interface UseDatasetManagerProps {
   onNavigateToColumns: () => void;
   onNavigateToUpload: () => void;
 }
 
+/**
+ * Управление датасетами на шаге настройки: удаление (с подтверждением
+ * через ConfirmDialog на стороне UI) и переключение с навигацией.
+ *
+ * Удаление делегируется removeDatasetCompletely — единой точке очистки
+ * всех артефактов (DuckDB-таблица, Arrow-буфер, кэш, конфиги колонок).
+ */
 export function useDatasetManager({
   onNavigateToColumns,
   onNavigateToUpload,
@@ -15,28 +23,39 @@ export function useDatasetManager({
   const datasets = useDatasetStore(s => s.datasets);
   const activeId = useDatasetStore(s => s.activeDatasetId);
   const switchDataset = useDatasetStore(s => s.switchDataset);
-  const removeDataset = useDatasetStore(s => s.removeDataset);
 
-  const handleDeleteDataset = useCallback(
-    (id: string) => {
-      if (!confirm('Удалить этот датасет? Настройки дашбордов сохранятся.')) return;
+  /** Датасет, ожидающий подтверждения удаления (null — диалог закрыт). */
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-      removeDataset(id);
-      toast.info('Датасет удален');
+  /** Открывает диалог подтверждения удаления. */
+  const requestDeleteDataset = useCallback((id: string) => {
+    setPendingDeleteId(id);
+  }, []);
 
-      if (id === activeId) {
-        const remainingIds = Object.keys(datasets).filter(k => k !== id);
-        if (remainingIds.length > 0) {
-          switchDataset(remainingIds[0]);
-          onNavigateToColumns();
-        } else {
-          onNavigateToUpload();
-        }
+  /** Закрывает диалог без удаления. */
+  const cancelDeleteDataset = useCallback(() => setPendingDeleteId(null), []);
+
+  /** Удаляет датасет со всеми артефактами и переключает активный. */
+  const confirmDeleteDataset = useCallback(async () => {
+    const id = pendingDeleteId;
+    if (!id) return;
+
+    await removeDatasetCompletely(id);
+    toast.info('Датасет удален');
+    setPendingDeleteId(null);
+
+    if (id === activeId) {
+      const remainingIds = Object.keys(datasets).filter(k => k !== id);
+      if (remainingIds.length > 0) {
+        switchDataset(remainingIds[0]);
+        onNavigateToColumns();
+      } else {
+        onNavigateToUpload();
       }
-    },
-    [activeId, datasets, removeDataset, switchDataset, onNavigateToColumns, onNavigateToUpload]
-  );
+    }
+  }, [pendingDeleteId, activeId, datasets, switchDataset, onNavigateToColumns, onNavigateToUpload]);
 
+  /** Переключает активный датасет и переходит к настройке колонок. */
   const handleSwitchAndNavigate = useCallback(
     (id: string) => {
       switchDataset(id);
@@ -46,7 +65,10 @@ export function useDatasetManager({
   );
 
   return {
-    handleDeleteDataset,
+    pendingDeleteId,
+    requestDeleteDataset,
+    cancelDeleteDataset,
+    confirmDeleteDataset,
     handleSwitchAndNavigate,
   };
 }
