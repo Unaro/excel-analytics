@@ -9,15 +9,15 @@
 //   3. Соответствующей FSD (shared не зависит от entities)
 // ─────────────────────────────────────────────────────────────
 
-import type { Dashboard } from '@/entities/dashboard/model/types';
+import type { Dashboard } from '@/shared/lib/types/dashboard';
 import type { ColumnConfig } from '@/shared/lib/types/dataset';
 import type {
   HierarchyFilterValue,
   IndicatorGroup,
   MetricTemplate,
 } from '@/shared/lib/validators';
-import type { GroupMetricConfig } from '@/entities/groupMetricConfig/model/store';
-import type { HierarchyLevel } from '@/entities/hierarchy/model/types';
+import type { GroupMetricConfig } from '@/shared/lib/types/group-metric-config';
+import type { HierarchyLevel } from '@/shared/lib/types/hierarchy';
 
 // ─────────────────────────────────────────────────────────────
 // Публичные типы

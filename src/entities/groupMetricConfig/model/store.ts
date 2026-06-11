@@ -1,17 +1,12 @@
 // entities/groupMetricConfig/model/store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { ColorConfig } from '@/entities/dashboard';
+import type { ColorConfig } from '@/shared/lib/types/dashboard';
+import type { GroupMetricConfig } from '@/shared/lib/types/group-metric-config';
 
-/**
- * Конфигурация одной метрики внутри группы показателей.
- *
- * Хранится ОТДЕЛЬНО от IndicatorGroup, чтобы не смешивать
- * бизнес-логику (агрегации/формулы) с UI-настройками (цвета, пороги).
- */
-export interface GroupMetricConfig {
-  colorConfig?: ColorConfig;
-}
+// Тип перенесён в shared/lib/types/group-metric-config (нужен сервисам
+// экспорта/импорта конфигурации) — ре-экспорт для обратной совместимости.
+export type { GroupMetricConfig };
 
 interface GroupMetricConfigState {
   /**

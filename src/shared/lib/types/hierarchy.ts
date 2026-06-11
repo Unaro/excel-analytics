@@ -5,3 +5,15 @@
 // ─────────────────────────────────────────────────────────────
 
 export type { HierarchyFilterValue } from '@/shared/lib/validators';
+
+/**
+ * Один уровень иерархии (например: Страна -> Город -> Район).
+ *
+ * Живёт в shared: используется сервисами экспорта/импорта конфигурации.
+ */
+export interface HierarchyLevel {
+  id: string;
+  columnName: string;
+  displayName: string;
+  order: number;
+}

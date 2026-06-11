@@ -16,7 +16,7 @@ import {
   type VirtualMetricBindingInDashboard,
 } from '@/shared/lib/validators';
 import { FormattingRule } from '../utils/fortmating-rules';
-import type { Dashboard } from '@/entities/dashboard/model/types';
+import type { Dashboard } from '@/shared/lib/types/dashboard';
 
 // ─────────────────────────────────────────────────────────────
 // Публичные типы

@@ -9,7 +9,7 @@ import type {
   VirtualMetric,
   VirtualMetricBindingInDashboard,
 } from '@/shared/lib/validators';
-import { KPIWidget } from '@/shared/shared/lib/types/dashboard';
+import { KPIWidget } from '@/shared/lib/types/dashboard';
 
 export const KPI_VIRTUAL_GROUP_ID = 'kpi_virtual_group';
 
