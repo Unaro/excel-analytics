@@ -12,7 +12,10 @@ import type { ColumnConfig } from '@/shared/lib/types';
 const EMPTY_COLUMNS: ColumnConfig[] = []
 
 export function useGroupBuilder(existingGroupId?: string) {
-  const { addGroup, updateGroup, getGroup } = useIndicatorGroupStore();
+  // Экшены стора стабильны — точечные селекторы вместо подписки на весь стор
+  const addGroup = useIndicatorGroupStore(s => s.addGroup);
+  const updateGroup = useIndicatorGroupStore(s => s.updateGroup);
+  const getGroup = useIndicatorGroupStore(s => s.getGroup);
   const templates = useMetricTemplateStore((s) => s.templates);
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const columns = useColumnConfigStore(s => 

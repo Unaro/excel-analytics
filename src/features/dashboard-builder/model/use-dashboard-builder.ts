@@ -9,8 +9,13 @@ import { useDashboardStore } from '@/entities/dashboard';
 import { Dashboard } from '@/entities/dashboard';
 
 export function useDashboardBuilder(existingDashboardId?: string) {
-  // Сначала ВСЕ хуки — никаких условий до useState
-  const { addDashboard, updateDashboard, getDashboard } = useDashboardStore();
+  // Сначала ВСЕ хуки — никаких условий до useState.
+  // Экшены стора стабильны — подписываемся точечно, а не на весь стор:
+  // useDashboardStore() без селектора ререндерил форму билдера на любое
+  // изменение любого дашборда (п.7 аудита ядра).
+  const addDashboard = useDashboardStore(s => s.addDashboard);
+  const updateDashboard = useDashboardStore(s => s.updateDashboard);
+  const getDashboard = useDashboardStore(s => s.getDashboard);
   const allGroups = useIndicatorGroupStore(s => s.groups);
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   

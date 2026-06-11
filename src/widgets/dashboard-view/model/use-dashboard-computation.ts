@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
-import { useMetricTemplateStore, useComputedMetricsStore } from '@/entities/metric';
+import { useMetricTemplateStore } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useDatasetInfo } from '@/entities/group-view';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
@@ -107,19 +107,9 @@ export function useDashboardComputation(dashboardId: string) {
     deps: [compositeHash, dashboard?.id],
   });
 
-  const storeSetResult = useComputedMetricsStore(s => s.setDashboardResult);
-  const storeSetComputing = useComputedMetricsStore(s => s.setComputingState);
-
-  // Side-эффекты записи в стор — только в useEffect: useMemo исполняется
-  // во время рендера, и мутация стора оттуда ломает Strict Mode и
-  // провоцирует каскадные ререндеры (п.16 аудита).
-  useEffect(() => {
-    if (result) storeSetResult(dashboardId, result);
-  }, [result, dashboardId, storeSetResult]);
-
-  useEffect(() => {
-    storeSetComputing(isComputing, error);
-  }, [isComputing, error, storeSetComputing]);
+  // Запись результата в useComputedMetricsStore удалена вместе со стором:
+  // у него не было ни одного читателя, а Map результатов рос без eviction
+  // (п.2 аудита ядра). Результат живёт в state хука и в computation-cache.
 
   const mergedResult = useMemo<DashboardComputationResult | null>(() => {
     if (!result) return null;

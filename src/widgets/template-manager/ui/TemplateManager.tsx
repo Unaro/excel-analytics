@@ -10,7 +10,8 @@ import { TemplateForm } from '@/features/metric-template';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 
 export function TemplateManager() {
-  const { templates, deleteTemplate } = useMetricTemplateStore();
+  const templates = useMetricTemplateStore(s => s.templates);
+  const deleteTemplate = useMetricTemplateStore(s => s.deleteTemplate);
   const [isCreating, setIsCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 

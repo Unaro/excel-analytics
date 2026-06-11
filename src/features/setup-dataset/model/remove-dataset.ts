@@ -11,6 +11,7 @@ import { logger } from '@/shared/lib/logger';
 import { del } from 'idb-keyval';
 import { useDatasetStore } from '@/entities/dataset';
 import { useColumnConfigStore } from '@/entities/column-config';
+import { useHierarchyStore } from '@/entities/hierarchy';
 import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';
 import { createComputationCache } from '@/shared/lib/storage';
 
@@ -20,7 +21,8 @@ import { createComputationCache } from '@/shared/lib/storage';
  * 2. Arrow-буфер `arrow:<id>` в IndexedDB;
  * 3. кэш результатов вычислений;
  * 4. конфиги колонок;
- * 5. запись в сторе датасетов.
+ * 5. уровни иерархии датасета;
+ * 6. запись в сторе датасетов.
  *
  * Ошибки очистки артефактов не блокируют удаление записи —
  * каждая ступень изолирована (артефакт-сирота хуже, чем
@@ -50,6 +52,11 @@ export async function removeDatasetCompletely(datasetId: string): Promise<void> 
     }
 
     useColumnConfigStore.getState().clearDatasetConfigs(datasetId);
+
+    // Уровни иерархии привязаны к колонкам удаляемых данных — без очистки
+    // они копились бы в persist как orphan-записи (п.8 аудита ядра).
+    // Группы и дашборды сохраняются намеренно (см. текст диалога удаления).
+    useHierarchyStore.getState().clearDatasetLevels(datasetId);
   }
 
   store.removeDataset(datasetId);
