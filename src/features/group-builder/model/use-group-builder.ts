@@ -27,6 +27,17 @@ export function useGroupBuilder(existingGroupId?: string) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [columnSearchQuery, setColumnSearchQuery] = useState('');
 
+  // Авто-переключение на датасет редактируемой группы: в редактор можно
+  // попасть из общего списка групп при любом активном датасете, а колонки
+  // для привязок берутся из активного — без переключения они были бы чужими.
+  useEffect(() => {
+    if (!existingGroupId) return;
+    const group = getGroup(existingGroupId);
+    if (!group?.datasetId) return;
+    if (group.datasetId === activeDatasetId) return;
+    useDatasetStore.getState().switchDataset(group.datasetId);
+  }, [existingGroupId, getGroup, activeDatasetId]);
+
   // --- 1. ВЫЧИСЛЕНИЕ СПИСКА КОЛОНОК ---
   const filteredColumns = useMemo(() => {
     if (!activeDatasetId || columns === EMPTY_COLUMNS) return [];

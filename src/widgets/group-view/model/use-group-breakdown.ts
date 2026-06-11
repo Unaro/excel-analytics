@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useDatasetStore } from '@/entities/dataset';
 import { useHierarchyStore, type HierarchyLevel } from '@/entities/hierarchy';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useMetricTemplateStore, type IndicatorGroup } from '@/entities/metric';
@@ -69,6 +70,15 @@ export function useGroupBreakdown(
 
   const group = useIndicatorGroupStore(s => s.getGroup(groupId));
   const templates = useMetricTemplateStore(useShallow(s => s.templates)) ?? EMPTY_TEMPLATES;
+
+  // Авто-переключение на датасет группы — как на странице дашборда
+  // (use-dashboard-dataset-sync): страница группы всегда работает
+  // с привязанными данными, а не со случайно активным датасетом.
+  useEffect(() => {
+    if (!group?.datasetId) return;
+    if (group.datasetId === activeDatasetId) return;
+    useDatasetStore.getState().switchDataset(group.datasetId);
+  }, [group?.datasetId, activeDatasetId]);
 
   const levels = useHierarchyStore(
     useShallow(s => (activeDatasetId ? s.getLevels(activeDatasetId) : EMPTY_LEVELS))

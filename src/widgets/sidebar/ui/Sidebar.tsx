@@ -27,6 +27,11 @@ interface SidebarProps {
 const SidebarComponent = ({ className, onClose }: SidebarProps) => {
   const pathname = usePathname();
   const isDashboardPage = /^\/dashboards\/[^/]+$/.test(pathname || '');
+  // Страницы конкретной группы (/groups/{id} и /groups/{id}/edit, кроме
+  // /groups/new): активный датасет там диктуется привязкой группы —
+  // ручное переключение сломало бы вычисления и привязки колонок
+  const isGroupPage = /^\/groups\/(?!new(?:$|\/))[^/]+/.test(pathname || '');
+  const isDatasetLocked = isDashboardPage || isGroupPage;
 
   const { status } = useEngineStatus();
 
@@ -77,7 +82,7 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
       </div>
 
       <div className="px-4 py-3 border-b border-gray-100 dark:border-slate-800 bg-gray-50/30 dark:bg-slate-900/30">
-        <DatasetSwitcher isDisabled={isDashboardPage} />
+        <DatasetSwitcher isDisabled={isDatasetLocked} />
       </div>
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
