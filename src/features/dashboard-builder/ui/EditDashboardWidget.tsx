@@ -1,7 +1,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { DashboardBuilderUI } from '@/widgets/dashboard-builder';
-import { useDashboardBuilder } from '@/widgets/dashboard-builder/model/use-dashboard-builder';
+import { DashboardBuilderUI } from './DashboardBuilderUI';
+import { useDashboardBuilder } from '../model/use-dashboard-builder';
 import { toast } from 'sonner';
 
 interface EditDashboardWidgetProps {
