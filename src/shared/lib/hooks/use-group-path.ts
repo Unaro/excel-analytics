@@ -9,6 +9,11 @@ export interface GroupPathReturn {
   setPath: (newPath: HierarchyFilterValue[]) => void;
 }
 
+/**
+ * Путь иерархии текущей группы в query-параметре `path` URL
+ * (читает также legacy-параметр `filters`). Запись — router.replace
+ * без скролла.
+ */
 export function useGroupPath(): GroupPathReturn {
   const router = useRouter();
   const pathname = usePathname();

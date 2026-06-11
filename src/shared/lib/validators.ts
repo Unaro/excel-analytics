@@ -4,8 +4,10 @@
 import { z } from 'zod';
 
 // Базовые типы
+/** Строка импортированных данных: имя колонки → произвольное значение. */
 export const ExcelRowSchema = z.record(z.string(), z.unknown());
 
+/** Выбранное значение уровня иерархии (фильтр дашборда). */
 export const HierarchyFilterValueSchema = z.object({
   levelId: z.string().min(1),
   levelIndex: z.number().int().min(0),
@@ -16,6 +18,7 @@ export const HierarchyFilterValueSchema = z.object({
   value2: z.string().optional(),
 });
 
+/** Виртуальная метрика дашборда (колонка таблицы показателей). */
 export const VirtualMetricSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
@@ -35,6 +38,7 @@ export const VirtualMetricSchema = z.object({
   }).optional(),
 });
 
+/** Привязка алиаса формулы к колонке датасета. */
 export const FieldBindingSchema = z.object({
   id: z.string().min(1),
   fieldAlias: z.string().min(1),
@@ -42,6 +46,7 @@ export const FieldBindingSchema = z.object({
   description: z.string().optional(),
 });
 
+/** Привязка алиаса формулы к другой метрике группы. */
 export const MetricBindingSchema = z.object({
   id: z.string().min(1),
   metricAlias: z.string().min(1),
@@ -49,6 +54,7 @@ export const MetricBindingSchema = z.object({
   description: z.string().optional(),
 });
 
+/** Метрика внутри группы показателей (инстанс шаблона с привязками). */
 export const GroupMetricSchema = z.object({
   id: z.string().min(1),
   templateId: z.string().min(1),
@@ -62,6 +68,7 @@ export const GroupMetricSchema = z.object({
   unit: z.string().optional(),
 });
 
+/** Шаблон метрики: aggregate (функция+поле) или calculated (формула). */
 export const MetricTemplateSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
@@ -83,6 +90,7 @@ export const MetricTemplateSchema = z.object({
   updatedAt: z.number(),
 });
 
+/** Группа показателей: набор метрик над полями датасета. */
 export const IndicatorGroupSchema = z.object({
   id: z.string().min(1),
   datasetId: z.string().optional(),
@@ -105,12 +113,14 @@ export const IndicatorGroupSchema = z.object({
 });
 
 // 1. Выносим привязку в отдельную схему
+/** Связь виртуальной метрики дашборда с метрикой группы. */
 export const VirtualMetricBindingInDashboardSchema = z.object({
   virtualMetricId: z.string().min(1),
   metricId: z.string().min(1),
 });
 
 // 2. Используем её внутри конфигурации группы
+/** Конфигурация группы показателей на конкретном дашборде. */
 export const IndicatorGroupInDashboardSchema = z.object({
   groupId: z.string().min(1),
   enabled: z.boolean(),
@@ -123,6 +133,7 @@ export type VirtualMetricBindingInDashboard = z.infer<typeof VirtualMetricBindin
 export type IndicatorGroupInDashboard = z.infer<typeof IndicatorGroupInDashboardSchema>;
 
 // Схема для параметров вычисления
+/** Параметры серверного вычисления метрик (legacy-путь по сырым строкам). */
 export const ComputeParamsSchema = z.object({
   dashboardId: z.string().min(1).max(64),
   

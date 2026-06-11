@@ -7,6 +7,7 @@ import { logger } from '@/shared/lib/logger';
 import { create, all, parse, type MathNode, FunctionNode, SymbolNode } from 'mathjs';
 
 // Создаём инстанс mathjs
+/** Инстанс mathjs для вычисления пользовательских формул (см. validateFormula). */
 export const safeMath = create(all);
 
 // Белый список разрешённых функций для формул

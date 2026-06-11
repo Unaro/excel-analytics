@@ -7,6 +7,12 @@ export interface AggregatedSummary {
   _record_count: number;
 }
 
+/**
+ * Переагрегирует построчные результаты group-by в сводную строку «Итого»:
+ * SUM/COUNT суммируются, AVG взвешивается через __agg_sum__/__agg_count__,
+ * MIN/MAX берут экстремум, COUNT_DISTINCT/MEDIAN непереагрегируемы (null),
+ * calculated-формулы пересчитываются на агрегированных зависимостях.
+ */
 export function aggregateProcessedRows(
   processedRows: Record<string, number | null>[],
   aggregateMetadata: Map<string, MetricAggregationMeta>,

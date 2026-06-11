@@ -8,6 +8,11 @@ export interface ThresholdGroupingResult {
   groupedThresholds: ReturnType<typeof groupThresholdsByValue>;
 }
 
+/**
+ * Группирует пороги условного форматирования активных метрик по значению
+ * (мемоизированная обёртка над groupThresholdsByValue) — для отрисовки
+ * threshold-линий на графиках.
+ */
 export function useThresholdGrouping(
   virtualMetrics: VirtualMetric[],
   activeMetricIds: string[]

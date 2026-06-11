@@ -282,6 +282,10 @@ export class FormulaToSqlCompiler {
 // ─────────────────────────────────────────────────────────────
 // Фабрика контекста
 // ─────────────────────────────────────────────────────────────
+/**
+ * Собирает контекст компиляции формулы: карты «алиас → SQL-выражение»
+ * для полей и метрик-зависимостей + целевой диалект.
+ */
 export function createFormulaToSqlContext(
   fieldAliases: Map<string, string>,
   metricAliases: Map<string, string>,
@@ -290,6 +294,10 @@ export function createFormulaToSqlContext(
   return { fieldAliases, metricAliases, dialect };
 }
 
+/**
+ * Оборачивает SQL-выражение в COALESCE(expr, 0) — NULL-зависимости
+ * формул считаются нулями (как в mathjs-fallback'е).
+ */
 export function wrapWithCoalesce(sqlExpr: string): string {
   return `COALESCE(${sqlExpr}, 0)`;
 }

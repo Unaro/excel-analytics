@@ -248,6 +248,12 @@ export function classifyColumn(
 // Устаревшая функция для совместимости (используется в CSV-пути)
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Конвертирует первый лист Excel-файла в CSV-буфер.
+ *
+ * @deprecated Используется только legacy CSV-путём импорта;
+ * основной путь — importExcelBuffer через DuckDB.
+ */
 export function convertExcelToCsvBuffer(fileBuffer: ArrayBuffer): {
   csvBuffer: Uint8Array;
   sheetNames: string[];

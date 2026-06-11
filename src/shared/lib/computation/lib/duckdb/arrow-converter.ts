@@ -28,12 +28,20 @@ function arrowTableToRows(table: Table): DatasetRow[] {
   return rows;
 }
 
+/**
+ * Сериализует строки датасета в Arrow IPC-буфер (stream-формат) —
+ * формат персистентности данных в IndexedDB (`arrow:<id>`).
+ */
 export function rowsToArrowBuffer(rows: DatasetRow[]): Uint8Array {
   if (rows.length === 0) return new Uint8Array(0);
   const table = tableFromJSON(rows);
   return tableToIPC(table, 'stream');
 }
 
+/**
+ * Десериализует Arrow IPC-буфер обратно в строки датасета
+ * (нормализуя bigint → number, Date → ISO-дату, NaN/Infinity → null).
+ */
 export function arrowBufferToRows(buffer: Uint8Array): DatasetRow[] {
   if (buffer.byteLength === 0) return [];
   const table = tableFromIPC(buffer);

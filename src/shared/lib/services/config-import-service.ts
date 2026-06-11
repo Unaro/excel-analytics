@@ -243,6 +243,13 @@ function rebuildDashboard(
 // Публичная функция
 // ─────────────────────────────────────────────────────────────
 
+/**
+ * Импортирует JSON-конфигурацию датасета: валидация Zod-схемой,
+ * дедупликация ID виртуальных метрик (суффикс _imp_N при конфликте),
+ * мерж с существующими дашбордами/группами целевого датасета.
+ *
+ * @throws ConfigImportError при невалидном JSON или несоответствии схеме.
+ */
 export function processConfigImport(
   fileContent: string,
   context: ConfigImportContext

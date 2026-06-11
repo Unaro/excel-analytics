@@ -19,6 +19,10 @@ export const METRIC_COLOR_HEX: Record<MetricColor, string> = {
   slate:   '#94a3b8',
 };
 
+/**
+ * Проверяет значение против оператора правила условного форматирования.
+ * `between` — включающий диапазон [threshold, threshold2].
+ */
 export function checkRule(value: number, operator: ConditionOperator, threshold: number, threshold2?: number): boolean {
   switch (operator) {
     case '>': return value > threshold;
