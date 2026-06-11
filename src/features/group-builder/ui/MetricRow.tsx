@@ -1,6 +1,6 @@
 'use client';
 
-import { FunctionSquare, Calculator, Trash2, GripVertical, Hash } from 'lucide-react';
+import { FunctionSquare, Calculator, Trash2, GripVertical, Hash, AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Badge } from '@/shared/ui/badge';
@@ -40,7 +40,37 @@ export function MetricRow({
 }: MetricRowProps) {
   const template = templates.find(t => t.id === item.templateId);
 
-  if (!template) return null;
+  // Шаблон метрики удалён: раньше строка не рендерилась вовсе (return null),
+  // из-за чего осиротевший показатель оставался в группе без возможности
+  // удаления. Показываем деградированную строку с кнопкой удаления —
+  // в расчётах такой показатель не участвует (компилятор его пропускает).
+  if (!template) {
+    return (
+      <div className="bg-amber-50 dark:bg-amber-900/10 rounded-xl p-4 border border-amber-300 dark:border-amber-800 flex items-center gap-3">
+        <AlertTriangle size={18} className="text-amber-500 shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-slate-900 dark:text-white text-sm truncate">
+            {item.customName || 'Показатель без названия'}
+          </div>
+          <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+            Шаблон формулы удалён — показатель не участвует в расчётах. Удалите его из группы.
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 shrink-0"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemoveMetric(item.tempId);
+          }}
+          {...stopDragEvents}
+        >
+          <Trash2 size={16} />
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div
