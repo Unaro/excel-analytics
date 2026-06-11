@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useEffect, useMemo, useState } from 'react';
-import { Search, ChevronRight, Layers } from 'lucide-react';
+import { Search, ChevronRight, Layers, AlertTriangle } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { cn } from '@/shared/lib/utils';
@@ -98,8 +98,15 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
             )}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            {breakdown.length} элементов {breakdown.length >= 100 && '(лимит 100)'}
+            {breakdown.length} элементов
           </p>
+          {summary?.breakdownTruncated && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-center gap-1">
+              <AlertTriangle size={12} className="shrink-0" />
+              Разбивка усечена: показаны первые {breakdown.length} значений.
+              Строки за пределами лимита не учтены в таблице и «Итого» — уточните фильтры.
+            </p>
+          )}
         </div>
         <div className="relative w-64">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />

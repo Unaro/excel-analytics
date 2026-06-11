@@ -68,6 +68,12 @@ export interface GroupComputationResult {
   recordCount: number;
   computedAt: number;
   breakdown?: BreakdownItem[];
+  /**
+   * true — breakdown усечён до BREAKDOWN_LIMIT строк (значений группировки
+   * больше лимита). UI обязан показать предупреждение: суммы по видимым
+   * строкам не сойдутся с «Итого».
+   */
+  breakdownTruncated?: boolean;
 }
 
 /**

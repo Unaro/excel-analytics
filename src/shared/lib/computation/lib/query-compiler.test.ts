@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { compileQuery } from './query-compiler';
+import { compileQuery, BREAKDOWN_LIMIT } from './query-compiler';
 import {
   makeParams,
   makeFilter,
@@ -195,7 +195,8 @@ describe('compileQuery: группировка', () => {
     expect(sql).toContain('"region" AS "_group_label"');
     expect(sql).toContain('GROUP BY "region"');
     expect(sql).toContain('ORDER BY "g1__m1" DESC');
-    expect(sql).toContain('LIMIT 1000');
+    // BREAKDOWN_LIMIT + 1: лишняя строка — сигнал усечения потребителю
+    expect(sql).toContain(`LIMIT ${BREAKDOWN_LIMIT + 1}`);
   });
 
   it('невалидный groupByColumn деградирует в NULL AS "_group_label"', () => {

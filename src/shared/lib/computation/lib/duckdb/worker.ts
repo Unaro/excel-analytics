@@ -3,7 +3,7 @@
 import { logger } from '@/shared/lib/logger';
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { tableFromIPC, tableFromJSON } from 'apache-arrow';
-import { compileQuery } from '../query-compiler';
+import { compileQuery, BREAKDOWN_LIMIT } from '../query-compiler';
 import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
 import { getActiveFilter, formatValue } from '../utils';
 import { transliterate } from '@/shared/lib/utils/translit';
@@ -119,6 +119,11 @@ export interface ReloadArrowPayload {
   buffer: Uint8Array;
 }
 
+export interface CancelPayload {
+  /** id COMPUTE-сообщения, результат которого больше не нужен. */
+  targetId: number;
+}
+
 export type WorkerMessage =
   | { type: 'REGISTER_ARROW'; id: number; payload: RegisterArrowPayload }
   | { type: 'COMPUTE'; id: number; payload: ComputePayload }
@@ -130,6 +135,7 @@ export type WorkerMessage =
   | { type: 'CHECK_TABLE'; id: number; payload: CheckTablePayload }
   | { type: 'RELOAD_ARROW'; id: number; payload: ReloadArrowPayload }
   | { type: 'EXPORT_ARROW_CHUNKED'; id: number; payload: ExportArrowPayload }
+  | { type: 'CANCEL'; id: number; payload: CancelPayload }
 
 // ─────────────────────────────────────────────────────────────
 // 2. ХЕЛПЕРЫ
@@ -228,8 +234,28 @@ async function initDB(): Promise<void> {
 // 4. ГЛАВНЫЙ ОБРАБОТЧИК СООБЩЕНИЙ
 // ─────────────────────────────────────────────────────────────
 
+// id COMPUTE-задач, отменённых менеджером (AbortSignal в хуках).
+// Пока COMPUTE ждёт `await conn.query()` (SQL исполняется во внутреннем
+// воркере duckdb-wasm), наш event loop свободен и успевает принять CANCEL —
+// контрольные точки в COMPUTE прерывают задачу между этапами.
+const cancelledComputeIds = new Set<number>();
+
+function markCancelled(targetId: number): void {
+  // CANCEL для уже завершённой задачи оставил бы запись навсегда —
+  // страхуемся от неограниченного роста.
+  if (cancelledComputeIds.size > 500) cancelledComputeIds.clear();
+  cancelledComputeIds.add(targetId);
+}
+
 self.onmessage = async (e: MessageEvent) => {
   const { type, payload, id } = e.data as WorkerMessage;
+
+  // CANCEL обрабатываем до initDB: отмена не должна ждать инициализации.
+  // Ответ не шлём — менеджер уже отклонил промис задачи на своей стороне.
+  if (type === 'CANCEL') {
+    markCancelled(payload.targetId);
+    return;
+  }
 
   try {
     await initDB();
@@ -262,6 +288,16 @@ self.onmessage = async (e: MessageEvent) => {
       const { dashboardId, dashboardGroupsConfig, virtualMetrics, filters, groupByColumn } = params;
       const tableName = buildTableName(params.datasetId);
 
+      // Контрольная точка отмены: true — задача снята, ответ уже отправлен.
+      const abortIfCancelled = (): boolean => {
+        if (!cancelledComputeIds.has(id)) return false;
+        cancelledComputeIds.delete(id);
+        self.postMessage({ id, success: false, error: 'AbortError' });
+        return true;
+      };
+
+      if (abortIfCancelled()) return;
+
       // ─── ПОЛУЧАЕМ РЕАЛЬНУЮ СХЕМУ ИЗ DUCKDB ─────────────────
       let effectiveParams = params;
       try {
@@ -287,6 +323,9 @@ self.onmessage = async (e: MessageEvent) => {
 
       logger.debug(`[Worker] 📝 Compiled SQL (${compiled.sql.length} chars):`, compiled.sql.slice(0, 200) + '...');
 
+      // Отмена могла прийти, пока ждали DESCRIBE — не запускаем тяжёлый SQL
+      if (abortIfCancelled()) return;
+
       const prepared = await preparedStatementCache.getOrCreate(compiled.sql);
       let table: Awaited<ReturnType<duckdb.AsyncDuckDBConnection['query']>>;
 
@@ -296,7 +335,17 @@ self.onmessage = async (e: MessageEvent) => {
         table = await conn!.query(compiled.sql);
       }
 
-      const rows = table.toArray() as Record<string, unknown>[];
+      // SQL уже исполнен, но пост-обработка и сериализация результата
+      // отменённой задачи никому не нужны
+      if (abortIfCancelled()) return;
+
+      const allRows = table.toArray() as Record<string, unknown>[];
+      // SQL запрашивает BREAKDOWN_LIMIT + 1 строк: наличие лишней строки —
+      // признак усечения. Обрезаем ДО пост-обработки, чтобы сводка («Итого»)
+      // и breakdown считались по одному набору строк.
+      const breakdownTruncated =
+        !!groupByColumn && allRows.length > BREAKDOWN_LIMIT;
+      const rows = breakdownTruncated ? allRows.slice(0, BREAKDOWN_LIMIT) : allRows;
       const processedRows = postProcessAggregates(rows, compiled);
 
       const computeTotalRecordCount = (sqlRows: Record<string, unknown>[]): number => {
@@ -414,6 +463,7 @@ self.onmessage = async (e: MessageEvent) => {
             groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
             virtualMetrics: groupVirtualMetrics,
             breakdown: breakdownItems,
+            breakdownTruncated,
             recordCount: computeTotalRecordCount(rows),
             computedAt: Date.now(),
           };

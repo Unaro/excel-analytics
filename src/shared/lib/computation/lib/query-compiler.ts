@@ -75,6 +75,17 @@ function buildAggregateExpr(
 }
 
 // ─────────────────────────────────────────────────────────────
+// Лимит строк breakdown при группировке.
+//
+// SQL запрашивает BREAKDOWN_LIMIT + 1 строк: лишняя строка — сигнал
+// потребителю (worker / pg-engine), что данные усечены. Потребитель
+// обязан обрезать массив до BREAKDOWN_LIMIT и выставить
+// breakdownTruncated в результате — иначе пользователь увидит
+// неполную таблицу без индикатора (п.1 аудита ядра).
+// ─────────────────────────────────────────────────────────────
+export const BREAKDOWN_LIMIT = 1000;
+
+// ─────────────────────────────────────────────────────────────
 // Префиксы для технических алиасов
 // ─────────────────────────────────────────────────────────────
 export const FIELD_DEP_PREFIX = '_fb';
@@ -458,7 +469,7 @@ export function compileQuery(
       if (firstMetricAlias) {
         orderByClause = `ORDER BY ${quote(firstMetricAlias)} DESC`;
       }
-      limitClause = 'LIMIT 1000';
+      limitClause = `LIMIT ${BREAKDOWN_LIMIT + 1}`;
     }
 
     const finalParts = [
@@ -496,7 +507,7 @@ export function compileQuery(
         const match = firstMetricAlias.match(/AS\s+"([^"]+)"/);
         if (match) orderByClause = `ORDER BY ${quote(match[1])} DESC`;
       }
-      limitClause = 'LIMIT 1000';
+      limitClause = `LIMIT ${BREAKDOWN_LIMIT + 1}`;
     }
 
     sql = [

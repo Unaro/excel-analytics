@@ -3,7 +3,7 @@ import type {
   IComputeEngine,
   MetricAggregationMeta,
 } from '../types';
-import { compileQuery } from '../query-compiler';
+import { compileQuery, BREAKDOWN_LIMIT } from '../query-compiler';
 import { getActiveFilter, formatValue, computeTotalRecordCount } from '../utils';
 import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
 import { decryptConfig } from '@/shared/lib/utils/crypto';
@@ -81,7 +81,13 @@ export class PgEngine implements IComputeEngine {
       throw new Error('PG query failed: no data returned');
     }
 
-    const rows = response.rows as Record<string, unknown>[];
+    const allRows = response.rows as Record<string, unknown>[];
+    // SQL запрашивает BREAKDOWN_LIMIT + 1 строк: лишняя строка — признак
+    // усечения breakdown. Обрезаем ДО пост-обработки, чтобы сводка
+    // и breakdown считались по одному набору строк.
+    const breakdownTruncated =
+      !!groupByColumn && allRows.length > BREAKDOWN_LIMIT;
+    const rows = breakdownTruncated ? allRows.slice(0, BREAKDOWN_LIMIT) : allRows;
 
     // Локальная перекомпиляция только ради метаданных пост-обработки
     // (formulas, aggregateMetadata) — SQL на клиенте не исполняется.
@@ -148,6 +154,7 @@ export class PgEngine implements IComputeEngine {
           groupName: groupDef?.name ?? `Группа ${cfg.groupId}`,
           virtualMetrics: buildVirtualMetrics(summaryProcessed),
           breakdown,
+          breakdownTruncated,
           recordCount: totalRecords,
           computedAt: Date.now(),
         };
