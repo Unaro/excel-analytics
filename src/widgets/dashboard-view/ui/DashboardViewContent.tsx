@@ -2,7 +2,6 @@
 
 import { use, useMemo, useCallback } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
-import { useHierarchyTree } from '@/entities/hierarchy';
 import { HierarchyTree } from '@/widgets/hierarchy-filter';
 import { KPIGrid } from '@/widgets/kpi-grid';
 import { DashboardMetricsTable } from '@/widgets/dashboard-metrics-table';
@@ -62,8 +61,6 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   const dashboard = useDashboardStore(
     useShallow(s => s.dashboards.find(d => d.id === dashboardId))
   );
-
-  const { currentPath } = useHierarchyTree(dashboardId);
 
   const hierarchyFilters = useDashboardStore(
     useShallow(
@@ -174,7 +171,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
               hiddenMetricIds={viewState.hiddenMetricIds}
               onToggleMetricVisibility={viewState.toggleMetricVisibility}
               getGroupHref={groupId =>
-                `/groups/${groupId}?filters=${encodeURIComponent(JSON.stringify(currentPath))}`
+                `/groups/${groupId}?filters=${encodeURIComponent(JSON.stringify(hierarchyFilters))}`
               }
               className="mt-6"
             />
