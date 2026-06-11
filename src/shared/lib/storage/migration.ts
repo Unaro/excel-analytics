@@ -1,10 +1,18 @@
 /**
  * Фабрика миграций для Zustand persist.
- * 
+ *
  * Применяет цепочку миграций последовательно: v1 → v2 → v3 → ... → vN.
- * Каждая миграция — это функция, принимающая persistedState и возвращающая
- * обновлённое состояние.
- * 
+ * Каждая миграция — функция, принимающая состояние предыдущей версии
+ * и возвращающая состояние своей версии.
+ *
+ * Контракт Zustand persist: middleware вызывает
+ * `migrate(persistedState, version)`, где `version` — версия, записанная
+ * в обёртке localStorage (`{ state, version }`), а НЕ поле внутри state.
+ *
+ * @param migrations - Карта «целевая версия → функция миграции».
+ *   Ключ `2` означает «мигрирует состояние v1 в v2».
+ * @returns Функция `migrate` для опций persist.
+ *
  * @example
  * ```ts
  * persist(
@@ -23,17 +31,16 @@
 export function createMigration<TState>(
   migrations: Record<number, (state: Record<string, unknown>) => Record<string, unknown>>
 ) {
-  return (persistedState: unknown): TState => {
-    const persisted = (persistedState ?? {}) as Record<string, unknown>;
-    const persistedVersion = typeof persisted.__version === 'number' ? persisted.__version : 0;
-    const targetVersion = Math.max(...Object.keys(migrations).map(Number), 0);
+  const targetVersion = Math.max(...Object.keys(migrations).map(Number), 0);
 
-    if (persistedVersion >= targetVersion) {
-      return persisted as TState;
+  return (persistedState: unknown, version: number): TState => {
+    let migrated = { ...((persistedState ?? {}) as Record<string, unknown>) };
+
+    if (version >= targetVersion) {
+      return migrated as TState;
     }
 
-    let migrated = { ...persisted };
-    for (let v = persistedVersion + 1; v <= targetVersion; v++) {
+    for (let v = version + 1; v <= targetVersion; v++) {
       const migrationFn = migrations[v];
       if (migrationFn) {
         if (process.env.NODE_ENV === 'development') {
