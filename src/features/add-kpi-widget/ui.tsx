@@ -6,7 +6,7 @@ import { Button } from '@/shared/ui/button';
 import { Plus, ArrowRight } from 'lucide-react';
 import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
 import { useMetricTemplateStore } from '@/entities/metric';
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { SearchableSelect } from '@/shared/ui/searchable-select';
 import { useDatasetStore } from '@/entities/dataset';
 import { useShallow } from 'zustand/react/shallow';

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { nanoid } from 'nanoid';
-import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useDatasetStore } from '@/entities/dataset';
 import { IndicatorGroupInDashboard, VirtualMetric, VirtualMetricBindingInDashboard } from '@/shared/lib/validators';
 import { useDashboardStore } from '@/entities/dashboard';

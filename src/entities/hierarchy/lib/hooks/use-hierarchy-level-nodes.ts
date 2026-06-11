@@ -7,7 +7,7 @@ import { generateFiltersHash } from '@/shared/lib/utils/hash';
 import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { HierarchyFilterValue, IndicatorGroup, IndicatorGroupInDashboard, MetricTemplate, GroupMetric, VirtualMetric } from '@/shared/lib/validators';
 import { HierarchyNode, HierarchyLevel } from '@/entities/hierarchy/model/types';
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { ColumnConfig } from '@/shared/lib/types';
 
 const EMPTY_CONFIGS: ColumnConfig[] = [];

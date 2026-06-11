@@ -1,7 +1,7 @@
 'use client';
 import { useEffect } from 'react';
 import { useDashboardStore } from '@/entities/dashboard';
-import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { toast } from 'sonner';
 
 /**

@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { HierarchyLevel, useHierarchyStore } from '@/entities/hierarchy';
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { Plus, GripVertical } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';

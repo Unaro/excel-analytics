@@ -1,6 +1,6 @@
 'use client';
 
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { useDatasetStore } from '@/entities/dataset';
 import { ColumnClassification, ColumnConfig } from '@/shared/lib/types';
 import { cn } from '@/shared/lib/utils';

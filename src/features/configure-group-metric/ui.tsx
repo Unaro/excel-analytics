@@ -4,7 +4,7 @@
 import { useCallback, useMemo } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Settings, Plus } from 'lucide-react';
-import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
+import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import { cn } from '@/shared/lib/utils';
 import { nanoid } from 'nanoid';
 import { DragDropList } from '@/shared/ui/drag-drop-list';

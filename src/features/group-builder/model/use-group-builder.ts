@@ -1,8 +1,8 @@
 'use client';
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { FieldBinding, GroupMetric, MetricBinding, useMetricTemplateStore } from '@/entities/metric';
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { nanoid } from 'nanoid';
 import { extractVariables } from '@/shared/lib/utils/formula';
 import { useDatasetStore } from '@/entities/dataset';

@@ -4,7 +4,7 @@ import { memo, useState, useMemo, useCallback, useEffect } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, Check, Filter, X } from 'lucide-react';
 import { HierarchyLevel, HierarchyNode, useHierarchyStore } from '@/entities/hierarchy';
 import { useDatasetStore } from '@/entities/dataset';
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { useDashboardStore } from '@/entities/dashboard';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';

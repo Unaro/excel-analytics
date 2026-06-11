@@ -4,7 +4,7 @@
 import { useMemo } from 'react';
 import { MetricCell } from '@/entities/metric/ui/metric-cell';
 import type { DisplayFormat } from '@/entities/metric/model/types';
-import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
+import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 
 interface GroupMetricCellProps {
   groupId: string;

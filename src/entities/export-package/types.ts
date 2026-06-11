@@ -1,6 +1,6 @@
 import { ColumnConfig } from "@/shared/lib/types";
 import { Dashboard } from "../dashboard";
-import { GroupMetricConfig } from "../groupMetricConfig";
+import { GroupMetricConfig } from "../group-metric-config";
 import { HierarchyLevel } from "../hierarchy";
 import { IndicatorGroup, MetricTemplate } from "../metric";
 

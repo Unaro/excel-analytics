@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useMemo } from 'react';
-import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useMetricTemplateStore, useComputedMetricsStore } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
-import { useDatasetInfo } from '@/entities/groupView';
+import { useDatasetInfo } from '@/entities/group-view';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
 import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import { useShallow } from 'zustand/react/shallow';

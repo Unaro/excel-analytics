@@ -19,7 +19,7 @@
 
 import { nanoid } from 'nanoid';
 import { useDatasetStore } from './store';
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import { toast } from 'sonner';
 import { decryptConfig, encryptConfig } from '@/shared/lib/utils/crypto';
 import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';

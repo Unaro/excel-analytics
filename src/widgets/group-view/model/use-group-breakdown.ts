@@ -2,14 +2,14 @@
 
 import { useCallback, useMemo, useState } from 'react';
 import { useHierarchyStore, type HierarchyLevel } from '@/entities/hierarchy';
-import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useMetricTemplateStore, type IndicatorGroup } from '@/entities/metric';
-import { useColumnConfigStore } from '@/entities/columnConfig';
-import { useGroupMetricConfigStore } from '@/entities/groupMetricConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
+import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import {
   buildVirtualMetric,
   useDatasetInfo,
-} from '@/entities/groupView';
+} from '@/entities/group-view';
 import { useShallow } from 'zustand/react/shallow';
 import type { CacheKey } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';

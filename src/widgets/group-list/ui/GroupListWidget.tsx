@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useDatasetStore } from '@/entities/dataset';
 import { useDeleteGroup } from '@/features/delete-group';
 import { Plus, Layers, Edit, Trash2, Database } from 'lucide-react';

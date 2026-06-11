@@ -12,7 +12,7 @@ import type { ClientComputeParams } from '@/shared/lib/computation/lib/types';
 import type { HierarchyFilterValue, MetricTemplate } from '@/shared/lib/validators';
 import type { KPIWidget } from '@/entities/dashboard';
 import type { DashboardComputationResult } from '@/entities/metric';
-import { useColumnConfigStore } from '@/entities/columnConfig';
+import { useColumnConfigStore } from '@/entities/column-config';
 import type { CacheKey } from '@/shared/lib/storage';
 import { useComputation } from '@/widgets/shared/model/use-computation';
 import type { ColumnConfig } from '@/shared/lib/types';

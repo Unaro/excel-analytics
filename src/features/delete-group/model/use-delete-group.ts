@@ -1,6 +1,6 @@
 'use client';
 import { useState, useCallback, useMemo } from 'react';
-import { useIndicatorGroupStore } from '@/entities/indicatorGroup';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useDashboardStore } from '@/entities/dashboard';
 import { toast } from 'sonner';
 
