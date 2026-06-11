@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { CreateGroupWidget } from '@/features/create-group';
+import { CreateGroupWidget } from '@/features/group-builder';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 
 export const dynamic = 'force-dynamic';

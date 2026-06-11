@@ -1,7 +1,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { GroupBuilderUI } from '@/widgets/group-builder';
-import { useGroupBuilder } from '@/widgets/group-builder/model/use-group-builder';
+import { GroupBuilderUI } from './GroupBuilderUI';
+import { useGroupBuilder } from '../model/use-group-builder';
 import { toast } from 'sonner';
 
 interface EditGroupWidgetProps {
