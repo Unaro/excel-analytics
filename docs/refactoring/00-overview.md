@@ -22,8 +22,8 @@ npm run type-check && npm run lint && npm run build && npm test
 | # | Документ | Содержание | Статус |
 |---|----------|------------|--------|
 | 0 | (этот файл) | Vitest, ESLint-границы FSD (warn), документация | ✅ |
-| 1 | [01-test-baseline.md](01-test-baseline.md) | Тесты ядра вычислений до его рефакторинга | — |
-| 2 | [02-security.md](02-security.md) | P0: SQL-инъекция PG-пути, TLS, модель секретов | — |
+| 1 | [01-test-baseline.md](01-test-baseline.md) | Тесты ядра вычислений до его рефакторинга | ✅ |
+| 2 | [02-security.md](02-security.md) | P0: SQL-инъекция PG-пути, TLS, модель секретов | ✅ |
 | 3 | [03-fsd-architecture.md](03-fsd-architecture.md) | P1: контракты типов, разворот билдеров, kebab-case, public API, оркестраторы | — |
 | 4 | [04-correctness-perf.md](04-correctness-perf.md) | P2: удаление датасета, кэш, иерархия, formula-to-sql, React-фиксы | — |
 | 5 | [05-hygiene.md](05-hygiene.md) | P3: логгер, миграции persist, переименования, JSDoc | — |
