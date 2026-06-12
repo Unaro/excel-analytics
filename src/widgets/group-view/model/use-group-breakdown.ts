@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
+import { useColumnDictionary } from '@/entities/reference-type';
 import { useHierarchyStore, type HierarchyLevel } from '@/entities/hierarchy';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useMetricTemplateStore, type IndicatorGroup } from '@/entities/metric';
@@ -50,6 +51,11 @@ export interface GroupBreakdownResult {
   setDateGranularity: (g: DateGranularity | null) => void;
   /** true — двумерный режим: следующий уровень иерархии × время. */
   isTwoDimensional: boolean;
+  /**
+   * Код → наименование по справочнику колонки текущего уровня
+   * (только отображение; в фильтры и ключи уходят коды).
+   */
+  resolveLabel: (label: string) => string;
 }
 
 export function useGroupBreakdown(
@@ -207,6 +213,12 @@ export function useGroupBreakdown(
   const summary = computeResult?.groups[0] ?? null;
   const breakdown = computeResult?.groups[0]?.breakdown;
 
+  // Справочник колонки текущего уровня: имена в drill-down/крошках/таблицах
+  const { resolve: resolveLabel } = useColumnDictionary(
+    activeDatasetId,
+    nextLevel?.columnName
+  );
+
   const drillDown = useCallback(
     (label: string) => {
       // В двумерном режиме label — значение уровня иерархии, спуск валиден;
@@ -217,11 +229,12 @@ export function useGroupBreakdown(
         levelIndex: nextLevel.order,
         columnName: nextLevel.columnName,
         value: label,
-        displayValue: label,
+        // Имя из справочника — в крошках виден текст, в WHERE уходит код
+        displayValue: resolveLabel(label),
       };
       setCurrentPath(prev => [...prev, newFilter]);
     },
-    [nextLevel]
+    [nextLevel, resolveLabel]
   );
 
   const resetToLevel = useCallback((levelIndex: number) => {
@@ -249,5 +262,6 @@ export function useGroupBreakdown(
     dateGranularity,
     setDateGranularity,
     isTwoDimensional,
+    resolveLabel,
   };
 }

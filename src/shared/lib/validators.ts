@@ -195,6 +195,9 @@ export const DatasetConfigExportSchema = z.object({
       alias: z.string(),
       displayName: z.string(),
       description: z.string().optional(),
+      // Пользовательский тип со справочником: переносится как ссылка,
+      // сам справочник в экспорт-пакет не входит
+      customTypeId: z.string().optional(),
     })),
     metricTemplates: z.array(MetricTemplateSchema),
     groupMetricConfigs: z.record(

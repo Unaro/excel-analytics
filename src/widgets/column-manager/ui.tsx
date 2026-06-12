@@ -2,15 +2,18 @@
 
 import { useColumnConfigStore } from '@/entities/column-config';
 import { useDatasetStore } from '@/entities/dataset';
+import { useReferenceTypeStore } from '@/entities/reference-type';
 import { ColumnClassification, ColumnConfig } from '@/shared/lib/types';
+import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
 import { useShallow } from 'zustand/react/shallow';
 
 export function ColumnManager() {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   const activeDataset = useDatasetStore(s => activeDatasetId ? s.datasets[activeDatasetId] : null);
-  const configs = useColumnConfigStore(useShallow(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []));  
+  const configs = useColumnConfigStore(useShallow(s => activeDatasetId ? (s.configsByDataset[activeDatasetId] || []) : []));
   const updateColumn = useColumnConfigStore((s) => s.updateColumn);
+  const referenceTypes = useReferenceTypeStore(useShallow(s => s.types));
 
   const hasData = (activeDataset?.metadata?.totalRows ?? 0) > 0;
 
@@ -51,6 +54,11 @@ export function ColumnManager() {
                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Назначение
                 </th>
+                {referenceTypes.length > 0 && (
+                  <th className="px-6 py-3 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Справочник
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-100 dark:divide-slate-800/50">
@@ -84,14 +92,39 @@ export function ColumnManager() {
                         activeColor="bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-300 shadow-sm"
                         onClick={() => handleTypeChange(col.columnName, 'date')}
                       />
-                      <TypeButton 
-                        isActive={col.classification === 'ignore'} 
-                        label="Скрыто" 
+                      <TypeButton
+                        isActive={col.classification === 'ignore'}
+                        label="Скрыто"
                         activeColor="bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 shadow-sm"
                         onClick={() => handleTypeChange(col.columnName, 'ignore')}
                       />
                     </div>
                   </td>
+                  {referenceTypes.length > 0 && (
+                    <td className="px-6 py-3">
+                      {/* Подстановка кода → наименования (только отображение).
+                          Скрытым колонкам справочник не нужен. */}
+                      {col.classification !== 'ignore' ? (
+                        <Select
+                          className="h-8 w-40 text-xs"
+                          value={col.customTypeId ?? ''}
+                          onChange={(e) =>
+                            activeDatasetId &&
+                            updateColumn(activeDatasetId, col.columnName, {
+                              customTypeId: e.target.value || undefined,
+                            })
+                          }
+                        >
+                          <SelectOption value="">—</SelectOption>
+                          {referenceTypes.map(t => (
+                            <SelectOption key={t.id} value={t.id}>{t.name}</SelectOption>
+                          ))}
+                        </Select>
+                      ) : (
+                        <span className="text-slate-300 dark:text-slate-600">—</span>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

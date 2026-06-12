@@ -7,7 +7,8 @@ import {
   LucideIcon, X,
   Settings,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  BookMarked,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
@@ -58,6 +59,7 @@ const SidebarComponent = ({ className, onClose }: SidebarProps) => {
     { type: 'divider' },
     { type: 'link', href: '/setup', label: 'Данные и Колонки', icon: Database },
     { type: 'link', href: '/hierarchy', label: 'Иерархия', icon: GitMerge },
+    { type: 'link', href: '/references', label: 'Справочники', icon: BookMarked },
     { type: 'divider' },
     { type: 'link', href: '/settings', label: 'Настройки', icon: Settings },
   ];

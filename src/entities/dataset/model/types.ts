@@ -26,11 +26,21 @@ export interface PgSyncConfig {
 }
 
 /**
+ * Роль датасета:
+ *  - 'data' (по умолчанию, поле отсутствует) — обычные данные пользователя;
+ *  - 'reference' — служебный справочник (ОКТМО/ОКАТО и т.п.): скрыт из
+ *    переключателя датасетов и списков, используется пользовательскими
+ *    типами колонок (см. entities/reference-type).
+ */
+export type DatasetRole = 'data' | 'reference';
+
+/**
  * Запись одного датасета в мульти-хранилище.
  */
 export interface DatasetEntry {
   id: string;
   name: string;
+  role?: DatasetRole;
   sourceType: DatasetSourceType;
   metadata: DatasetMetadata;
   pgConfig?: PgSyncConfig | null;

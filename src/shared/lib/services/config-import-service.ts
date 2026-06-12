@@ -46,6 +46,7 @@ export interface ConfigImportResult {
     alias: string;
     displayName: string;
     description?: string;
+    customTypeId?: string;
   }>;
   importedGroupMetricConfigs?: Record<
     string,

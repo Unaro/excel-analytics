@@ -62,6 +62,10 @@ interface WorkerEventMap {
     payload: { targetId: number };
     response: void;
   };
+  GET_COLUMN_PAIRS: {
+    payload: { datasetId: string; keyColumn: string; valueColumn: string };
+    response: Array<[string, string]>;
+  };
 }
 
 interface WorkerResponseMessage {
@@ -433,6 +437,24 @@ export class DuckDBWorkerManager {
   
   async dropTable(datasetId: string): Promise<void> {
     return this.dispatch('DROP_TABLE', { datasetId });
+  }
+
+  /**
+   * Выгружает пары «ключ → значение» двух колонок таблицы — для построения
+   * словаря справочника (entities/reference-type). Таймаут увеличен:
+   * справочники бывают на сотни тысяч строк.
+   */
+  async getColumnPairs(
+    datasetId: string,
+    keyColumn: string,
+    valueColumn: string
+  ): Promise<Array<[string, string]>> {
+    return this.dispatch(
+      'GET_COLUMN_PAIRS',
+      { datasetId, keyColumn, valueColumn },
+      [],
+      120_000
+    );
   }
 
   /**

@@ -55,6 +55,11 @@ export interface TimeBreakdownSectionProps {
   truncated?: boolean;
   /** Клик по названию строки (drill-down). Не задан — строки не кликабельны. */
   onRowClick?: (label: string) => void;
+  /**
+   * Подстановка справочника: код → наименование (только отображение;
+   * в onRowClick, ключи строк и dataKey чарта уходит исходный label).
+   */
+  resolveLabel?: (label: string) => string;
 }
 
 interface PivotRow {
@@ -73,7 +78,12 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   dateTitle,
   truncated,
   onRowClick,
+  resolveLabel,
 }: TimeBreakdownSectionProps) {
+  const display = useMemo(
+    () => resolveLabel ?? ((label: string) => label),
+    [resolveLabel]
+  );
   const metricOptions = useMemo(
     () =>
       activeMetricIds
@@ -155,8 +165,12 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const visibleRows = useMemo(() => {
     if (!searchQuery) return rows;
     const q = searchQuery.toLowerCase();
-    return rows.filter(r => r.label.toLowerCase().includes(q));
-  }, [rows, searchQuery]);
+    // Поиск и по коду, и по наименованию из справочника
+    return rows.filter(r =>
+      r.label.toLowerCase().includes(q) ||
+      display(r.label).toLowerCase().includes(q)
+    );
+  }, [rows, searchQuery, display]);
 
   const currentMetric = metricOptions.find(m => m.id === effectiveMetricId);
 
@@ -283,6 +297,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                 key={label}
                 type="monotone"
                 dataKey={label}
+                name={display(label)}
                 stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
                 strokeWidth={2}
                 dot={dates.length <= 31}
@@ -343,7 +358,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                   onClick={() => onRowClick?.(row.label)}
                 >
                   <span className="flex items-center gap-1">
-                    {row.label}
+                    {display(row.label)}
                     {onRowClick && (
                       <ChevronRight size={13} className="text-slate-300 group-hover:text-indigo-500 transition-colors shrink-0" />
                     )}

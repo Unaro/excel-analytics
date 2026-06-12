@@ -50,6 +50,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     dateGranularity,
     setDateGranularity,
     isTwoDimensional,
+    resolveLabel,
   } = useGroupBreakdown(groupId, path);
 
   const {
@@ -88,9 +89,13 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   );
 
   const chartBreakdown = useMemo(() => {
-    if (!oneDimBreakdown || !sortConfig) return oneDimBreakdown ?? [];
-    return sortBreakdown(oneDimBreakdown, sortConfig.key, sortConfig.direction);
-  }, [oneDimBreakdown, sortConfig]);
+    const base = oneDimBreakdown ?? [];
+    const sorted = sortConfig
+      ? sortBreakdown(base, sortConfig.key, sortConfig.direction)
+      : base;
+    // Чарты — display-only: метки можно резолвить прямо в данных
+    return sorted.map(item => ({ ...item, label: resolveLabel(item.label) }));
+  }, [oneDimBreakdown, sortConfig, resolveLabel]);
 
   const summaryVirtualMetrics = summary?.virtualMetrics ?? [];
 
@@ -176,6 +181,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           }
           truncated={summary?.breakdownTruncated}
           onRowClick={drillDown}
+          resolveLabel={resolveLabel}
         />
       )}
 
@@ -198,6 +204,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           activeMetricIds={activeMetricIds}
           groupId={groupId}
           groupMetricIds={groupMetricIds}
+          resolveLabel={resolveLabel}
         />
       )}
 

@@ -31,6 +31,11 @@ interface GroupBreakdownTableProps {
    * Передаётся вместе с nextLevel=null: drill-down по датам невозможен.
    */
   dimensionLabel?: string;
+  /**
+   * Подстановка справочника: код → наименование (только отображение;
+   * в drill-down и ключи уходит исходный label).
+   */
+  resolveLabel?: (label: string) => string;
 }
 
 export const GroupBreakdownTable = memo(function GroupBreakdownTable({
@@ -46,8 +51,13 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
   groupId,
   groupMetricIds,
   dimensionLabel,
+  resolveLabel,
 }: GroupBreakdownTableProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const display = useMemo(
+    () => resolveLabel ?? ((label: string) => label),
+    [resolveLabel]
+  );
 
   const visibleMetrics = useMemo(
     () => virtualMetrics.filter(vm => activeMetricIds.includes(vm.virtualMetricId)),
@@ -58,13 +68,17 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
     let items = [...breakdown];
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      items = items.filter(item => item.label.toLowerCase().includes(q));
+      // Поиск и по коду, и по наименованию из справочника
+      items = items.filter(item =>
+        item.label.toLowerCase().includes(q) ||
+        display(item.label).toLowerCase().includes(q)
+      );
     }
     if (sortConfig) {
       items = sortBreakdownItems(items, sortConfig.key, sortConfig.direction);
     }
     return items;
-  }, [breakdown, searchQuery, sortConfig]);
+  }, [breakdown, searchQuery, sortConfig, display]);
 
   const vmIdToGroupMetricId = useMemo(() => {
     const map = new Map<string, string>();
@@ -200,7 +214,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
               >
                 <td className="px-6 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">
                   <div className="flex items-center gap-2">
-                    {item.label}
+                    {display(item.label)}
                     {nextLevel && (
                       <ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />
                     )}

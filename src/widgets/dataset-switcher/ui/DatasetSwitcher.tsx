@@ -45,7 +45,8 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
   const isSyncing = useDatasetStore(s => s.isSyncing);
 
   const activeDataset = activeId ? datasets[activeId] : null;
-  const datasetList = Object.values(datasets);
+  // Справочники (role: 'reference') — служебные, в переключателе не видны
+  const datasetList = Object.values(datasets).filter(ds => ds.role !== 'reference');
 
   const handleSwitch = (id: string) => {
     if (isDisabled) return;
@@ -71,7 +72,9 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
     await removeDatasetCompletely(id);
     toast.info(`Датасет "${name}" удален`);
     if (id === activeId) {
-      const remainingIds = Object.keys(datasets).filter(k => k !== id);
+      const remainingIds = Object.values(datasets)
+        .filter(ds => ds.id !== id && ds.role !== 'reference')
+        .map(ds => ds.id);
       if (remainingIds.length > 0) {
         switchDataset(remainingIds[0]);
       } else {

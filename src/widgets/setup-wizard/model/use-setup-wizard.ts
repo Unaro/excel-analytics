@@ -20,20 +20,26 @@ export function useSetupWizard() {
   const [pgStep, setPgStep] = useState<PgStep>('connection');
   const [pgConfig, setPgConfig] = useState<unknown>(null);
 
+  // Справочники (role: 'reference') в навигации визарда не считаются
+  const dataDatasetCount = useMemo(
+    () => Object.values(datasets).filter(ds => ds.role !== 'reference').length,
+    [datasets]
+  );
+
   // Авто-навигация при гидратации и изменении датасетов
   useEffect(() => {
     if (activeId && !datasets[activeId]) {
-      setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
+      setStep(dataDatasetCount > 0 ? 'manager' : 'upload');
       return;
     }
     if (activeId && hasActiveData) {
       setStep('columns');
     } else {
-      setStep(Object.keys(datasets).length > 0 ? 'manager' : 'upload');
+      setStep(dataDatasetCount > 0 ? 'manager' : 'upload');
     }
-  }, [activeId, hasActiveData, datasets]);
+  }, [activeId, hasActiveData, datasets, dataDatasetCount]);
 
-  const hasMultipleDatasets = Object.keys(datasets).length > 0;
+  const hasMultipleDatasets = dataDatasetCount > 0;
 
   return {
     step,

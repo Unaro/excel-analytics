@@ -2,6 +2,7 @@
 import { logger } from '@/shared/lib/logger';
 import { useEffect, useState, useMemo } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
+import { useColumnDictionary } from '@/entities/reference-type';
 import { createComputeEngine } from '@/shared/lib/computation/lib/engine-factory';
 import { createComputationCache } from '@/shared/lib/storage'; // ← ОБНОВЛЁННЫЙ ИМПОРТ
 import { generateFiltersHash } from '@/shared/lib/utils/hash';
@@ -204,5 +205,19 @@ export function useHierarchyLevelNodes(
     };
   }, [activeDatasetId, level, columnName, isSyncing, filtersHash, engine, cache, dataset, hasNextLevel, validColumns, totalRows,]);
 
-  return { nodes, isLoading };
+  // Подстановка справочника (код → наименование) поверх готовых узлов:
+  // value остаётся кодом (уходит в фильтры), displayValue — имя для UI.
+  // Применяется в memo, а не в effect вычисления — загрузка словаря
+  // не перезапускает compute.
+  const { resolve, hasDictionary } = useColumnDictionary(activeDatasetId, columnName);
+  const displayNodes = useMemo(() => {
+    if (!hasDictionary) return nodes;
+    return nodes
+      .map(n => ({ ...n, displayValue: resolve(n.value) }))
+      .sort((a, b) =>
+        a.displayValue.localeCompare(b.displayValue, undefined, { numeric: true })
+      );
+  }, [nodes, resolve, hasDictionary]);
+
+  return { nodes: displayNodes, isLoading };
 }

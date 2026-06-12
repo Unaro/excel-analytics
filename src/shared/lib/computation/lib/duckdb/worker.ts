@@ -124,6 +124,12 @@ export interface CancelPayload {
   targetId: number;
 }
 
+export interface GetColumnPairsPayload {
+  datasetId: string;
+  keyColumn: string;
+  valueColumn: string;
+}
+
 export type WorkerMessage =
   | { type: 'REGISTER_ARROW'; id: number; payload: RegisterArrowPayload }
   | { type: 'COMPUTE'; id: number; payload: ComputePayload }
@@ -136,6 +142,7 @@ export type WorkerMessage =
   | { type: 'RELOAD_ARROW'; id: number; payload: ReloadArrowPayload }
   | { type: 'EXPORT_ARROW_CHUNKED'; id: number; payload: ExportArrowPayload }
   | { type: 'CANCEL'; id: number; payload: CancelPayload }
+  | { type: 'GET_COLUMN_PAIRS'; id: number; payload: GetColumnPairsPayload }
 
 // ─────────────────────────────────────────────────────────────
 // 2. ХЕЛПЕРЫ
@@ -714,6 +721,41 @@ self.onmessage = async (e: MessageEvent) => {
           id,
           success: false,
           error: err instanceof Error ? err.message : 'Import failed',
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // GET_COLUMN_PAIRS — пары «ключ → значение» для словаря справочника
+    // ═══════════════════════════════════════════════════════════
+    if (type === 'GET_COLUMN_PAIRS') {
+      const { datasetId, keyColumn, valueColumn } = payload;
+      const tableName = buildTableName(datasetId);
+      // Идентификаторы экранируются кавычками (имена колонок приходят
+      // из DESCRIBE-конфигов, но защищаемся как везде в компиляторе)
+      const qk = `"${keyColumn.replace(/"/g, '""')}"`;
+      const qv = `"${valueColumn.replace(/"/g, '""')}"`;
+
+      try {
+        const table = await conn!.query(
+          `SELECT CAST(${qk} AS VARCHAR) AS k, CAST(${qv} AS VARCHAR) AS v ` +
+          `FROM ${tableName} WHERE ${qk} IS NOT NULL AND ${qv} IS NOT NULL`
+        );
+        const pairs: Array<[string, string]> = table
+          .toArray()
+          .map((row) => {
+            const r = row as { k: unknown; v: unknown };
+            return [String(r.k).trim(), String(r.v).trim()] as [string, string];
+          })
+          .filter(([k, v]) => k !== '' && v !== '');
+
+        self.postMessage({ id, success: true, result: pairs });
+      } catch (err) {
+        logger.error('[Worker] GET_COLUMN_PAIRS failed:', err);
+        self.postMessage({
+          id,
+          success: false,
+          error: err instanceof Error ? err.message : 'Column pairs fetch failed',
         });
       }
     }
