@@ -19,12 +19,11 @@ export function buildVirtualMetric(
     metric.customName ||
     template?.name ||
     'Metric';
+  // Формат и знаки после запятой — строго из шаблона (единый источник).
   const displayFormat = template?.displayFormat || 'number';
-  const decimalPlaces = template?.decimalPlaces || 2;
-  // Приоритет у единицы, заданной пользователем для метрики в редакторе
-  // группы; suffix/prefix шаблона — запасной вариант. Раньше metric.unit
-  // игнорировался, и заданные единицы нигде не отображались.
-  const unit = metric.unit || template?.suffix || template?.prefix;
+  const decimalPlaces = template?.decimalPlaces ?? 2;
+  // Единица: override метрики, если задан, иначе из шаблона.
+  const unit = metric.unit || template?.unit;
   return {
     id: buildVmIdFromFields(groupId, metric.id, name, displayFormat, decimalPlaces, unit),
     name,

@@ -63,8 +63,11 @@ export const GroupMetricSchema = z.object({
   enabled: z.boolean(),
   order: z.number().int(),
   customName: z.string().optional(),
-  customDisplayFormat: z.enum(['number', 'decimal', 'percent', 'currency', 'scientific']).optional(),
-  customDecimalPlaces: z.number().int().optional(),
+  /**
+   * Опциональный override единицы измерения поверх шаблонной (template.unit).
+   * Формат и знаки после запятой берутся строго из шаблона — отдельный
+   * формат на метрике не нужен (для другого формата заведите свой шаблон).
+   */
   unit: z.string().optional(),
 });
 
@@ -84,8 +87,12 @@ export const MetricTemplateSchema = z.object({
   })),
   displayFormat: z.enum(['number', 'decimal', 'percent', 'currency', 'scientific']),
   decimalPlaces: z.number().int().min(0).max(10),
-  prefix: z.string().optional(),
-  suffix: z.string().optional(),
+  /**
+   * Единица измерения — источник правды формата метрики. Наследуется
+   * всеми группами и колонками дашборда; на метрике группы может быть
+   * переопределена (GroupMetric.unit).
+   */
+  unit: z.string().optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

@@ -104,7 +104,7 @@ export function useKPICalculation(
         decimalPlaces:
           templates.find(t => t.id === w.templateId)?.decimalPlaces ?? 2,
         order: idx,
-        unit: templates.find(t => t.id === w.templateId)?.suffix,
+        unit: templates.find(t => t.id === w.templateId)?.unit,
       })),
     });
   }, [widgets, templates]);

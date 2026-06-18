@@ -123,8 +123,10 @@ export function MetricRow({
         </div>
 
         <div className="ml-1">
+          {/* Пусто — наследуется единица шаблона (показана в placeholder).
+              Значение здесь переопределяет шаблонное только для этой группы. */}
           <Input
-            placeholder="ед. (чел.)"
+            placeholder={template.unit ? `${template.unit} (из шаблона)` : 'ед. (чел.)'}
             value={item.unit}
             onChange={(e) => onUpdateMetricUnit(item.tempId, e.target.value)}
             className="h-7 w-24 text-xs bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"

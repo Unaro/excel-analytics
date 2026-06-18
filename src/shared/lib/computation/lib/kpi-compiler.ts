@@ -70,7 +70,7 @@ export function compileKPIsToComputeParams(
       displayFormat: template.displayFormat,
       decimalPlaces: template.decimalPlaces,
       order: virtualMetrics.length,
-      unit: template.suffix || template.prefix,
+      unit: template.unit,
     });
 
     bindings.push({
@@ -112,7 +112,7 @@ export function compileKPIsToComputeParams(
       displayFormat: template.displayFormat,
       decimalPlaces: template.decimalPlaces,
       order: virtualMetrics.length,
-      unit: template.suffix || template.prefix,
+      unit: template.unit,
     });
 
     bindings.push({

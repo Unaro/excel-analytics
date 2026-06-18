@@ -97,9 +97,24 @@ export const useMetricTemplateStore = create<MetricTemplateState>()(
     }),
     {
       name: 'metric-template-storage',
-      version: 1,
-      // v0 (до версионирования) → v1: шаблоны совместимы — переносим как есть.
-      migrate: createMigration({ 1: (state) => state }),
+      version: 2,
+      migrate: createMigration({
+        // v0 (до версионирования) → v1: шаблоны совместимы — переносим как есть.
+        1: (state) => state,
+        // v1 → v2: prefix/suffix → единое поле unit (приоритет у suffix).
+        2: (state) => ({
+          ...state,
+          templates: ((state.templates as Array<Record<string, unknown>> | undefined) ?? []).map(
+            (t) => {
+              const { prefix, suffix, ...rest } = t;
+              return {
+                ...rest,
+                unit: t.unit ?? suffix ?? prefix ?? undefined,
+              };
+            }
+          ),
+        }),
+      }),
     }
   )
 );

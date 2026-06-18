@@ -46,7 +46,7 @@ export function KPIGrid({ dashboardId, widgets, currentFilters, isEditMode = fal
           </div>
           <div className="flex items-baseline gap-1.5">
             {error ? <span className="text-red-500 text-sm">{error}</span> : formattedValue}
-            <span className="text-sm font-medium text-slate-400">{template?.suffix}</span>
+            <span className="text-sm font-medium text-slate-400">{template?.unit}</span>
           </div>
         </Card>
       ))}

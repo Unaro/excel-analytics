@@ -9,30 +9,44 @@ import { Select, SelectOption } from '@/shared/ui/select';
 import { toast } from '@/shared/ui/toast';
 import { VisualFormulaBuilder } from './VisualFormulaBuilder';
 import { useFormulaValidation } from '@/entities/formula';
+import type { DisplayFormat } from '@/entities/metric';
 
 interface TemplateFormProps {
   onCancel: () => void;
   onSuccess: (newTemplateId: string) => void;
 }
 
+const FORMAT_LABELS: Record<DisplayFormat, string> = {
+  number: 'Число (1 234)',
+  decimal: 'Дробное (1 234,56)',
+  percent: 'Процент (12,3%)',
+  currency: 'Денежное (1 234,56)',
+  scientific: 'Научное (1.2e3)',
+};
+
 export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
   const addTemplate = useMetricTemplateStore(s => s.addTemplate);
   const { validate, isValid, error } = useFormulaValidation();
-  
+
   const [name, setName] = useState('');
   const [type, setType] = useState<'aggregate' | 'calculated'>('aggregate');
   const [aggFunc, setAggFunc] = useState<AggregateFunction>('SUM');
   const [formula, setFormula] = useState('');
   const [fieldAlias, setFieldAlias] = useState('value');
+  // Формат — источник правды для всех групп и колонок дашборда
+  const [displayFormat, setDisplayFormat] = useState<DisplayFormat>('number');
+  const [decimalPlaces, setDecimalPlaces] = useState(2);
+  const [unit, setUnit] = useState('');
 
   const handleSubmit = () => {
     if (!name) return;
 
     const base = {
       name,
-      displayFormat: 'number' as const,
-      decimalPlaces: 2,
-      dependencies: [], 
+      displayFormat,
+      decimalPlaces,
+      unit: unit.trim() || undefined,
+      dependencies: [],
     };
 
     let newId = '';
@@ -51,10 +65,10 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
         ...base,
         type: 'calculated',
         formula,
-        dependencies: [] 
+        dependencies: []
       });
     }
-    
+
     toast.success('Шаблон создан');
     onSuccess(newId);
   };
@@ -136,6 +150,50 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
           {error && <div className="text-red-500 text-xs mt-1">{error}</div>}
         </div>
       )}
+
+      {/* Формат отображения — наследуется всеми группами и дашбордами */}
+      <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+        <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+          Формат отображения
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">Формат</label>
+            <Select
+              value={displayFormat}
+              onChange={e => setDisplayFormat(e.target.value as DisplayFormat)}
+            >
+              {(Object.keys(FORMAT_LABELS) as DisplayFormat[]).map(f => (
+                <SelectOption key={f} value={f}>{FORMAT_LABELS[f]}</SelectOption>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">Знаков после запятой</label>
+            <Input
+              type="number"
+              min={0}
+              max={10}
+              value={decimalPlaces}
+              onChange={e => {
+                const n = parseInt(e.target.value, 10);
+                setDecimalPlaces(isNaN(n) ? 0 : Math.min(10, Math.max(0, n)));
+              }}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">
+              Единица измерения <span className="text-slate-400">(необязательно)</span>
+            </label>
+            <Input
+              value={unit}
+              onChange={e => setUnit(e.target.value)}
+              placeholder="чел., м², ₽…"
+              maxLength={10}
+            />
+          </div>
+        </div>
+      </div>
 
       <div className="flex justify-end gap-3 pt-2">
         <Button variant="ghost" onClick={onCancel}>Отмена</Button>
