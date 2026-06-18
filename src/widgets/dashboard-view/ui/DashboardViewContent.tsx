@@ -71,7 +71,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   const [dateGranularity, setDateGranularity] = useState<DateGranularity | null>(null);
 
   // Вычисление метрик дашборда
-  const { result, isComputing, error, recalculate, dateColumn } =
+  const { result, isComputing, error, recalculate, dateColumn, effectiveVirtualMetrics } =
     useDashboardComputation(dashboardId, { dateGranularity });
 
   // Данные дашборда
@@ -88,8 +88,9 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
     )
   );
 
-  // UI-состояние чартов и таблицы
-  const dashboardVirtualMetrics = dashboard?.virtualMetrics ?? [];
+  // UI-состояние чартов и таблицы — на эффективных колонках (формат из
+  // шаблона), а не на хранимых (которые несут только templateId/colorConfig).
+  const dashboardVirtualMetrics = effectiveVirtualMetrics;
   const viewState = useDashboardViewState(dashboardVirtualMetrics);
 
   // Плоские данные для ChartsSectionWidget
@@ -243,6 +244,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
             <DashboardMetricsTable
               dashboardId={dashboardId}
               groups={result?.groups || []}
+              metrics={dashboardVirtualMetrics}
               loading={isComputing}
               hiddenMetricIds={viewState.hiddenMetricIds}
               onToggleMetricVisibility={viewState.toggleMetricVisibility}

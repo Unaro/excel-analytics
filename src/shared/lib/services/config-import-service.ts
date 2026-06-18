@@ -12,7 +12,7 @@ import {
   type IndicatorGroup,
   type IndicatorGroupInDashboard,
   type MetricTemplate,
-  type VirtualMetric,
+  type DashboardColumn,
   type VirtualMetricBindingInDashboard,
 } from '@/shared/lib/validators';
 import { FormattingRule } from '../utils/formatting-rules';
@@ -137,7 +137,7 @@ function rebuildDashboard(
   groupMap: Map<string, IndicatorGroup>,
   consumedVmIds: Set<string>
 ): RebuiltDashboard {
-  const originalVms = (rawDashboard.virtualMetrics as VirtualMetric[]) || [];
+  const originalVms = (rawDashboard.virtualMetrics as DashboardColumn[]) || [];
   const dashboardGroupConfigs =
     (rawDashboard.indicatorGroups as IndicatorGroupInDashboard[]) || [];
 
@@ -178,7 +178,7 @@ function rebuildDashboard(
   // ШАГ 2: Перестраиваем virtualMetrics с сохранением порядка
   //         и colorConfig из исходного JSON
   // ═══════════════════════════════════════════════════════════
-  const rebuiltVirtualMetrics: VirtualMetric[] = originalVms.map((originalVm) => {
+  const rebuiltVirtualMetrics: DashboardColumn[] = originalVms.map((originalVm) => {
     const newId = vmIdMapping.get(originalVm.id)!;
     return {
       ...originalVm,

@@ -18,7 +18,23 @@ export const HierarchyFilterValueSchema = z.object({
   value2: z.string().optional(),
 });
 
-/** Виртуальная метрика дашборда (колонка таблицы показателей). */
+/** Условное форматирование (пороги окрашивания) — задаётся на дашборде. */
+export const ColorConfigSchema = z.object({
+  rules: z.array(z.object({
+    id: z.string().min(1),
+    operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'between']),
+    value: z.number(),
+    value2: z.number().optional(),
+    color: z.enum(['emerald', 'rose', 'amber', 'blue', 'indigo', 'slate']),
+  })),
+});
+
+/**
+ * Виртуальная метрика — транзитный носитель для движка и таблиц:
+ * имя, формат, decimals и единица заполнены (строит buildVirtualMetric,
+ * kpi-compiler, dashboard-columns.buildEffectiveColumn). НЕ хранится
+ * на дашборде — хранимая колонка описана DashboardColumnSchema.
+ */
 export const VirtualMetricSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
@@ -27,15 +43,29 @@ export const VirtualMetricSchema = z.object({
   decimalPlaces: z.number().int().min(0).max(10),
   order: z.number().int(),
   sourceMetricId: z.string().optional(),
-  colorConfig: z.object({
-    rules: z.array(z.object({
-      id: z.string().min(1),
-      operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'between']),
-      value: z.number(),
-      value2: z.number().optional(),
-      color: z.enum(['emerald', 'rose', 'amber', 'blue', 'indigo', 'slate']),
-    })),
-  }).optional(),
+  colorConfig: ColorConfigSchema.optional(),
+});
+
+/**
+ * Хранимая колонка дашборда = ссылка на шаблон метрики.
+ *
+ * Формат, имя и единица ВЫВОДЯТСЯ из шаблона (единый источник правды),
+ * на колонке хранятся только templateId, пороги окрашивания и порядок.
+ * Привязка к метрике каждой группы — автоматическая по шаблону
+ * (см. dashboard-columns.ts). Поля формата опциональны: остаются у
+ * старых колонок до ленивой миграции, новыми колонками не пишутся.
+ */
+export const DashboardColumnSchema = z.object({
+  id: z.string().min(1),
+  templateId: z.string().optional(),
+  order: z.number().int(),
+  colorConfig: ColorConfigSchema.optional(),
+  // legacy (до перехода на колонку-шаблон) — терпим при чтении:
+  name: z.string().max(100).optional(),
+  unit: z.string().max(10).optional(),
+  displayFormat: z.enum(['number', 'decimal', 'percent', 'currency', 'scientific']).optional(),
+  decimalPlaces: z.number().int().min(0).max(10).optional(),
+  sourceMetricId: z.string().optional(),
 });
 
 /** Привязка алиаса формулы к колонке датасета. */
@@ -168,6 +198,7 @@ export type ComputeParams = z.infer<typeof ComputeParamsSchema>;
 export type ExcelRow = z.infer<typeof ExcelRowSchema>;
 export type HierarchyFilterValue = z.infer<typeof HierarchyFilterValueSchema>;
 export type VirtualMetric = z.infer<typeof VirtualMetricSchema>;
+export type DashboardColumn = z.infer<typeof DashboardColumnSchema>;
 export type IndicatorGroup = z.infer<typeof IndicatorGroupSchema>;
 export type MetricTemplate = z.infer<typeof MetricTemplateSchema>;
 export type GroupMetric = z.infer<typeof GroupMetricSchema>;

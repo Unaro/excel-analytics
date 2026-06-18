@@ -7,6 +7,11 @@ import { useDashboardStore } from '@/entities/dashboard';
 import { useColumnConfigStore } from '@/entities/column-config';
 import { useDatasetInfo } from '@/entities/group-view';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
+import {
+  resolveColumnTemplateId,
+  buildEffectiveColumn,
+  resolveDashboardGroupsConfig,
+} from '@/shared/lib/utils/dashboard-columns';
 import type { ClientComputeParams, DateGranularity } from '@/shared/lib/computation/lib/types';
 import type { ColumnConfig } from '@/shared/lib/types';
 import { useShallow } from 'zustand/react/shallow';
@@ -69,10 +74,38 @@ export function useDashboardComputation(
   const dashboard = useDashboardStore(useShallow(selectDashboard));
 
   const hierarchyFilters = dashboard?.hierarchyFilters ?? EMPTY_FILTERS;
-  const dashboardGroupsConfig = dashboard?.indicatorGroups ?? EMPTY_DASHBOARD_GROUPS;
-  const virtualMetrics = dashboard?.virtualMetrics ?? EMPTY_VIRTUAL_METRICS;
+  const storedGroupsConfig = dashboard?.indicatorGroups ?? EMPTY_DASHBOARD_GROUPS;
+  const storedColumns = dashboard?.virtualMetrics ?? EMPTY_VIRTUAL_METRICS;
   const groups = useIndicatorGroupStore(useShallow(s => s.groups)) ?? EMPTY_GROUPS;
   const metricTemplates = useMetricTemplateStore(useShallow(s => s.templates)) ?? EMPTY_TEMPLATES;
+
+  // Колонка дашборда = шаблон. Здесь приводим хранимые колонки к виду,
+  // понятному движку и таблице:
+  //  - templateId выводим (ленивая миграция старых колонок без него);
+  //  - формат/имя/единицу подставляем из шаблона (эффективная колонка);
+  //  - привязки virtualMetricId→metricId материализуем авто по шаблону
+  //    (+ override), движок получает прежний контракт.
+  const columnsWithTemplate = useMemo(
+    () =>
+      storedColumns.map(c => ({
+        ...c,
+        templateId: resolveColumnTemplateId(c, storedGroupsConfig, groups),
+      })),
+    [storedColumns, storedGroupsConfig, groups]
+  );
+
+  const virtualMetrics = useMemo(
+    () =>
+      columnsWithTemplate.map(c =>
+        buildEffectiveColumn(c, metricTemplates.find(t => t.id === c.templateId))
+      ),
+    [columnsWithTemplate, metricTemplates]
+  );
+
+  const dashboardGroupsConfig = useMemo(
+    () => resolveDashboardGroupsConfig(columnsWithTemplate, storedGroupsConfig, groups),
+    [columnsWithTemplate, storedGroupsConfig, groups]
+  );
 
   const filtersHash = useMemo(
     () => generateFiltersHash(hierarchyFilters),
@@ -171,5 +204,7 @@ export function useDashboardComputation(
     error,
     recalculate,
     dateColumn,
+    /** Эффективные колонки (формат из шаблона) — для таблицы и flatten. */
+    effectiveVirtualMetrics: virtualMetrics,
   };
 }

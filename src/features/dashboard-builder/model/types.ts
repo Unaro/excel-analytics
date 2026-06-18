@@ -1,5 +1,5 @@
 import { IndicatorGroup } from "@/entities/metric";
-import { IndicatorGroupInDashboard, VirtualMetric } from "@/shared/lib/validators";
+import { IndicatorGroupInDashboard, DashboardColumn } from "@/shared/lib/validators";
 
 export interface GroupAdderProps {
   availableGroups: IndicatorGroup[];
@@ -9,7 +9,7 @@ export interface GroupAdderProps {
 
 export interface MappingRowProps {
   groupConfig: IndicatorGroupInDashboard;
-  virtualMetrics: VirtualMetric[];
+  virtualMetrics: DashboardColumn[];
   allGroups: IndicatorGroup[];
   onUpdateBinding: (groupId: string, virtualMetricId: string, metricId: string) => void;
   onRemove: () => void;
