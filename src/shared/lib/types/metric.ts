@@ -28,11 +28,12 @@ export type MetricType =
  * Формат отображения значения.
  */
 export type DisplayFormat =
-  | 'number'      // 1234567.89
-  | 'decimal'     // 1,234,567.89
-  | 'percent'     // 12.34%
-  | 'currency'    // $1,234.56
-  | 'scientific'; // 1.23e+6
+  | 'number'       // 1234567.89
+  | 'decimal'      // 1,234,567.89
+  | 'percent'      // доля → %: 0.57 → 57% (значение ×100)
+  | 'percent_raw'  // готовый процент: 57 → 57% (без умножения)
+  | 'currency'     // $1,234.56
+  | 'scientific';  // 1.23e+6
 
 /**
  * Тип источника данных для метрики.

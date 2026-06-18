@@ -81,7 +81,7 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                     const { cx = 0, cy = 0, payload } = props;
                     const rawValue = payload?.[key];
                     const numericValue = typeof rawValue === 'number' ? rawValue : null;
-                    const conditionalColor = getColorForValue(numericValue, rules);
+                    const conditionalColor = getColorForValue(numericValue, rules, vm?.displayFormat);
                     const isHighlighted = !!conditionalColor;
                     return (
                       <circle

@@ -19,9 +19,20 @@ interface TemplateFormProps {
 const FORMAT_LABELS: Record<DisplayFormat, string> = {
   number: 'Число (1 234)',
   decimal: 'Дробное (1 234,56)',
-  percent: 'Процент (12,3%)',
+  percent: 'Процент: доля → % (0,57 → 57%)',
+  percent_raw: 'Процент: готовое значение (57 → 57%)',
   currency: 'Денежное (1 234,56)',
   scientific: 'Научное (1.2e3)',
+};
+
+/** Пояснение под выбранным форматом — особенно для двух режимов процента. */
+const FORMAT_HINTS: Partial<Record<DisplayFormat, string>> = {
+  percent:
+    'Значение — доля от 1. Формула вида a/b (0,57) → показывается 57%. ' +
+    'НЕ умножайте на 100 в формуле. Пороги окрашивания задавайте в процентах (например, >50).',
+  percent_raw:
+    'Значение уже в процентах. Формула вида a/b*100 (57) → показывается 57%. ' +
+    'Пороги окрашивания — в процентах (например, >50).',
 };
 
 export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
@@ -167,6 +178,11 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
                 <SelectOption key={f} value={f}>{FORMAT_LABELS[f]}</SelectOption>
               ))}
             </Select>
+            {FORMAT_HINTS[displayFormat] && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+                {FORMAT_HINTS[displayFormat]}
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">Знаков после запятой</label>

@@ -39,7 +39,7 @@ export const VirtualMetricSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
   unit: z.string().max(10).optional(),
-  displayFormat: z.enum(['number', 'decimal', 'percent', 'currency', 'scientific']),
+  displayFormat: z.enum(['number', 'decimal', 'percent', 'percent_raw', 'currency', 'scientific']),
   decimalPlaces: z.number().int().min(0).max(10),
   order: z.number().int(),
   sourceMetricId: z.string().optional(),
@@ -63,7 +63,7 @@ export const DashboardColumnSchema = z.object({
   // legacy (до перехода на колонку-шаблон) — терпим при чтении:
   name: z.string().max(100).optional(),
   unit: z.string().max(10).optional(),
-  displayFormat: z.enum(['number', 'decimal', 'percent', 'currency', 'scientific']).optional(),
+  displayFormat: z.enum(['number', 'decimal', 'percent', 'percent_raw', 'currency', 'scientific']).optional(),
   decimalPlaces: z.number().int().min(0).max(10).optional(),
   sourceMetricId: z.string().optional(),
 });
@@ -115,7 +115,7 @@ export const MetricTemplateSchema = z.object({
     alias: z.string().min(1),
     description: z.string().optional(),
   })),
-  displayFormat: z.enum(['number', 'decimal', 'percent', 'currency', 'scientific']),
+  displayFormat: z.enum(['number', 'decimal', 'percent', 'percent_raw', 'currency', 'scientific']),
   decimalPlaces: z.number().int().min(0).max(10),
   /**
    * Единица измерения — источник правды формата метрики. Наследуется

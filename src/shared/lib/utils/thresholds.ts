@@ -2,8 +2,14 @@ import { VirtualMetric } from '@/shared/lib/validators';
 import { FormattingRule } from './formatting-rules';
 
 export interface GroupedThreshold {
-  /** Значение Y для ReferenceLine (среднее по группе) */
+  /**
+   * Позиция ReferenceLine на оси (масштаб ПОСТРОЕНИЯ графика = сырые
+   * значения). Для percent порог переводится из процентов в долю
+   * (÷100), чтобы линия совпала с сырыми барами.
+   */
   y: number;
+  /** Значение для ПОДПИСИ (масштаб отображения — как ввёл пользователь). */
+  labelValue: number;
   /** Все правила, попадающие в эту группу */
   rules: Array<{
     metricName: string;
@@ -14,6 +20,11 @@ export interface GroupedThreshold {
   primaryColor: string;
   /** Является ли это "наложением" (2+ правил) */
   isOverlap: boolean;
+}
+
+/** Перевод порога из масштаба отображения в масштаб построения графика. */
+function toPlotScale(value: number, format?: string): number {
+  return format === 'percent' ? value / 100 : value;
 }
 
 const METRIC_COLOR_HEX: Record<string, string> = {
@@ -39,7 +50,10 @@ export function groupThresholdsByValue(
   tolerancePercent: number = 0.5
 ): GroupedThreshold[] {
   interface ThresholdPoint {
+    /** Позиция на оси (масштаб построения). */
     y: number;
+    /** Значение для подписи (масштаб отображения). */
+    labelValue: number;
     metricName: string;
     metricId: string;
     rule: FormattingRule;
@@ -50,13 +64,21 @@ export function groupThresholdsByValue(
   for (const metricId of activeMetricIds) {
     const vm = virtualMetrics.find(v => v.id === metricId);
     if (!vm?.colorConfig?.rules) continue;
+    const fmt = vm.displayFormat;
+
+    const pushPoint = (v: number, rule: FormattingRule) =>
+      points.push({
+        y: toPlotScale(v, fmt),
+        labelValue: v,
+        metricName: vm.name,
+        metricId,
+        rule,
+      });
 
     for (const rule of vm.colorConfig.rules) {
+      pushPoint(rule.value, rule);
       if (rule.operator === 'between' && rule.value2 != null) {
-        points.push({ y: rule.value, metricName: vm.name, metricId, rule });
-        points.push({ y: rule.value2, metricName: vm.name, metricId, rule });
-      } else {
-        points.push({ y: rule.value, metricName: vm.name, metricId, rule });
+        pushPoint(rule.value2, rule);
       }
     }
   }
@@ -91,11 +113,13 @@ export function groupThresholdsByValue(
 
 function buildGroup(points: Array<{
   y: number;
+  labelValue: number;
   metricName: string;
   metricId: string;
   rule: FormattingRule;
 }>): GroupedThreshold {
   const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+  const avgLabel = points.reduce((sum, p) => sum + p.labelValue, 0) / points.length;
 
   const uniqueRules = new Map<string, GroupedThreshold['rules'][0]>();
   for (const p of points) {
@@ -114,6 +138,7 @@ function buildGroup(points: Array<{
 
   return {
     y: avgY,
+    labelValue: avgLabel,
     rules,
     primaryColor,
     isOverlap: rules.length > 1,

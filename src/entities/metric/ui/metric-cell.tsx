@@ -1,7 +1,7 @@
 'use client';
 
 import { cn } from "@/shared/lib/utils";
-import { COLOR_STYLES, checkRule } from "@/shared/lib/utils/metric-colors";
+import { COLOR_STYLES, checkRule, toDisplayScale } from "@/shared/lib/utils/metric-colors";
 import { VirtualMetric } from "@/shared/lib/validators";
 
 interface MetricCellProps {
@@ -22,7 +22,9 @@ export function MetricCell({ value, formattedValue, metric }: MetricCellProps) {
 
   let className = "font-mono font-medium text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-md transition-colors";
   const rules = metric.colorConfig?.rules || [];
-  const activeRule = rules.find(rule => checkRule(value ?? 0, rule.operator, rule.value, rule.value2));
+  // Порог сравнивается в масштабе отображения (для percent — в процентах)
+  const scaled = toDisplayScale(value ?? 0, metric.displayFormat);
+  const activeRule = rules.find(rule => checkRule(scaled, rule.operator, rule.value, rule.value2));
   
   if (activeRule) {
     className = cn(className, COLOR_STYLES[activeRule.color]);
@@ -36,7 +38,8 @@ function formatFallback(val: number | null, format: string, decimals: number, un
   const round = (n: number, d: number) => Math.round((n + Number.EPSILON) * 10 ** d) / 10 ** d;
   
   switch (format) {
-    case 'percent': return `${round(val * 100, decimals)}%`;
+    case 'percent': return `${round(val * 100, decimals).toLocaleString('ru-RU', { maximumFractionDigits: decimals })}%`;
+    case 'percent_raw': return `${round(val, decimals).toLocaleString('ru-RU', { maximumFractionDigits: decimals })}%`;
     case 'currency':
     case 'decimal':
       return round(val, decimals).toLocaleString('ru-RU', { maximumFractionDigits: decimals }) + (unit ? ` ${unit}` : '');

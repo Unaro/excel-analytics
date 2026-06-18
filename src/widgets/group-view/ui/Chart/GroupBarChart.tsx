@@ -93,7 +93,7 @@ export const GroupBarChart = memo(function GroupBarChart({
                   content={(props) => (
                     <ThresholdLabel
                       viewBox={props.viewBox as { x: number; y: number; width: number; height: number }}
-                      value={group.y}
+                      value={group.labelValue}
                       group={group}
                     />
                   )}
@@ -117,7 +117,7 @@ export const GroupBarChart = memo(function GroupBarChart({
                   shape={(props: CustomBarShapeProps) => {
                     const { x = 0, y = 0, width = 0, height = 0, value, fill } = props;
                     const numericValue = typeof value === 'number' ? value : null;
-                    const conditionalColor = getColorForValue(numericValue, rules);
+                    const conditionalColor = getColorForValue(numericValue, rules, vm?.displayFormat);
                     const finalFill = conditionalColor || fill || defaultColor;
                     return (
                       <Rectangle

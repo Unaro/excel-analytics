@@ -57,7 +57,7 @@ export const RadarChartView = memo(function RadarChartView({
                 const { cx = 0, cy = 0, payload } = props;
                 const rawValue = payload?.[metricId];
                 const numericValue = typeof rawValue === 'number' ? rawValue : null;
-                const conditionalColor = getColorForValue(numericValue, rules);
+                const conditionalColor = getColorForValue(numericValue, rules, vm?.displayFormat);
                 const isHighlighted = !!conditionalColor;
                 return (
                   <circle

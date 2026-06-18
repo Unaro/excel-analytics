@@ -25,7 +25,7 @@ import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
-import { checkRule, COLOR_STYLES } from '@/shared/lib/utils/metric-colors';
+import { checkRule, COLOR_STYLES, toDisplayScale } from '@/shared/lib/utils/metric-colors';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
@@ -187,7 +187,9 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     if (!colorRules || colorRules.length === 0) return null;
     const v = metricValue(item);
     if (v === null) return null;
-    const rule = colorRules.find(r => checkRule(v, r.operator, r.value, r.value2));
+    // Порог — в масштабе отображения (для percent в процентах)
+    const scaled = toDisplayScale(v, currentMetric?.displayFormat);
+    const rule = colorRules.find(r => checkRule(scaled, r.operator, r.value, r.value2));
     return rule ? COLOR_STYLES[rule.color] : null;
   };
 
@@ -285,7 +287,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                   content={(props) => (
                     <ThresholdLabel
                       viewBox={props.viewBox as { x: number; y: number; width: number; height: number }}
-                      value={group.y}
+                      value={group.labelValue}
                       group={group}
                     />
                   )}

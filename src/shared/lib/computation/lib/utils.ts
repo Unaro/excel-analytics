@@ -31,8 +31,15 @@ export function formatValue(
       break;
     }
     case 'percent': {
+      // Доля → %: значение умножается на 100 (0.57 → 57%)
       const rounded = preciseRound(value * 100, decimals);
-      res = `${rounded}%`;
+      res = `${rounded.toLocaleString('ru-RU', { maximumFractionDigits: decimals })}%`;
+      break;
+    }
+    case 'percent_raw': {
+      // Готовый процент: значение уже в процентах (57 → 57%), без умножения
+      const rounded = preciseRound(value, decimals);
+      res = `${rounded.toLocaleString('ru-RU', { maximumFractionDigits: decimals })}%`;
       break;
     }
     case 'scientific':
@@ -43,7 +50,8 @@ export function formatValue(
       res = rounded.toLocaleString('ru-RU', { maximumFractionDigits: decimals });
     }
   }
-  return unit && format !== 'percent' ? `${res} ${unit}` : res;
+  const isPercent = format === 'percent' || format === 'percent_raw';
+  return unit && !isPercent ? `${res} ${unit}` : res;
 }
 
 /**
