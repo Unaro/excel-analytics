@@ -156,6 +156,12 @@ export function MetricRow({
 
       {/* Привязки переменных */}
       <div className="space-y-4 pl-0 sm:pl-9">
+        {template.type === 'calculated' && (
+          <p className="text-[10px] text-slate-400">
+            Агрегат берётся из формулы шаблона (<code>{template.formula}</code>).
+            Колонка без агрегата считается дефолтным агрегатом из настроек.
+          </p>
+        )}
         {item.requiredVariables.map((variable) => (
           <div key={variable} className="flex flex-col sm:flex-row sm:items-center gap-3 text-sm">
             <div className="w-full sm:w-10 h-8 flex items-center justify-center bg-slate-100 dark:bg-slate-900 border dark:border-slate-800 rounded font-mono font-bold text-slate-600 dark:text-slate-400 shrink-0">

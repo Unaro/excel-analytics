@@ -8,6 +8,31 @@ export interface AggregatedSummary {
 }
 
 /**
+ * Переагрегирует значения field-зависимости для строки «Итого» по её
+ * агрегатной функции (значения уже посчитаны по группам breakdown):
+ *  - SUM/COUNT — суммируются;
+ *  - MIN/MAX — экстремум;
+ *  - AVG — среднее по группам (приближённо, без взвешивания по числу строк);
+ *  - MEDIAN/COUNT_DISTINCT — непереагрегируемы → null.
+ */
+function reaggregateFieldDep(values: number[], fn: string): number | null {
+  if (values.length === 0) return null;
+  switch (fn.toUpperCase()) {
+    case 'SUM':
+    case 'COUNT':
+      return values.reduce((a, b) => a + b, 0);
+    case 'MIN':
+      return Math.min(...values);
+    case 'MAX':
+      return Math.max(...values);
+    case 'AVG':
+      return values.reduce((a, b) => a + b, 0) / values.length;
+    default: // MEDIAN, COUNT_DISTINCT — корректно переагрегировать нельзя
+      return null;
+  }
+}
+
+/**
  * Переагрегирует построчные результаты group-by в сводную строку «Итого»:
  * SUM/COUNT суммируются, AVG взвешивается через __agg_sum__/__agg_count__,
  * MIN/MAX берут экстремум, COUNT_DISTINCT/MEDIAN непереагрегируемы (null),
@@ -28,7 +53,9 @@ export function aggregateProcessedRows(
   // ═══════════════════════════════════════════════════════════
   // Подготовительный этап: собираем метаданные
   // ═══════════════════════════════════════════════════════════
-  const fieldDependencyAliases = new Set<string>();
+  // depAlias → агрегатная функция зависимости (для корректной
+  // переагрегации «Итого»: SUM→сумма, MAX→максимум, MIN→минимум и т.д.)
+  const fieldDependencyAgg = new Map<string, string>();
   const calculatedFinalAliases = new Set<string>();
 
   for (const [baseAlias, meta] of formulas.entries()) {
@@ -37,7 +64,7 @@ export function aggregateProcessedRows(
 
     for (const dep of meta.fieldDependencies) {
       const depAlias = `${FIELD_DEP_PREFIX}${meta.groupId}_${meta.metricId}_${dep.alias}`;
-      fieldDependencyAliases.add(depAlias);
+      fieldDependencyAgg.set(depAlias, dep.aggregateFn);
     }
   }
 
@@ -66,15 +93,13 @@ export function aggregateProcessedRows(
 
     if (key === '_group_label' || key === '_record_count') continue;
 
-    // ─── Field dependency → SUM ─────────────────────────────
-    if (fieldDependencyAliases.has(key)) {
+    // ─── Field dependency → переагрегация по своему агрегату ──
+    const depFn = fieldDependencyAgg.get(key);
+    if (depFn !== undefined) {
       const values = processedRows
         .map(row => row[key])
         .filter((v): v is number => typeof v === 'number' && isFinite(v));
-
-      summary[key] = values.length > 0
-        ? values.reduce((a, b) => a + b, 0)
-        : null;
+      summary[key] = reaggregateFieldDep(values, depFn);
       continue;
     }
 

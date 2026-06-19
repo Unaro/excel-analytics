@@ -52,4 +52,14 @@ export const ClientComputeParamsSchema = z.object({
   validColumns: z.array(z.string()).optional(),
   pgSchema: z.string().min(1).max(255),
   pgTable: z.string().min(1).max(255),
+  // Дефолтный агрегат уходит в buildAggregateExpr (whitelist функций),
+  // requireExplicit влияет только на компиляцию формулы.
+  formulaOptions: z
+    .object({
+      defaultAggregate: z.enum([
+        'SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'COUNT_DISTINCT', 'MEDIAN',
+      ]),
+      requireExplicit: z.boolean(),
+    })
+    .optional(),
 });

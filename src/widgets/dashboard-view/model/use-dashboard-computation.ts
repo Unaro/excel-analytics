@@ -6,6 +6,7 @@ import { useMetricTemplateStore } from '@/entities/metric';
 import { useDashboardStore } from '@/entities/dashboard';
 import { useColumnConfigStore } from '@/entities/column-config';
 import { useDatasetInfo } from '@/entities/group-view';
+import { useAppSettingsStore, selectFormulaOptions } from '@/entities/app-settings';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
 import {
   resolveColumnTemplateId,
@@ -123,11 +124,15 @@ export function useDashboardComputation(
     [groups, metricTemplates, dashboardGroupsConfig, virtualMetrics]
   );
 
+  // Настройки агрегатных формул влияют на компиляцию → в хеш и в params
+  const formulaOptions = useAppSettingsStore(selectFormulaOptions);
+  const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.requireExplicit}`;
+
   const compositeHash = useMemo(
     () =>
-      `${filtersHash}:${configHash}` +
+      `${filtersHash}:${configHash}:${formulaOptionsHash}` +
       (isTimeMode ? `:dc:${dateColumn.columnName}:dg:${dateGranularity}` : ''),
-    [filtersHash, configHash, isTimeMode, dateColumn, dateGranularity]
+    [filtersHash, configHash, formulaOptionsHash, isTimeMode, dateColumn, dateGranularity]
   );
 
   const buildParams = useCallback((): ClientComputeParams | null => {
@@ -144,6 +149,7 @@ export function useDashboardComputation(
       virtualMetrics,
       groupByDateColumn: isTimeMode ? dateColumn.columnName : undefined,
       groupByDateGranularity: isTimeMode ? dateGranularity : undefined,
+      formulaOptions,
       pgSchema,
       pgTable,
     };
@@ -151,6 +157,7 @@ export function useDashboardComputation(
     dashboard, activeDatasetId, dashboardId, encryptedConnection,
     hierarchyFilters, groups, dashboardGroupsConfig,
     metricTemplates, virtualMetrics, isTimeMode, dateColumn, dateGranularity,
+    formulaOptions,
     pgSchema, pgTable,
   ]);
 

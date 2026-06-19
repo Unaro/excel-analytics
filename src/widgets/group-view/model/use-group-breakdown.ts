@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
+import { useAppSettingsStore, selectFormulaOptions } from '@/entities/app-settings';
 import { useColumnDictionary } from '@/entities/reference-type';
 import { useHierarchyStore, type HierarchyLevel } from '@/entities/hierarchy';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
@@ -153,6 +154,9 @@ export function useGroupBreakdown(
   const groupByColumn = nextLevel?.columnName;
   const groupByDateColumn = isTimeMode ? dateColumn.columnName : undefined;
 
+  const formulaOptions = useAppSettingsStore(selectFormulaOptions);
+  const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.requireExplicit}`;
+
   const configHash = useMemo(() => {
     return (
       generateConfigHash({
@@ -162,9 +166,10 @@ export function useGroupBreakdown(
         virtualMetrics,
       }) +
       (groupByColumn ? `:gb:${groupByColumn}` : '') +
-      (isTimeMode ? `:dc:${groupByDateColumn}:dg:${dateGranularity}` : '')
+      (isTimeMode ? `:dc:${groupByDateColumn}:dg:${dateGranularity}` : '') +
+      `:fo:${formulaOptionsHash}`
     );
-  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn, isTimeMode, groupByDateColumn, dateGranularity]);
+  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn, isTimeMode, groupByDateColumn, dateGranularity, formulaOptionsHash]);
 
   const buildParams = useCallback((): ClientComputeParams | null => {
     if (!activeDatasetId || !group) return null;
@@ -181,6 +186,7 @@ export function useGroupBreakdown(
       groupByColumn: groupByColumn ?? undefined,
       groupByDateColumn,
       groupByDateGranularity: isTimeMode ? dateGranularity : undefined,
+      formulaOptions,
       validColumns,
       pgSchema,
       pgTable,
@@ -189,7 +195,7 @@ export function useGroupBreakdown(
     activeDatasetId, group, groupId, encryptedConnection, currentPath,
     dashboardGroupsConfig, templates, virtualMetrics,
     groupByColumn, groupByDateColumn, isTimeMode, dateGranularity,
-    validColumns, pgSchema, pgTable,
+    formulaOptions, validColumns, pgSchema, pgTable,
   ]);
 
   const buildCacheKey = useCallback((): CacheKey | null => {

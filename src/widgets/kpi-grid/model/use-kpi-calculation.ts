@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { useMetricTemplateStore } from '@/entities/metric';
+import { useAppSettingsStore, selectFormulaOptions } from '@/entities/app-settings';
 import {
   compileKPIsToComputeParams,
   KPI_VIRTUAL_GROUP_ID,
@@ -109,6 +110,9 @@ export function useKPICalculation(
     });
   }, [widgets, templates]);
 
+  const formulaOptions = useAppSettingsStore(selectFormulaOptions);
+  const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.requireExplicit}`;
+
   const buildParams = useCallback((): ClientComputeParams | null => {
     if (!activeDatasetId || !dashboardId || compiled.groups[0].metrics.length === 0) {
       return null;
@@ -123,6 +127,7 @@ export function useKPICalculation(
       dashboardGroupsConfig: compiled.dashboardGroupsConfig,
       metricTemplates: templates,
       virtualMetrics: compiled.virtualMetrics,
+      formulaOptions,
       validColumns,
       pgSchema: dataset?.pgConfig?.schema,
       pgTable: dataset?.pgConfig?.table,
@@ -134,6 +139,7 @@ export function useKPICalculation(
     dataset?.pgConfig,
     filters,
     templates,
+    formulaOptions,
     validColumns,
   ]);
 
@@ -153,7 +159,7 @@ export function useKPICalculation(
     isSyncing,
     buildParams,
     buildCacheKey,
-    deps: [configHash, filtersHash, widgets.length],
+    deps: [configHash, filtersHash, widgets.length, formulaOptionsHash],
   });
 
   return useMemo(() => {

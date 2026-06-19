@@ -14,6 +14,10 @@ import {
   wrapWithCoalesce,
 } from './formula-to-sql';
 import { quoteIdent as quote } from './sql-utils';
+import {
+  preprocessAggregateFormula,
+  DEFAULT_AGGREGATE_OPTIONS,
+} from './aggregate-formula';
 
 // ─────────────────────────────────────────────────────────────
 // Whitelist SQL-операторов для WHERE
@@ -222,6 +226,9 @@ export function compileQuery(
     validColumns,
   } = params;
 
+  // Дефолтный авто-агрегат и режим «требовать явный агрегат» (из настроек).
+  const formulaOptions = params.formulaOptions ?? DEFAULT_AGGREGATE_OPTIONS;
+
   if (dialect === 'postgres' && !validColumns) {
     throw new Error(
       '[query-compiler] validColumns обязателен для PostgreSQL: ' +
@@ -378,24 +385,38 @@ export function compileQuery(
       // CALCULATED метрика
       // ═══════════════════════════════════════════════════════
       if (tpl.type === 'calculated' && tpl.formula) {
-        const fieldDependencies: CompiledFormulaMeta['fieldDependencies'] = [];
+        // Агрегаты задаются в формуле: MAX(a)/SUM(b). Препроцессор
+        // превращает их в зависимости с агрегатом на каждую и переписывает
+        // формулу на пред-агрегированные псевдо-переменные. Голая колонка
+        // авто-оборачивается в дефолтный агрегат (или запрещается).
+        const fieldBindingMap = new Map(
+          metric.fieldBindings.map((fb) => [fb.fieldAlias, fb.columnName])
+        );
+        const metricAliasSet = new Set(
+          metric.metricBindings.map((mb) => mb.metricAlias)
+        );
+        const pre = preprocessAggregateFormula(
+          tpl.formula,
+          fieldBindingMap,
+          metricAliasSet,
+          formulaOptions
+        );
+        if (!pre.success) {
+          logger.warn(
+            `[query-compiler] Метрика ${metric.id}: формула не скомпилирована — ${pre.error}`
+          );
+          continue;
+        }
 
-        for (const fb of metric.fieldBindings) {
-          const depBaseAlias = `${FIELD_DEP_PREFIX}${cfg.groupId}_${metric.id}_${fb.fieldAlias}`;
-          const aggregateFn = 'SUM';
-
-          if (!isColumnValid(fb.columnName)) {
+        const fieldDependencies = pre.fieldDependencies;
+        for (const fd of fieldDependencies) {
+          const depBaseAlias = `${FIELD_DEP_PREFIX}${cfg.groupId}_${metric.id}_${fd.alias}`;
+          if (!isColumnValid(fd.columnName)) {
             baseSelectParts.push(`NULL AS ${quote(depBaseAlias)}`);
           } else {
-            const expr = buildAggregateExpr(fb.columnName, aggregateFn, dialect);
+            const expr = buildAggregateExpr(fd.columnName, fd.aggregateFn, dialect);
             baseSelectParts.push(`${expr} AS ${quote(depBaseAlias)}`);
           }
-
-          fieldDependencies.push({
-            alias: fb.fieldAlias,
-            columnName: fb.columnName,
-            aggregateFn,
-          });
         }
 
         const metricDependencies: CompiledFormulaMeta['metricDependencies'] =
@@ -404,12 +425,14 @@ export function compileQuery(
             metricId: mb.metricId,
           }));
 
-        // Сохраняем метаданные (для fallback и пост-обработки)
+        // Сохраняем метаданные (для fallback и пост-обработки).
+        // formula — ПЕРЕПИСАННАЯ (на пред-агрегированные псевдо-переменные),
+        // её же считает и mathjs-fallback в post-process.
         formulas.set(baseAlias, {
           groupId: cfg.groupId,
           metricId: metric.id,
           templateId: tpl.id,
-          formula: tpl.formula,
+          formula: pre.formula,
           fieldDependencies,
           metricDependencies,
         });
@@ -417,7 +440,7 @@ export function compileQuery(
         calculatedMetrics.push({
           baseAlias,
           finalAlias,
-          formula: tpl.formula,
+          formula: pre.formula,
           groupId: cfg.groupId,
           metricId: metric.id,
           templateId: tpl.id,
