@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useAppSettingsStore, selectFormulaOptions } from '@/entities/app-settings';
+import { useShallow } from 'zustand/react/shallow';
 import {
   compileKPIsToComputeParams,
   KPI_VIRTUAL_GROUP_ID,
@@ -110,7 +111,10 @@ export function useKPICalculation(
     });
   }, [widgets, templates]);
 
-  const formulaOptions = useAppSettingsStore(selectFormulaOptions);
+  // useShallow обязателен: selectFormulaOptions возвращает новый объект на
+  // каждый вызов; без него zustand v5 (useSyncExternalStore) уходит в
+  // бесконечный цикл ререндеров («getSnapshot should be cached»).
+  const formulaOptions = useAppSettingsStore(useShallow(selectFormulaOptions));
   const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.requireExplicit}`;
 
   const buildParams = useCallback((): ClientComputeParams | null => {
