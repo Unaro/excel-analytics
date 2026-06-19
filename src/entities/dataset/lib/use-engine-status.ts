@@ -34,10 +34,13 @@ export interface EngineStatusState {
  */
 export function useEngineStatus(): EngineStatusState {
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
-  const activeDataset = useDatasetStore(s =>
-    activeDatasetId ? s.datasets[activeDatasetId] : null
+  // Подписка ТОЛЬКО на sourceType (примитив), а не на весь объект датасета:
+  // иначе любое обновление активного датасета (rows/metadata/pgStatus —
+  // например, каскад восстановления при гидрации) перерисовывает всех
+  // потребителей хука (Sidebar), хотя им нужен лишь тип источника.
+  const sourceType = useDatasetStore(s =>
+    (activeDatasetId ? s.datasets[activeDatasetId]?.sourceType : undefined) ?? 'file'
   );
-  const sourceType = activeDataset?.sourceType ?? 'file';
 
   const [status, setStatus] = useState<DuckDBEngineStatus>(duckdbManager.status);
   const [isReloading, setIsReloading] = useState(false);
