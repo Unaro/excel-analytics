@@ -58,4 +58,39 @@ describe('groupThresholdsByValue: линия в масштабе графика,
     expect(g.y).toBe(50);
     expect(g.labelValue).toBe(50);
   });
+
+  it('percent: пороги 100% и 50% НЕ склеиваются в одну линию (75)', () => {
+    // регрессия: floor допуска Math.max(.., 1) в масштабе построения
+    // схлопывал доли 1.0 и 0.5 (|0.5| ≤ 1) в среднюю линию 0.75 / подпись 75
+    const metrics = [vm({
+      displayFormat: 'percent',
+      colorConfig: {
+        rules: [
+          { id: 'hi', operator: '>', value: 100, color: 'emerald' },
+          { id: 'lo', operator: '>', value: 50, color: 'rose' },
+        ],
+      },
+    })];
+    const groups = groupThresholdsByValue(metrics, ['m1']);
+    expect(groups).toHaveLength(2);
+    expect(groups.map(g => g.labelValue).sort((a, b) => a - b)).toEqual([50, 100]);
+    expect(groups.every(g => !g.isOverlap)).toBe(true);
+  });
+
+  it('number: близкие пороги в пределах 0.5% размаха склеиваются', () => {
+    // относительный допуск сохраняется: размах 0..1002 → допуск 0.5%*1002≈5,
+    // поэтому 1000 и 1002 (Δ=2) сливаются, а 0 остаётся отдельной линией
+    const metrics = [vm({
+      colorConfig: {
+        rules: [
+          { id: 'z', operator: '>', value: 0, color: 'slate' },
+          { id: 'a', operator: '>', value: 1000, color: 'emerald' },
+          { id: 'b', operator: '>', value: 1002, color: 'rose' },
+        ],
+      },
+    })];
+    const groups = groupThresholdsByValue(metrics, ['m1']);
+    expect(groups).toHaveLength(2);
+    expect(groups.find(g => g.isOverlap)?.rules).toHaveLength(2);
+  });
 });

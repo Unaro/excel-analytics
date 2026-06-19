@@ -27,6 +27,8 @@ npm run type-check && npm run lint && npm run build && npm test
 | 3 | [03-fsd-architecture.md](03-fsd-architecture.md) | P1: контракты типов, разворот билдеров, kebab-case, public API, оркестраторы | ✅ |
 | 4 | [04-correctness-perf.md](04-correctness-perf.md) | P2: удаление датасета, кэш, иерархия, formula-to-sql, React-фиксы | ✅ |
 | 5 | [05-hygiene.md](05-hygiene.md) | P3: логгер, миграции persist, переименования, JSDoc | ✅ |
+| 6 | [06-core-audit-fixes.md](06-core-audit-fixes.md) | Аудит ядра: лимит breakdown, отмена вычислений, мёртвый store | ✅ |
+| 7 | [07-review-fixes-2026-06.md](07-review-fixes-2026-06.md) | Код-ревью + баги KPI-цикла и склейки порогов | ✅ |
 
 **Рефакторинг завершён** (2026-06-11). Итог: 78 тестов, 0 ошибок линта,
 boundaries FSD в режиме error, все P0–P3 пункты аудита закрыты.

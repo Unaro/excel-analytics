@@ -90,7 +90,11 @@ export function groupThresholdsByValue(
   const minY = points[0].y;
   const maxY = points[points.length - 1].y;
   const range = Math.abs(maxY - minY);
-  const absoluteTolerance = Math.max(range * (tolerancePercent / 100), 1);
+  // Допуск склейки — ТОЛЬКО относительный (доля от размаха). Прежний
+  // floor Math.max(..., 1) был в масштабе построения: после перевода
+  // percent в доли (0..1) единица схлопывала любые проценты в одну линию
+  // (100% и 50% → 0.75). При range === 0 склеиваются лишь точно равные.
+  const absoluteTolerance = range * (tolerancePercent / 100);
 
   const groups: GroupedThreshold[] = [];
   let currentGroup: ThresholdPoint[] = [points[0]];
