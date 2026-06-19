@@ -244,6 +244,27 @@ export function compileQuery(
   const calculatedInSqlAliases = new Set<string>();
 
   const baseSelectParts: string[] = [];
+
+  // Эмитит агрегат (метрики или field-зависимости) в base-CTE: само значение
+  // + для AVG помощники взвешенного «Итого» (Σsum/Σcount — иначе среднее
+  // средних исказит сводку). Невалидная колонка → NULL во все части.
+  const emitAggregateSelect = (columnName: string, aggregateFn: string, alias: string): void => {
+    const fn = aggregateFn.toUpperCase();
+    if (!isColumnValid(columnName)) {
+      baseSelectParts.push(`NULL AS ${quote(alias)}`);
+      if (fn === 'AVG') {
+        baseSelectParts.push(`NULL AS ${quote(`__agg_sum__${alias}`)}`);
+        baseSelectParts.push(`NULL AS ${quote(`__agg_count__${alias}`)}`);
+      }
+      return;
+    }
+    baseSelectParts.push(`${buildAggregateExpr(columnName, fn, dialect)} AS ${quote(alias)}`);
+    if (fn === 'AVG') {
+      const castedCol = castToNumeric(quote(columnName), dialect);
+      baseSelectParts.push(`SUM(${castedCol}) AS ${quote(`__agg_sum__${alias}`)}`);
+      baseSelectParts.push(`COUNT(${quote(columnName)}) AS ${quote(`__agg_count__${alias}`)}`);
+    }
+  };
   const pgParams: QueryParam[] = [];
   const whereConditions: string[] = [];
   const calculatedMetrics: CalculatedMetricEntry[] = [];
@@ -385,46 +406,14 @@ export function compileQuery(
             aggregateFunction: fd.aggregateFn as MetricAggregationMeta['aggregateFunction'],
           });
 
-          if (!isColumnValid(fd.columnName)) {
-            baseSelectParts.push(`NULL AS ${quote(finalAlias)}`);
-            if (fn === 'AVG') {
-              baseSelectParts.push(`NULL AS ${quote(`__agg_sum__${finalAlias}`)}`);
-              baseSelectParts.push(`NULL AS ${quote(`__agg_count__${finalAlias}`)}`);
-            }
-            continue;
-          }
-
-          const expr = buildAggregateExpr(fd.columnName, fn, dialect);
-          baseSelectParts.push(`${expr} AS ${quote(finalAlias)}`);
-          if (fn === 'AVG') {
-            const castedCol = castToNumeric(quote(fd.columnName), dialect);
-            baseSelectParts.push(`SUM(${castedCol}) AS ${quote(`__agg_sum__${finalAlias}`)}`);
-            baseSelectParts.push(`COUNT(${quote(fd.columnName)}) AS ${quote(`__agg_count__${finalAlias}`)}`);
-          }
+          emitAggregateSelect(fd.columnName, fn, finalAlias);
           continue;
         }
 
         const fieldDependencies = pre.fieldDependencies;
         for (const fd of fieldDependencies) {
           const depBaseAlias = `${FIELD_DEP_PREFIX}${cfg.groupId}_${metric.id}_${fd.alias}`;
-          const isAvg = fd.aggregateFn.toUpperCase() === 'AVG';
-          if (!isColumnValid(fd.columnName)) {
-            baseSelectParts.push(`NULL AS ${quote(depBaseAlias)}`);
-            if (isAvg) {
-              baseSelectParts.push(`NULL AS ${quote(`__agg_sum__${depBaseAlias}`)}`);
-              baseSelectParts.push(`NULL AS ${quote(`__agg_count__${depBaseAlias}`)}`);
-            }
-          } else {
-            const expr = buildAggregateExpr(fd.columnName, fd.aggregateFn, dialect);
-            baseSelectParts.push(`${expr} AS ${quote(depBaseAlias)}`);
-            // Для AVG — помощники для ВЗВЕШЕННОГО «Итого» (Σsum/Σcount),
-            // иначе среднее средних исказит сводку.
-            if (isAvg) {
-              const castedCol = castToNumeric(quote(fd.columnName), dialect);
-              baseSelectParts.push(`SUM(${castedCol}) AS ${quote(`__agg_sum__${depBaseAlias}`)}`);
-              baseSelectParts.push(`COUNT(${quote(fd.columnName)}) AS ${quote(`__agg_count__${depBaseAlias}`)}`);
-            }
-          }
+          emitAggregateSelect(fd.columnName, fd.aggregateFn, depBaseAlias);
         }
 
         const metricDependencies: CompiledFormulaMeta['metricDependencies'] =

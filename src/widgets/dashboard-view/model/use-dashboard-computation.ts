@@ -125,7 +125,7 @@ export function useDashboardComputation(
   );
 
   // Настройки агрегатных формул влияют на компиляцию → в хеш и в params
-  const formulaOptions = useAppSettingsStore(selectFormulaOptions);
+  const formulaOptions = useAppSettingsStore(useShallow(selectFormulaOptions));  
   const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.requireExplicit}`;
 
   const compositeHash = useMemo(
@@ -186,20 +186,19 @@ export function useDashboardComputation(
   const mergedResult = useMemo<DashboardComputationResult | null>(() => {
     if (!result) return null;
     if (virtualMetrics.length === 0) return result;
+    // id → актуальное имя: один проход вместо .find() на каждую ячейку
+    // (иначе O(groups × строк × метрик × |virtualMetrics|)).
+    const nameById = new Map(virtualMetrics.map(f => [f.id, f.name]));
+    const withFreshName = <T extends { virtualMetricId: string; virtualMetricName?: string }>(vm: T): T => {
+      const name = nameById.get(vm.virtualMetricId);
+      return name === undefined ? vm : { ...vm, virtualMetricName: name };
+    };
     const updatedGroups = result.groups.map(group => ({
       ...group,
-      virtualMetrics: group.virtualMetrics.map(vm => {
-        const freshVm = virtualMetrics.find(f => f.id === vm.virtualMetricId);
-        if (!freshVm) return vm;
-        return { ...vm, virtualMetricName: freshVm.name };
-      }),
+      virtualMetrics: group.virtualMetrics.map(withFreshName),
       breakdown: group.breakdown?.map(item => ({
         ...item,
-        virtualMetrics: item.virtualMetrics.map(vm => {
-          const freshVm = virtualMetrics.find(f => f.id === vm.virtualMetricId);
-          if (!freshVm) return vm;
-          return { ...vm, virtualMetricName: freshVm.name };
-        }),
+        virtualMetrics: item.virtualMetrics.map(withFreshName),
       })),
     }));
     return { ...result, virtualMetrics, groups: updatedGroups };

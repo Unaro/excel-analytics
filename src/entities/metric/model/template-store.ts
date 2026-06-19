@@ -117,7 +117,10 @@ export const useMetricTemplateStore = create<MetricTemplateState>()(
             (t) => {
               const { type, aggregateFunction, aggregateField, ...rest } = t;
               if (type === 'aggregate' && aggregateFunction && aggregateField) {
-                return { ...rest, formula: `${aggregateFunction}(${aggregateField})` };
+                // PERCENTILE (без параметра) исторически = медиана (P50);
+                // формульный препроцессор знает только MEDIAN.
+                const fn = aggregateFunction === 'PERCENTILE' ? 'MEDIAN' : aggregateFunction;
+                return { ...rest, formula: `${fn}(${aggregateField})` };
               }
               return rest; // calculated — formula уже есть
             }

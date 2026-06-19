@@ -13,6 +13,7 @@ import {
   MetricTemplateSchema,
   VirtualMetricSchema,
 } from '@/shared/lib/validators';
+import { AGGREGATE_FUNCTIONS } from '@/shared/lib/computation/lib/aggregate-functions';
 
 /** Конфигурация подключения к PostgreSQL (валидация перед коннектом). */
 export const PgConfigSchema = z.object({
@@ -56,9 +57,7 @@ export const ClientComputeParamsSchema = z.object({
   // requireExplicit влияет только на компиляцию формулы.
   formulaOptions: z
     .object({
-      defaultAggregate: z.enum([
-        'SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'COUNT_DISTINCT', 'MEDIAN',
-      ]),
+      defaultAggregate: z.enum(AGGREGATE_FUNCTIONS),
       requireExplicit: z.boolean(),
     })
     .optional(),

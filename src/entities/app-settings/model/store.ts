@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createMigration } from '@/shared/lib/storage/migration';
-import type { AggregateFn } from '@/shared/lib/computation/lib/aggregate-formula';
+import type { AggregateFn } from '@/shared/lib/computation/lib/aggregate-functions';
 import type { AggregateFormulaOptions } from '@/shared/lib/computation/lib/types';
 
 interface AppSettingsState {

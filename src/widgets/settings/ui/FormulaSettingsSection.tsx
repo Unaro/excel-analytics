@@ -4,7 +4,7 @@ import { Card } from '@/shared/ui/card';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { FunctionSquare } from 'lucide-react';
 import { useAppSettingsStore } from '@/entities/app-settings';
-import { AGGREGATE_FUNCTIONS, type AggregateFn } from '@/shared/lib/computation/lib/aggregate-formula';
+import { AGGREGATE_FUNCTIONS, type AggregateFn } from '@/shared/lib/computation/lib/aggregate-functions';
 
 const AGG_LABELS: Record<AggregateFn, string> = {
   SUM: 'Сумма (SUM)',

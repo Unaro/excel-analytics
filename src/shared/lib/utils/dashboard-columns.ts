@@ -124,7 +124,10 @@ export function resolveDashboardGroupsConfig(
 
     const bindings: VirtualMetricBindingInDashboard[] = [];
     for (const col of columns) {
-      const templateId = col.templateId;
+      // Через resolveColumnTemplateId, а не col.templateId напрямую: иначе
+      // старые (немигрированные) колонки без templateId молча теряли бы
+      // привязку. Для новых колонок это быстрый путь (вернёт col.templateId).
+      const templateId = resolveColumnTemplateId(col, indicatorGroups, groups);
       const metricId = resolveColumnMetricId(group, templateId, overrides.get(col.id));
       if (metricId) bindings.push({ virtualMetricId: col.id, metricId });
     }

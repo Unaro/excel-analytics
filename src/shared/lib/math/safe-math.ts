@@ -5,6 +5,7 @@
  */
 import { logger } from '@/shared/lib/logger';
 import { create, all, parse, type MathNode, FunctionNode, SymbolNode } from 'mathjs';
+import { AGGREGATE_FUNCTIONS } from '@/shared/lib/computation/lib/aggregate-functions';
 
 // Создаём инстанс mathjs
 /** Инстанс mathjs для вычисления пользовательских формул (см. validateFormula). */
@@ -14,22 +15,26 @@ export const safeMath = create(all);
 const ALLOWED_FUNCTIONS = new Set([
   // Арифметика
   'add', 'subtract', 'multiply', 'divide', 'mod', 'pow', 'sqrt', 'abs',
-  
+
   // Агрегации
   'sum', 'mean', 'median', 'min', 'max',
-  
+
+  // Наши агрегатные функции формул (SUM/AVG/MAX/…): обрабатываются
+  // препроцессором → SQL, а не mathjs; для валидатора — разрешённые имена.
+  ...AGGREGATE_FUNCTIONS,
+
   // Математика
   'round', 'floor', 'ceil', 'sign', 'exp', 'log', 'log10',
-  
+
   // Тригонометрия
   'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
-  
+
   // Логика
   'equal', 'unequal', 'smaller', 'larger', 'smallerEq', 'largerEq',
-  
+
   // Условия
   'if',
-  
+
   // Утилиты
   'format', 'bin', 'oct', 'hex',
 ]);

@@ -2,6 +2,7 @@
 
 import { cn } from "@/shared/lib/utils";
 import { COLOR_STYLES, checkRule, toDisplayScale } from "@/shared/lib/utils/metric-colors";
+import { formatValue } from "@/shared/lib/computation/lib/utils";
 import { VirtualMetric } from "@/shared/lib/validators";
 
 interface MetricCellProps {
@@ -14,7 +15,7 @@ export function MetricCell({ value, formattedValue, metric }: MetricCellProps) {
 
   const displayValue = formattedValue !== undefined && formattedValue !== '—'
     ? formattedValue
-    : formatFallback(value, metric.displayFormat, metric.decimalPlaces, metric.unit);
+    : formatValue(value, metric.displayFormat, metric.decimalPlaces, metric.unit);
 
   if (displayValue === '—') {
     return <span className="text-slate-300 dark:text-slate-600 select-none">−</span>;
@@ -31,18 +32,4 @@ export function MetricCell({ value, formattedValue, metric }: MetricCellProps) {
   }
 
   return <span className={className}>{displayValue}</span>;
-}
-
-function formatFallback(val: number | null, format: string, decimals: number, unit?: string): string {
-  if (val === null) return '—';
-  const round = (n: number, d: number) => Math.round((n + Number.EPSILON) * 10 ** d) / 10 ** d;
-  
-  switch (format) {
-    case 'percent': return `${round(val * 100, decimals).toLocaleString('ru-RU', { maximumFractionDigits: decimals })}%`;
-    case 'percent_raw': return `${round(val, decimals).toLocaleString('ru-RU', { maximumFractionDigits: decimals })}%`;
-    case 'currency':
-    case 'decimal':
-      return round(val, decimals).toLocaleString('ru-RU', { maximumFractionDigits: decimals }) + (unit ? ` ${unit}` : '');
-    default: return round(val, decimals).toLocaleString('ru-RU', { maximumFractionDigits: decimals });
-  }
 }

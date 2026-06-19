@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useMemo, useState } from 'react';
-import { useDashboardStore } from '@/entities/dashboard';
+import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
 import { HierarchyTree } from '@/widgets/hierarchy-filter';
 import { KPIGrid } from '@/widgets/kpi-grid';
 import { DashboardMetricsTable } from '@/widgets/dashboard-metrics-table';
@@ -22,6 +22,11 @@ import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
+import { HierarchyFilterValue } from '@/shared/lib/validators';
+
+
+const EMPTY_WIDGETS: KPIWidget[] = [];
+const EMPTY_FILTERS: HierarchyFilterValue[] = [];
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -84,9 +89,15 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   // лишняя обёртка скрывала суть сравнения).
   const hierarchyFilters = useDashboardStore(
     useShallow(
-      s => s.dashboards.find(d => d.id === dashboardId)?.hierarchyFilters ?? []
+      s => s.dashboards.find(d => d.id === dashboardId)?.hierarchyFilters ?? EMPTY_FILTERS
     )
   );
+
+  const kpiWidgets = useMemo(
+    () => dashboard?.kpiWidgets ?? EMPTY_WIDGETS,
+    [dashboard?.kpiWidgets]
+  );
+
 
   // UI-состояние чартов и таблицы — на эффективных колонках (формат из
   // шаблона), а не на хранимых (которые несут только templateId/colorConfig).
@@ -168,7 +179,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
           <ErrorBoundary label="KPI Grid" onReset={recalculate}>
             <KPIGrid
               dashboardId={dashboardId}
-              widgets={dashboard.kpiWidgets || []}
+              widgets={kpiWidgets}
               currentFilters={hierarchyFilters}
               isEditMode={true}
             />

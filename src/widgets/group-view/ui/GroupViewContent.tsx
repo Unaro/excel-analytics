@@ -51,7 +51,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     setDateGranularity,
     isTwoDimensional,
     resolveLabel,
-  } = useGroupBreakdown(groupId, path);
+  } = useGroupBreakdown(groupId, path, setPath);
 
   const {
     activeMetricIds,
@@ -65,19 +65,6 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   const groupMetricIds = useMemo(() => {
     return group?.metrics.map(m => m.id) ?? [];
   }, [group]);
-
-  useEffect(() => {
-    const pathsEqual =
-      path.length === currentPath.length &&
-      path.every((p, i) =>
-        p.levelId === currentPath[i]?.levelId &&
-        p.value === currentPath[i]?.value
-      );
-
-    if (!pathsEqual) {
-      setPath(currentPath);
-    }
-  }, [currentPath, path, setPath]);
 
   // Одномерные потребители не должны видеть устаревшие 2-D строки:
   // при выключении разбивки по дате isTwoDimensional меняется мгновенно,
@@ -108,7 +95,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
       <GroupPageHeader
         group={group}
         groupId={groupId}
-        currentPath={currentPath}
+        currentPath={path}
         onResetAll={resetAll}
         onResetToLevel={resetToLevel}
       />

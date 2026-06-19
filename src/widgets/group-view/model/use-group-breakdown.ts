@@ -61,9 +61,9 @@ export interface GroupBreakdownResult {
 
 export function useGroupBreakdown(
   groupId: string,
-  initialPath: HierarchyFilterValue[] = []
+  currentPath: HierarchyFilterValue[], // Переименовали из initialPath, теперь это path из URL
+  setPath: (p: HierarchyFilterValue[]) => void // Добавили сеттер
 ): GroupBreakdownResult {
-  const [currentPath, setCurrentPath] = useState<HierarchyFilterValue[]>(initialPath);
   const [dateGranularity, setDateGranularity] = useState<DateGranularity | null>(null);
 
   const {
@@ -75,7 +75,7 @@ export function useGroupBreakdown(
     isSyncing,
   } = useDatasetInfo();
 
-  const group = useIndicatorGroupStore(s => s.getGroup(groupId));
+  const group = useIndicatorGroupStore(useShallow(s => s.getGroup(groupId)));
   const templates = useMetricTemplateStore(useShallow(s => s.templates)) ?? EMPTY_TEMPLATES;
 
   // Авто-переключение на датасет группы — как на странице дашборда
@@ -102,7 +102,7 @@ export function useGroupBreakdown(
 
   const groupMetricConfigs = useGroupMetricConfigStore(s => s.configsByGroup[groupId]);
 
-  const nextLevel = useMemo<HierarchyLevel | null>(
+  const nextLevel = useMemo<HierarchyLevel | null>(                                   
     () => levels[currentPath.length] ?? null,
     [levels, currentPath.length]
   );
@@ -154,8 +154,8 @@ export function useGroupBreakdown(
   const groupByColumn = nextLevel?.columnName;
   const groupByDateColumn = isTimeMode ? dateColumn.columnName : undefined;
 
-  const formulaOptions = useAppSettingsStore(selectFormulaOptions);
-  const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.requireExplicit}`;
+const formulaOptions = useAppSettingsStore(useShallow(selectFormulaOptions));  
+const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.requireExplicit}`;
 
   const configHash = useMemo(() => {
     return (
@@ -213,7 +213,7 @@ export function useGroupBreakdown(
     isSyncing,
     buildParams,
     buildCacheKey,
-    deps: [filtersHash, configHash, currentPath, group?.id],
+    deps: [filtersHash, configHash, group?.id],
   });
 
   const summary = computeResult?.groups[0] ?? null;
@@ -238,18 +238,18 @@ export function useGroupBreakdown(
         // Имя из справочника — в крошках виден текст, в WHERE уходит код
         displayValue: resolveLabel(label),
       };
-      setCurrentPath(prev => [...prev, newFilter]);
+      setPath([...currentPath, newFilter]); 
     },
-    [nextLevel, resolveLabel]
+      [nextLevel, resolveLabel, currentPath, setPath]
   );
 
   const resetToLevel = useCallback((levelIndex: number) => {
-    setCurrentPath(prev => prev.slice(0, levelIndex));
-  }, []);
+    setPath(currentPath.slice(0, levelIndex));
+  }, [currentPath, setPath]);
 
   const resetAll = useCallback(() => {
-    setCurrentPath([]);
-  }, []);
+    setPath([]);
+  }, [setPath]);
 
   return {
     group,

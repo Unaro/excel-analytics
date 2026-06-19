@@ -18,6 +18,8 @@ export function KPIGrid({ dashboardId, widgets, currentFilters, isEditMode = fal
   const results = useKPICalculation(dashboardId, widgets, currentFilters);
   const removeWidget = useDashboardStore(s => s.removeKPIWidget);
 
+  
+
   if (results.length === 0) return null;
 
   return (

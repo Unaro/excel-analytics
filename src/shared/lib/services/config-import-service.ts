@@ -90,6 +90,36 @@ function safeParseJson(text: string): unknown {
   }
 }
 
+/**
+ * Нормализует конфиги, экспортированные до упразднения типа `aggregate`:
+ * старый шаблон {type:'aggregate', aggregateFunction, aggregateField} без поля
+ * `formula` превращается в формулу `FN(field)` — иначе строгая
+ * MetricTemplateSchema (formula обязательна) отклонит весь импорт.
+ * Зеркалит миграцию v2→v3 в template-store.
+ */
+function migrateLegacyConfig(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null) return raw;
+  const root = raw as Record<string, unknown>;
+  const data = root.data;
+  if (typeof data !== 'object' || data === null) return raw;
+  const templates = (data as Record<string, unknown>).metricTemplates;
+  if (!Array.isArray(templates)) return raw;
+
+  const migrated = templates.map((t) => {
+    if (typeof t !== 'object' || t === null) return t;
+    const tpl = t as Record<string, unknown>;
+    if (tpl.formula != null) return t; // уже формульный — не трогаем
+    const { type, aggregateFunction, aggregateField, ...rest } = tpl;
+    if (type === 'aggregate' && aggregateFunction && aggregateField) {
+      const fn = aggregateFunction === 'PERCENTILE' ? 'MEDIAN' : aggregateFunction;
+      return { ...rest, formula: `${fn}(${aggregateField})` };
+    }
+    return t;
+  });
+
+  return { ...root, data: { ...(data as Record<string, unknown>), metricTemplates: migrated } };
+}
+
 function validateConfigStructure(raw: unknown) {
   if (typeof raw !== 'object' || raw === null) {
     throw new ConfigImportError('Неверный формат файла: ожидается JSON-объект');
@@ -264,7 +294,7 @@ export function processConfigImport(
   } = context;
 
   // 1. Парсинг и валидация
-  const raw = safeParseJson(fileContent);
+  const raw = migrateLegacyConfig(safeParseJson(fileContent));
   const config = validateConfigStructure(raw);
   const { data } = config;
 

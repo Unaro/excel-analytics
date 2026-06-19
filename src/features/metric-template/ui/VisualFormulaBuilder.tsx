@@ -9,6 +9,7 @@ import { Button } from '@/shared/ui/button';
 import { nanoid } from 'nanoid';
 import { DragDropList } from '@/shared/ui/drag-drop-list';
 import type { RenderItemProps } from '@/shared/ui/drag-drop-list';
+import { AGGREGATE_FUNCTIONS } from '@/shared/lib/computation/lib/aggregate-functions';
 
 //──────────────────────────────────────────────────────────
 // Типы токенов
@@ -30,7 +31,7 @@ interface VisualFormulaBuilderProps {
 
 // Агрегатные функции — со слотом-переменной: MAX(a). Скалярные (ROUND/ABS)
 // остаются обычными токенами (могут принимать выражения, скобки вручную).
-const AGGREGATE_FUNCS = ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'COUNT_DISTINCT', 'MEDIAN'];
+const AGGREGATE_FUNCS: string[] = [...AGGREGATE_FUNCTIONS];
 const SCALAR_FUNCS = ['ROUND', 'ABS'];
 const ALL_FUNCS = [...AGGREGATE_FUNCS, ...SCALAR_FUNCS];
 const DEFAULT_VARS = ['a', 'b', 'c', 'x', 'y', 'z'];

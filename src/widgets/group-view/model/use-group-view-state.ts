@@ -1,9 +1,12 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { SortConfig } from './types';
 import { ChartType } from '@/shared/lib/types/chart';
 
+
+const DEFAULT_CHART_TYPES: ChartType[] = ['bar', 'radar'];
+const DEFAULT_SELECTTED_METRIC_IDS: string[] = [];
 /**
  * UI-состояние виджета просмотра группы.
  * Управляет выбором метрик для визуализации, типами графиков и сортировкой.
@@ -15,24 +18,25 @@ import { ChartType } from '@/shared/lib/types/chart';
  */
 export function useGroupViewState(virtualMetrics: VirtualMetric[]) {
   // null/[] = «пользователь ещё не выбирал» → действует дефолт
-  const [selectedMetricIds, setSelectedMetricIds] = useState<string[]>([]);
-  const [chartTypes, setChartTypes] = useState<ChartType[]>(['bar', 'radar']);
+  const [selectedMetricIds, setSelectedMetricIds] = useState<string[]>(DEFAULT_SELECTTED_METRIC_IDS);
+  const [chartTypes, setChartTypes] = useState<ChartType[]>(DEFAULT_CHART_TYPES);
   const [userSortConfig, setUserSortConfig] = useState<SortConfig | null>(null);
 
   // Дефолт: первая метрика группы
-  const activeMetricIds =
-    selectedMetricIds.length > 0
+  const activeMetricIds = useMemo(() => {
+    return selectedMetricIds.length > 0
       ? selectedMetricIds
       : virtualMetrics.length > 0
-        ? [virtualMetrics[0].id]
-        : selectedMetricIds;
+      ? [virtualMetrics[0].id]
+      : [];
+  }, [selectedMetricIds, virtualMetrics]);
 
-  // Дефолт: сортировка по первой активной метрике
-  const sortConfig: SortConfig | null =
-    userSortConfig ??
-    (activeMetricIds.length > 0
-      ? { key: activeMetricIds[0], direction: 'desc' }
-      : null);
+  const sortConfig: SortConfig | null = useMemo(() => {
+    return userSortConfig ?? 
+      (activeMetricIds.length > 0 
+        ? { key: activeMetricIds[0], direction: 'desc' } 
+        : null);
+  }, [userSortConfig, activeMetricIds]);
 
   const handleToggleMetric = useCallback((metricId: string) => {
     setSelectedMetricIds(prev => {
