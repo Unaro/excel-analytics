@@ -12,7 +12,8 @@ export interface AggregatedSummary {
  * агрегатной функции (значения уже посчитаны по группам breakdown):
  *  - SUM/COUNT — суммируются;
  *  - MIN/MAX — экстремум;
- *  - AVG — среднее по группам (приближённо, без взвешивания по числу строк);
+ *  - AVG — обрабатывается отдельно взвешенно (через __agg_sum__/__agg_count__);
+ *    здесь как запасной путь — среднее по группам (без взвешивания);
  *  - MEDIAN/COUNT_DISTINCT — непереагрегируемы → null.
  */
 function reaggregateFieldDep(values: number[], fn: string): number | null {
@@ -96,10 +97,23 @@ export function aggregateProcessedRows(
     // ─── Field dependency → переагрегация по своему агрегату ──
     const depFn = fieldDependencyAgg.get(key);
     if (depFn !== undefined) {
-      const values = processedRows
-        .map(row => row[key])
-        .filter((v): v is number => typeof v === 'number' && isFinite(v));
-      summary[key] = reaggregateFieldDep(values, depFn);
+      if (depFn.toUpperCase() === 'AVG') {
+        // Взвешенно через помощники Σsum/Σcount (как в aggregate-пути)
+        let totalSum = 0;
+        let totalCount = 0;
+        for (const row of processedRows) {
+          const s = row[`__agg_sum__${key}`];
+          const c = row[`__agg_count__${key}`];
+          if (typeof s === 'number') totalSum += s;
+          if (typeof c === 'number') totalCount += c;
+        }
+        summary[key] = totalCount > 0 ? totalSum / totalCount : null;
+      } else {
+        const values = processedRows
+          .map(row => row[key])
+          .filter((v): v is number => typeof v === 'number' && isFinite(v));
+        summary[key] = reaggregateFieldDep(values, depFn);
+      }
       continue;
     }
 

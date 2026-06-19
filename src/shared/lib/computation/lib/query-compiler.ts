@@ -411,11 +411,23 @@ export function compileQuery(
         const fieldDependencies = pre.fieldDependencies;
         for (const fd of fieldDependencies) {
           const depBaseAlias = `${FIELD_DEP_PREFIX}${cfg.groupId}_${metric.id}_${fd.alias}`;
+          const isAvg = fd.aggregateFn.toUpperCase() === 'AVG';
           if (!isColumnValid(fd.columnName)) {
             baseSelectParts.push(`NULL AS ${quote(depBaseAlias)}`);
+            if (isAvg) {
+              baseSelectParts.push(`NULL AS ${quote(`__agg_sum__${depBaseAlias}`)}`);
+              baseSelectParts.push(`NULL AS ${quote(`__agg_count__${depBaseAlias}`)}`);
+            }
           } else {
             const expr = buildAggregateExpr(fd.columnName, fd.aggregateFn, dialect);
             baseSelectParts.push(`${expr} AS ${quote(depBaseAlias)}`);
+            // Для AVG — помощники для ВЗВЕШЕННОГО «Итого» (Σsum/Σcount),
+            // иначе среднее средних исказит сводку.
+            if (isAvg) {
+              const castedCol = castToNumeric(quote(fd.columnName), dialect);
+              baseSelectParts.push(`SUM(${castedCol}) AS ${quote(`__agg_sum__${depBaseAlias}`)}`);
+              baseSelectParts.push(`COUNT(${quote(fd.columnName)}) AS ${quote(`__agg_count__${depBaseAlias}`)}`);
+            }
           }
         }
 
