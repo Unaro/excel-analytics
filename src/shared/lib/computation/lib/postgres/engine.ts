@@ -1,7 +1,6 @@
 import type {
   ClientComputeParams,
   IComputeEngine,
-  MetricAggregationMeta,
 } from '../types';
 import { compileQuery, BREAKDOWN_LIMIT } from '../query-compiler';
 import { getActiveFilter, formatValue, computeTotalRecordCount } from '../utils';
@@ -16,26 +15,6 @@ import type {
 import { computePgMetrics } from '@/shared/api/server-actions';
 import { aggregateProcessedRows } from '../aggregation';
 import { qualifiedTableName } from '../sql-utils';
-
-function buildAggregateMetadataMap(
-  params: ClientComputeParams
-): Map<string, MetricAggregationMeta> {
-  const metadata = new Map<string, MetricAggregationMeta>();
-  for (const cfg of params.dashboardGroupsConfig) {
-    if (!cfg.enabled) continue;
-    const groupDef = params.groups.find(g => g.id === cfg.groupId);
-    if (!groupDef) continue;
-    for (const metric of groupDef.metrics) {
-      if (!metric.enabled) continue;
-      const tpl = params.metricTemplates.find(t => t.id === metric.templateId);
-      if (tpl?.type === 'aggregate' && tpl.aggregateFunction) {
-        const alias = `${cfg.groupId}__${metric.id}`;
-        metadata.set(alias, { aggregateFunction: tpl.aggregateFunction });
-      }
-    }
-  }
-  return metadata;
-}
 
 /**
  * PostgreSQL Compute Engine.

@@ -27,9 +27,7 @@ function buildDummyParams(columnName: string): {
   const template: MetricTemplate = {
     id: TPL_ID,
     name: 'Count',
-    type: 'aggregate',
-    aggregateFunction: 'COUNT',
-    aggregateField: 'val',
+    formula: 'COUNT(val)',
     dependencies: [{ type: 'field', alias: 'val' }],
     displayFormat: 'number',
     decimalPlaces: 0,

@@ -10,6 +10,7 @@ import type {
   VirtualMetricBindingInDashboard,
 } from '@/shared/lib/validators';
 import { KPIWidget } from '@/shared/lib/types/dashboard';
+import { extractVariables } from '@/shared/lib/utils/formula';
 
 export const KPI_VIRTUAL_GROUP_ID = 'kpi_virtual_group';
 
@@ -34,73 +35,43 @@ export function compileKPIsToComputeParams(
   const bindings: VirtualMetricBindingInDashboard[] = [];
   const widgetToVmMap = new Map<string, string>();
 
+  // Всё — формулы. Для каждой переменной формулы решаем по значению
+  // привязки: указывает на другой KPI-виджет → метрика-зависимость;
+  // иначе → колонка датасета (бывшая «агрегатная» привязка).
+  const widgetIds = new Set(widgets.map((w) => w.id));
+
   for (const widget of widgets) {
     const template = templates.find((t) => t.id === widget.templateId);
-    if (!template || template.type !== 'aggregate') continue;
+    if (!template?.formula) continue;
 
     const metricId = `kpi_m_${widget.id}`;
     const vmId = `kpi_vm_${widget.id}`;
     widgetToVmMap.set(widget.id, vmId);
 
-    const fieldAlias = template.aggregateField || 'value';
-    const columnName = widget.bindings[fieldAlias];
-
-    const fieldBindings: FieldBinding[] = columnName
-      ? [
-          {
-            id: `fb_${widget.id}`,
-            fieldAlias,
-            columnName,
-          },
-        ]
-      : [];
-
-    metrics.push({
-      id: metricId,
-      templateId: template.id,
-      fieldBindings,
-      metricBindings: [],
-      enabled: true,
-      order: metrics.length,
-    });
-
-    virtualMetrics.push({
-      id: vmId,
-      name: widget.customName || template.name,
-      displayFormat: template.displayFormat,
-      decimalPlaces: template.decimalPlaces,
-      order: virtualMetrics.length,
-      unit: template.unit,
-    });
-
-    bindings.push({
-      virtualMetricId: vmId,
-      metricId: metricId,
-    });
-  }
-
-  for (const widget of widgets) {
-    const template = templates.find((t) => t.id === widget.templateId);
-    if (!template || template.type !== 'calculated' || !template.formula) continue;
-
-    const metricId = `kpi_m_${widget.id}`;
-    const vmId = `kpi_vm_${widget.id}`;
-    widgetToVmMap.set(widget.id, vmId);
-
+    const fieldBindings: FieldBinding[] = [];
     const metricBindings: MetricBinding[] = [];
-    for (const [varName, targetWidgetId] of Object.entries(widget.bindings)) {
-      if (!widgets.some((w) => w.id === targetWidgetId)) continue;
-      metricBindings.push({
-        id: `mb_${widget.id}_${varName}`,
-        metricAlias: varName,
-        metricId: `kpi_m_${targetWidgetId}`,
-      });
+    for (const varName of extractVariables(template.formula)) {
+      const bound = widget.bindings[varName];
+      if (!bound) continue;
+      if (widgetIds.has(bound)) {
+        metricBindings.push({
+          id: `mb_${widget.id}_${varName}`,
+          metricAlias: varName,
+          metricId: `kpi_m_${bound}`,
+        });
+      } else {
+        fieldBindings.push({
+          id: `fb_${widget.id}_${varName}`,
+          fieldAlias: varName,
+          columnName: bound,
+        });
+      }
     }
 
     metrics.push({
       id: metricId,
       templateId: template.id,
-      fieldBindings: [],
+      fieldBindings,
       metricBindings,
       enabled: true,
       order: metrics.length,

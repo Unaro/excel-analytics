@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMetricTemplateStore } from '@/entities/metric';
-import { Plus, Trash2, Calculator, FunctionSquare } from 'lucide-react';
+import { Plus, Trash2, Calculator } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { toast } from '@/shared/ui/toast';
@@ -38,23 +38,19 @@ export function TemplateManager() {
           <Card key={template.id} className="p-5 relative group hover:shadow-md dark:hover:border-indigo-500/30">
             <div className="flex justify-between items-start mb-3">
               <div className="flex items-center gap-3">
-                <div className={`p-2.5 rounded-xl ${template.type === 'aggregate' ? 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400' : 'bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400'}`}>
-                  {template.type === 'aggregate' ? <FunctionSquare size={18} /> : <Calculator size={18} />}
+                <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400">
+                  <Calculator size={18} />
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-slate-100 text-sm">{template.name}</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    {template.type === 'aggregate' ? 'Агрегация' : 'Формула'}
-                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Формула</p>
                 </div>
               </div>
             </div>
 
             <div className="bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-lg p-3 mb-2">
               <code className="text-xs font-mono text-slate-700 dark:text-slate-300 break-all">
-                {template.type === 'aggregate'
-                  ? `${template.aggregateFunction}(${template.aggregateField || 'x'})`
-                  : template.formula}
+                {template.formula}
               </code>
             </div>
 

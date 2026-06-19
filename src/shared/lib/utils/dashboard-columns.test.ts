@@ -14,8 +14,8 @@ import type {
 
 function tpl(over: Partial<MetricTemplate> = {}): MetricTemplate {
   return {
-    id: 't1', name: 'Сумма', type: 'aggregate', aggregateFunction: 'SUM',
-    aggregateField: 'v', dependencies: [], displayFormat: 'currency',
+    id: 't1', name: 'Сумма', formula: 'SUM(v)', dependencies: [],
+    displayFormat: 'currency',
     decimalPlaces: 2, unit: '₽', createdAt: 0, updatedAt: 0, ...over,
   };
 }

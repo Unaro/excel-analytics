@@ -47,7 +47,7 @@ describe('compileQuery: aggregate-метрики', () => {
 
   it('AVG добавляет служебные __agg_sum__/__agg_count__ для переагрегации', () => {
     const params = makeParams({
-      metricTemplates: [makeAggregateTemplate({ aggregateFunction: 'AVG' })],
+      metricTemplates: [makeAggregateTemplate({ formula: 'AVG(value)' })],
     });
     const { sql } = compileQuery(params, 'duckdb');
 
@@ -57,7 +57,7 @@ describe('compileQuery: aggregate-метрики', () => {
 
   it('COUNT не кастует колонку к числу', () => {
     const params = makeParams({
-      metricTemplates: [makeAggregateTemplate({ aggregateFunction: 'COUNT' })],
+      metricTemplates: [makeAggregateTemplate({ formula: 'COUNT(value)' })],
     });
     const { sql } = compileQuery(params, 'duckdb');
 
@@ -65,7 +65,7 @@ describe('compileQuery: aggregate-метрики', () => {
   });
 
   it('MEDIAN: MEDIAN() в DuckDB, PERCENTILE_CONT в PostgreSQL', () => {
-    const tpl = [makeAggregateTemplate({ aggregateFunction: 'MEDIAN' })];
+    const tpl = [makeAggregateTemplate({ formula: 'MEDIAN(value)' })];
 
     expect(
       compileQuery(makeParams({ metricTemplates: tpl }), 'duckdb').sql

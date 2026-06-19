@@ -66,7 +66,7 @@ export function useGroupBuilder(existingGroupId?: string) {
         const template = templates.find(t => t.id === m.templateId);
         const requiredVars = template?.formula
           ? extractVariables(template.formula)
-          : (template?.aggregateField ? [template.aggregateField] : []);
+          : [];
         
         const bindings: Record<string, string> = {};
         const variableTypes: Record<string, 'field' | 'metric'> = {};
@@ -123,13 +123,10 @@ export function useGroupBuilder(existingGroupId?: string) {
     const template = templates.find(t => t.id === templateId);
     if (!template) return;
     
-    let requiredVariables: string[] = [];
-    if (template.type === 'calculated' && template.formula) {
-      requiredVariables = extractVariables(template.formula);
-    } else if (template.type === 'aggregate' && template.aggregateField) {
-      requiredVariables = [template.aggregateField];
-    }
-    
+    const requiredVariables = template.formula
+      ? extractVariables(template.formula)
+      : [];
+
     const variableTypes: Record<string, 'field' | 'metric'> = {};
     requiredVariables.forEach(v => variableTypes[v] = 'field');
     

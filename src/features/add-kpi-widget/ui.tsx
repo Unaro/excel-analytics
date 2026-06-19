@@ -4,7 +4,8 @@ import { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
-import { Select, SelectOption, SelectGroup } from '@/shared/ui/select';
+import { Select, SelectOption } from '@/shared/ui/select';
+import { cn } from '@/shared/lib/utils';
 import { Plus, ArrowRight } from 'lucide-react';
 import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
 import { useMetricTemplateStore } from '@/entities/metric';
@@ -26,6 +27,8 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
   
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [bindings, setBindings] = useState<Record<string, string>>({});
+  // Тип привязки переменной: 'field' — колонка датасета, 'widget' — другой KPI.
+  const [bindingTypes, setBindingTypes] = useState<Record<string, 'field' | 'widget'>>({});
   const [customName, setCustomName] = useState('');
 
   const templates = useMetricTemplateStore(s => s.templates);
@@ -39,13 +42,10 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
   // Та же логика извлечения переменных, что и в редакторе группы
   // (use-group-builder): mathjs-AST через extractVariables вместо
   // самодельного regex, который принимал имена функций за переменные.
-  const requiredVariables = useMemo(() => {
-    if (!selectedTemplate) return [];
-    if (selectedTemplate.type === 'aggregate') {
-      return [selectedTemplate.aggregateField || 'value'];
-    }
-    return selectedTemplate.formula ? extractVariables(selectedTemplate.formula) : [];
-  }, [selectedTemplate]);
+  const requiredVariables = useMemo(
+    () => (selectedTemplate?.formula ? extractVariables(selectedTemplate.formula) : []),
+    [selectedTemplate]
+  );
 
   const handleSubmit = () => {
     if (!selectedTemplateId) return;
@@ -65,8 +65,12 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
     setStep(1);
     setSelectedTemplateId('');
     setBindings({});
+    setBindingTypes({});
     setCustomName('');
   };
+
+  const setVarType = (variable: string, type: 'field' | 'widget') =>
+    setBindingTypes(prev => ({ ...prev, [variable]: type }));
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if(!v) reset(); }}>
@@ -95,16 +99,9 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
                   onChange={(e) => setSelectedTemplateId(e.target.value)}
                 >
                   <SelectOption value="" disabled>Выберите из списка...</SelectOption>
-                  <SelectGroup label="Агрегации">
-                    {templates.filter(t => t.type === 'aggregate').map(t => (
-                      <SelectOption key={t.id} value={t.id}>{t.name}</SelectOption>
-                    ))}
-                  </SelectGroup>
-                  <SelectGroup label="Формулы">
-                    {templates.filter(t => t.type === 'calculated').map(t => (
-                      <SelectOption key={t.id} value={t.id}>{t.name}</SelectOption>
-                    ))}
-                  </SelectGroup>
+                  {templates.map(t => (
+                    <SelectOption key={t.id} value={t.id}>{t.name}</SelectOption>
+                  ))}
                 </Select>
              </div>
              <div className="flex justify-end">
@@ -135,18 +132,30 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
                  Привязка данных
                </h4>
                
-               {requiredVariables.map(variable => (
+               {requiredVariables.map(variable => {
+                 const varType = bindingTypes[variable] ?? 'field';
+                 return (
                  <div key={variable} className="grid gap-1.5">
                     <div className="flex items-center justify-between">
                        <label className="text-xs font-bold font-mono bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-400">
                          {variable}
                        </label>
-                       <span className="text-[10px] text-slate-400">
-                         {selectedTemplate.type === 'aggregate' ? '→ Колонка Excel' : '→ Другой KPI Виджет'}
-                       </span>
+                       {/* Колонка датасета или ссылка на другой KPI-виджет */}
+                       <div className="flex p-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px]">
+                         <button
+                           type="button"
+                           onClick={() => { setVarType(variable, 'field'); setBindings(prev => ({ ...prev, [variable]: '' })); }}
+                           className={cn('px-2 py-0.5 rounded', varType === 'field' && 'bg-white dark:bg-slate-700 shadow-sm font-medium')}
+                         >Колонка</button>
+                         <button
+                           type="button"
+                           onClick={() => { setVarType(variable, 'widget'); setBindings(prev => ({ ...prev, [variable]: '' })); }}
+                           className={cn('px-2 py-0.5 rounded', varType === 'widget' && 'bg-white dark:bg-slate-700 shadow-sm font-medium')}
+                         >KPI-виджет</button>
+                       </div>
                     </div>
 
-                    {selectedTemplate.type === 'aggregate' ? (
+                    {varType === 'field' ? (
                       <SearchableSelect
                          value={bindings[variable] || ''}
                          onChange={(val) => setBindings(prev => ({ ...prev, [variable]: val }))}
@@ -174,7 +183,8 @@ export function AddKPIDialog({ dashboardId }: AddKPIDialogProps) {
                       </Select>
                     )}
                  </div>
-               ))}
+                 );
+               })}
              </div>
 
              <div className="flex justify-between pt-2">

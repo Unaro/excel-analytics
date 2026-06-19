@@ -1,6 +1,6 @@
 'use client';
 
-import { FunctionSquare, Calculator, Trash2, GripVertical, Hash, AlertTriangle } from 'lucide-react';
+import { Calculator, Trash2, GripVertical, Hash, AlertTriangle } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Badge } from '@/shared/ui/badge';
@@ -107,11 +107,7 @@ export function MetricRow({
         </div>
 
         <div className="flex items-center gap-2 font-bold text-slate-900 dark:text-white text-lg min-w-0">
-          {template.type === 'aggregate' ? (
-            <FunctionSquare size={18} className="text-blue-500 shrink-0" />
-          ) : (
-            <Calculator size={18} className="text-purple-500 shrink-0" />
-          )}
+          <Calculator size={18} className="text-purple-500 shrink-0" />
           <input
             type="text"
             value={item.customName || ''}
@@ -134,7 +130,7 @@ export function MetricRow({
           />
         </div>
 
-        {template.type === 'calculated' && (
+        {template.formula && (
           <Badge variant="outline" className="font-mono text-[10px] opacity-70 ml-2 shrink-0">
             {template.formula}
           </Badge>
@@ -156,12 +152,10 @@ export function MetricRow({
 
       {/* Привязки переменных */}
       <div className="space-y-4 pl-0 sm:pl-9">
-        {template.type === 'calculated' && (
-          <p className="text-[10px] text-slate-400">
-            Агрегат берётся из формулы шаблона (<code>{template.formula}</code>).
-            Колонка без агрегата считается дефолтным агрегатом из настроек.
-          </p>
-        )}
+        <p className="text-[10px] text-slate-400">
+          Агрегат берётся из формулы шаблона (<code>{template.formula}</code>).
+          Колонка без агрегата считается дефолтным агрегатом из настроек.
+        </p>
         {item.requiredVariables.map((variable) => (
           <div key={variable} className="flex flex-col sm:flex-row sm:items-center gap-3 text-sm">
             <div className="w-full sm:w-10 h-8 flex items-center justify-center bg-slate-100 dark:bg-slate-900 border dark:border-slate-800 rounded font-mono font-bold text-slate-600 dark:text-slate-400 shrink-0">

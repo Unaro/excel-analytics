@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AggregateFunction, useMetricTemplateStore } from '@/entities/metric';
+import { useMetricTemplateStore } from '@/entities/metric';
 import { Check, X } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -40,45 +40,23 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
   const { validate, isValid, error } = useFormulaValidation();
 
   const [name, setName] = useState('');
-  const [type, setType] = useState<'aggregate' | 'calculated'>('aggregate');
-  const [aggFunc, setAggFunc] = useState<AggregateFunction>('SUM');
   const [formula, setFormula] = useState('');
-  const [fieldAlias, setFieldAlias] = useState('value');
   // Формат — источник правды для всех групп и колонок дашборда
   const [displayFormat, setDisplayFormat] = useState<DisplayFormat>('number');
   const [decimalPlaces, setDecimalPlaces] = useState(2);
   const [unit, setUnit] = useState('');
 
   const handleSubmit = () => {
-    if (!name) return;
+    if (!name || !formula || !isValid) return;
 
-    const base = {
+    const newId = addTemplate({
       name,
+      formula,
       displayFormat,
       decimalPlaces,
       unit: unit.trim() || undefined,
       dependencies: [],
-    };
-
-    let newId = '';
-
-    if (type === 'aggregate') {
-      newId = addTemplate({
-        ...base,
-        type: 'aggregate',
-        aggregateFunction: aggFunc,
-        aggregateField: fieldAlias,
-        dependencies: [{ type: 'field', alias: fieldAlias }]
-      });
-    } else {
-      if (!isValid) return;
-      newId = addTemplate({
-        ...base,
-        type: 'calculated',
-        formula,
-        dependencies: []
-      });
-    }
+    });
 
     toast.success('Шаблон создан');
     onSuccess(newId);
@@ -96,71 +74,30 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
         />
       </div>
 
-      <div className="flex p-1 bg-slate-100 dark:bg-slate-900 rounded-lg w-fit">
-        <button
-          onClick={() => setType('aggregate')}
-          className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
-            type === 'aggregate' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
-          }`}
-        >
-          Агрегация
-        </button>
-        <button
-          onClick={() => setType('calculated')}
-          className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
-            type === 'calculated' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
-          }`}
-        >
-          Формула
-        </button>
+      <div className="animate-in fade-in space-y-2">
+        <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">
+          Конструктор формулы
+        </label>
+        <p className="text-[11px] text-slate-400 -mt-1">
+          Простая метрика — один агрегат: <code>SUM(площадь)</code>. Расчётная —
+          комбинация: <code>SUM(доход) / COUNT(сделки)</code>.
+        </p>
+
+        <VisualFormulaBuilder
+          initialFormula={formula}
+          onChange={(newVal: string) => {
+            setFormula(newVal);
+            validate(newVal);
+          }}
+        />
+
+        <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-900 border rounded text-xs font-mono text-slate-500 flex justify-between items-center">
+           <span>Результат: {formula || '...'}</span>
+           {formula && (isValid ? <Check size={14} className="text-emerald-500" /> : <X size={14} className="text-red-500" />)}
+        </div>
+
+        {error && <div className="text-red-500 text-xs mt-1">{error}</div>}
       </div>
-
-      {type === 'aggregate' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in">
-          <div>
-            <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">Функция</label>
-            <Select
-              value={aggFunc}
-              onChange={e => setAggFunc(e.target.value as AggregateFunction)}
-            >
-              <SelectOption value="SUM">Сумма (SUM)</SelectOption>
-              <SelectOption value="AVG">Среднее (AVG)</SelectOption>
-              <SelectOption value="COUNT">Количество (COUNT)</SelectOption>
-              <SelectOption value="MAX">Максимум (MAX)</SelectOption>
-              <SelectOption value="MIN">Минимум (MIN)</SelectOption>
-            </Select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">Переменная</label>
-            <Input 
-              value={fieldAlias} 
-              onChange={(e) => setFieldAlias(e.target.value)}
-              className="bg-slate-50 dark:bg-slate-900 text-slate-500"
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="animate-in fade-in space-y-2">
-          <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">Конструктор формулы</label>
-          
-          {/* ЗАМЕНЯЕМ Input НА VisualFormulaBuilder */}
-          <VisualFormulaBuilder 
-            initialFormula={formula}
-            onChange={(newVal: string) => {
-              setFormula(newVal);
-              validate(newVal);
-            }}
-          />
-
-          {/* Показываем результат текстом для проверки */}
-          <div className="mt-2 p-2 bg-slate-50 dark:bg-slate-900 border rounded text-xs font-mono text-slate-500 flex justify-between items-center">
-             <span>Результат: {formula || "..."}</span>
-             {formula && (isValid ? <Check size={14} className="text-emerald-500" /> : <X size={14} className="text-red-500" />)}
-          </div>
-          
-          {error && <div className="text-red-500 text-xs mt-1">{error}</div>}
-        </div>
-      )}
 
       {/* Формат отображения — наследуется всеми группами и дашбордами */}
       <div className="space-y-3 pt-3 border-t border-slate-100 dark:border-slate-800">
@@ -215,7 +152,7 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
         <Button variant="ghost" onClick={onCancel}>Отмена</Button>
         <Button 
           onClick={handleSubmit} 
-          disabled={!name || (type === 'calculated' && !isValid)}
+          disabled={!name || !formula || !isValid}
         >
           Создать
         </Button>

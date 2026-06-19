@@ -1,7 +1,7 @@
 'use client';
 
 import { Card } from '@/shared/ui/card';
-import { Layers, Trash2, Calculator } from 'lucide-react';
+import { Trash2, Calculator } from 'lucide-react';
 import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
 import { HierarchyFilterValue } from '@/shared/lib/validators';
@@ -37,7 +37,7 @@ export function KPIGrid({ dashboardId, widgets, currentFilters, isEditMode = fal
               widget.color === 'amber' ? "bg-amber-50 text-amber-600 dark:bg-amber-900/20" :
               "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20"
             )}>
-              {template?.type === 'aggregate' ? <Layers size={18}/> : <Calculator size={18}/>}
+              <Calculator size={18}/>
             </div>
             <div className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider truncate"
               title={widget.customName || template?.name}>

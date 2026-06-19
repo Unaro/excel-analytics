@@ -101,15 +101,15 @@ export const GroupMetricSchema = z.object({
   unit: z.string().optional(),
 });
 
-/** Шаблон метрики: aggregate (функция+поле) или calculated (формула). */
+/**
+ * Шаблон метрики — всегда формула (агрегаты задаются функциями: SUM(a)).
+ * Прежний тип `aggregate` упразднён: «сумма поля» = формула `SUM(field)`.
+ */
 export const MetricTemplateSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
   description: z.string().optional(),
-  type: z.enum(['aggregate', 'calculated']),
-  aggregateFunction: z.enum(['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'COUNT_DISTINCT', 'MEDIAN', 'PERCENTILE']).optional(),
-  aggregateField: z.string().optional(),
-  formula: z.string().optional(),
+  formula: z.string().min(1),
   dependencies: z.array(z.object({
     type: z.enum(['field', 'metric']),
     alias: z.string().min(1),

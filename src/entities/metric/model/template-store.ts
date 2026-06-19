@@ -17,7 +17,6 @@ interface MetricTemplateState {
   // Геттеры
   getTemplate: (id: string) => MetricTemplate | undefined;
   getAllTemplates: () => MetricTemplate[];
-  getTemplatesByType: (type: 'aggregate' | 'calculated') => MetricTemplate[];
 }
 
 export const useMetricTemplateStore = create<MetricTemplateState>()(
@@ -90,14 +89,10 @@ export const useMetricTemplateStore = create<MetricTemplateState>()(
       getAllTemplates: () => {
         return get().templates;
       },
-      
-      getTemplatesByType: (type) => {
-        return get().templates.filter((template) => template.type === type);
-      },
     }),
     {
       name: 'metric-template-storage',
-      version: 2,
+      version: 3,
       migrate: createMigration({
         // v0 (до версионирования) → v1: шаблоны совместимы — переносим как есть.
         1: (state) => state,
@@ -111,6 +106,20 @@ export const useMetricTemplateStore = create<MetricTemplateState>()(
                 ...rest,
                 unit: t.unit ?? suffix ?? prefix ?? undefined,
               };
+            }
+          ),
+        }),
+        // v2 → v3: тип aggregate упразднён — превращаем в формулу FN(field).
+        // calculated переносим как есть, убирая поля type/aggregate*.
+        3: (state) => ({
+          ...state,
+          templates: ((state.templates as Array<Record<string, unknown>> | undefined) ?? []).map(
+            (t) => {
+              const { type, aggregateFunction, aggregateField, ...rest } = t;
+              if (type === 'aggregate' && aggregateFunction && aggregateField) {
+                return { ...rest, formula: `${aggregateFunction}(${aggregateField})` };
+              }
+              return rest; // calculated — formula уже есть
             }
           ),
         }),

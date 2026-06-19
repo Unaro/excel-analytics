@@ -346,49 +346,12 @@ export function compileQuery(
       const baseAlias = `base_${finalAlias}`;
 
       // ═══════════════════════════════════════════════════════
-      // AGGREGATE метрика
+      // МЕТРИКА = ФОРМУЛА (агрегаты задаются функциями: MAX(a)/SUM(b)).
+      // Препроцессор превращает агрегаты в зависимости и переписывает
+      // формулу на пред-агрегированные псевдо-переменные. Голая колонка
+      // авто-оборачивается в дефолтный агрегат (или запрещается).
       // ═══════════════════════════════════════════════════════
-      if (tpl.type === 'aggregate' && tpl.aggregateFunction && tpl.aggregateField) {
-        const binding = metric.fieldBindings.find(
-          (b) => b.fieldAlias === tpl.aggregateField
-        );
-        if (!binding) continue;
-        const fn = tpl.aggregateFunction.toUpperCase();
-
-        if (!isColumnValid(binding.columnName)) {
-          baseSelectParts.push(`NULL AS ${quote(finalAlias)}`);
-          aggregateMetadata.set(finalAlias, { aggregateFunction: tpl.aggregateFunction });
-          if (fn === 'AVG') {
-            baseSelectParts.push(`NULL AS ${quote(`__agg_sum__${finalAlias}`)}`);
-            baseSelectParts.push(`NULL AS ${quote(`__agg_count__${finalAlias}`)}`);
-          }
-          continue;
-        }
-
-        const expr = buildAggregateExpr(binding.columnName, fn, dialect);
-        baseSelectParts.push(`${expr} AS ${quote(finalAlias)}`);
-        aggregateMetadata.set(finalAlias, { aggregateFunction: tpl.aggregateFunction });
-
-        if (fn === 'AVG') {
-          const castedCol = castToNumeric(quote(binding.columnName), dialect);
-          baseSelectParts.push(
-            `SUM(${castedCol}) AS ${quote(`__agg_sum__${finalAlias}`)}`
-          );
-          baseSelectParts.push(
-            `COUNT(${quote(binding.columnName)}) AS ${quote(`__agg_count__${finalAlias}`)}`
-          );
-        }
-        continue;
-      }
-
-      // ═══════════════════════════════════════════════════════
-      // CALCULATED метрика
-      // ═══════════════════════════════════════════════════════
-      if (tpl.type === 'calculated' && tpl.formula) {
-        // Агрегаты задаются в формуле: MAX(a)/SUM(b). Препроцессор
-        // превращает их в зависимости с агрегатом на каждую и переписывает
-        // формулу на пред-агрегированные псевдо-переменные. Голая колонка
-        // авто-оборачивается в дефолтный агрегат (или запрещается).
+      if (tpl.formula) {
         const fieldBindingMap = new Map(
           metric.fieldBindings.map((fb) => [fb.fieldAlias, fb.columnName])
         );
@@ -405,6 +368,39 @@ export function compileQuery(
           logger.warn(
             `[query-compiler] Метрика ${metric.id}: формула не скомпилирована — ${pre.error}`
           );
+          continue;
+        }
+
+        // Fast-path: формула — единственный агрегат над колонкой (FN(field)).
+        // Эмитим прямой агрегат как метрику-значение (без CTE), сохраняя
+        // SQL-форму, aggregateMetadata и точное взвешенное «Итого» для AVG.
+        if (
+          pre.fieldDependencies.length === 1 &&
+          metric.metricBindings.length === 0 &&
+          pre.formula.trim() === pre.fieldDependencies[0].alias
+        ) {
+          const fd = pre.fieldDependencies[0];
+          const fn = fd.aggregateFn.toUpperCase();
+          aggregateMetadata.set(finalAlias, {
+            aggregateFunction: fd.aggregateFn as MetricAggregationMeta['aggregateFunction'],
+          });
+
+          if (!isColumnValid(fd.columnName)) {
+            baseSelectParts.push(`NULL AS ${quote(finalAlias)}`);
+            if (fn === 'AVG') {
+              baseSelectParts.push(`NULL AS ${quote(`__agg_sum__${finalAlias}`)}`);
+              baseSelectParts.push(`NULL AS ${quote(`__agg_count__${finalAlias}`)}`);
+            }
+            continue;
+          }
+
+          const expr = buildAggregateExpr(fd.columnName, fn, dialect);
+          baseSelectParts.push(`${expr} AS ${quote(finalAlias)}`);
+          if (fn === 'AVG') {
+            const castedCol = castToNumeric(quote(fd.columnName), dialect);
+            baseSelectParts.push(`SUM(${castedCol}) AS ${quote(`__agg_sum__${finalAlias}`)}`);
+            baseSelectParts.push(`COUNT(${quote(fd.columnName)}) AS ${quote(`__agg_count__${finalAlias}`)}`);
+          }
           continue;
         }
 
