@@ -1,5 +1,5 @@
 'use client';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   Radar, Legend, Tooltip, ResponsiveContainer,
@@ -7,6 +7,7 @@ import {
 import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import type { ChartComponentProps } from '../model/types';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
+import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -15,12 +16,24 @@ export const RadarChartView = memo(function RadarChartView({
 }: ChartComponentProps) {
   const { groupedThresholds } = useThresholdGrouping(virtualMetrics, activeMetricIds);
 
+  // Авто-домен по значениям метрик: малые величины (доли < 1) не схлопываются.
+  const radarDomain = useMemo(() => {
+    const vals: number[] = [];
+    for (const row of data) {
+      for (const key of activeMetricIds) {
+        const v = (row as Record<string, unknown>)[key];
+        if (typeof v === 'number') vals.push(v);
+      }
+    }
+    return autoRadarDomain(vals);
+  }, [data, activeMetricIds]);
+
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={300}>
       <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
         <PolarGrid stroke={axisColor} strokeOpacity={0.2} />
         <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: axisColor }} />
-        <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={false} axisLine={false} />
+        <PolarRadiusAxis angle={30} domain={radarDomain ?? [0, 'auto']} tick={false} axisLine={false} />
         {groupedThresholds.map((group, gi) => {
           const thresholdKey = `__threshold_${gi}`;
           return (

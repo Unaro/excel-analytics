@@ -8,6 +8,7 @@ import { Card } from '@/shared/ui/card';
 import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
+import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -31,6 +32,18 @@ export const GroupRadarChart = memo(function GroupRadarChart({
     [metricConfigs, metricKeys]
   );
 
+  // Авто-домен по значениям метрик: малые величины (доли < 1) не схлопываются.
+  const radarDomain = useMemo(() => {
+    const vals: number[] = [];
+    for (const row of data) {
+      for (const key of metricKeys) {
+        const v = row[key];
+        if (typeof v === 'number') vals.push(v);
+      }
+    }
+    return autoRadarDomain(vals);
+  }, [data, metricKeys]);
+
   if (data.length === 0) return null;
 
   return (
@@ -44,7 +57,7 @@ export const GroupRadarChart = memo(function GroupRadarChart({
               dataKey="name"
               tick={{ fontSize: 11, fill: '#94a3b8' }}
             />
-            <PolarRadiusAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
+            <PolarRadiusAxis domain={radarDomain} tick={{ fontSize: 10, fill: '#94a3b8' }} />
             {groupedThresholds.map((group, gi) => {
               const thresholdKey = `__threshold_${gi}`;
               return (
