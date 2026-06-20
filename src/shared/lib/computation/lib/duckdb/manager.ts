@@ -72,10 +72,9 @@ interface WorkerEventMap {
   };
 }
 
-/** Настройки движка DuckDB (память ↔ время), пробрасываемые в воркер. */
+/** Настройки движка DuckDB (память), пробрасываемые в воркер. */
 export interface EngineConfigPayload {
   memoryLimitMB: number | null;
-  threads: number | null;
 }
 
 interface WorkerResponseMessage {

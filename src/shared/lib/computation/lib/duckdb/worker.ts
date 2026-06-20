@@ -160,8 +160,6 @@ export interface GetColumnPairsPayload {
 export interface ConfigureEnginePayload {
   /** Потолок памяти DuckDB в МБ; null — снять явный лимит. */
   memoryLimitMB: number | null;
-  /** Число потоков DuckDB; null — оставить дефолт бандла. */
-  threads: number | null;
 }
 
 export type WorkerMessage =
@@ -226,25 +224,19 @@ let engineConfig: ConfigureEnginePayload | null = null;
 /**
  * Применяет текущие настройки движка к открытому соединению.
  *
- * `SET memory_limit` ограничивает пиковую память (ценой возможного
- * замедления/спилла); `SET threads` управляет параллелизмом. В wasm-сборке
- * EH число потоков фактически ограничено бандлом — оператор принимается,
- * но эффект может быть нулевым; memory_limit работает.
+ * Управляем только `memory_limit` — ограничение пиковой памяти (ценой
+ * возможного замедления). `threads` НЕ трогаем: wasm-сборка EH скомпилирована
+ * без потоков, и любой `SET/RESET threads` бросает «compiled without threads».
  */
 async function applyEngineConfig(): Promise<void> {
   if (!conn || !engineConfig) return;
-  const { memoryLimitMB, threads } = engineConfig;
+  const { memoryLimitMB } = engineConfig;
   try {
     if (memoryLimitMB != null && memoryLimitMB > 0) {
       await conn.query(`SET memory_limit='${memoryLimitMB}MB'`);
     } else {
       // Снятие лимита: вернуть дефолт DuckDB.
       await conn.query(`RESET memory_limit`);
-    }
-    if (threads != null && threads > 0) {
-      await conn.query(`SET threads=${Math.floor(threads)}`);
-    } else {
-      await conn.query(`RESET threads`);
     }
     logger.debug('[DuckDB] ⚙️ Engine config applied:', engineConfig);
   } catch (err) {

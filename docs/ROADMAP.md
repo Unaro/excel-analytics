@@ -48,14 +48,16 @@
   Пересекается с хвостом аудита №11 (KPI в основной запрос) и №15
   (линейные find в компиляторе).
 
-- ✅ **Настройки движка DuckDB (память ↔ время) — готово.**
-  В `entities/app-settings`: `duckdbMemoryLimitMB` + `duckdbThreads` (null=авто,
-  persist v2). UI — `widgets/settings/ui/EngineSettingsSection`. Проброс:
-  app-слой (`client-layout`) подписан на `selectEngineConfig` и зовёт
-  `duckdbManager.setEngineConfig` → воркер применяет `SET memory_limit`/
-  `SET threads` (CONFIGURE_ENGINE), переотправляется при перезапуске воркера
-  и переприменяется после каждого initDB. Spill на диск/`temp_directory`
-  (OPFS) пока не делали — отдельная задача при необходимости.
+- ✅ **Настройки движка DuckDB (память) — готово.**
+  В `entities/app-settings`: `duckdbMemoryLimitMB` (null=авто, persist v3).
+  UI — `widgets/settings/ui/EngineSettingsSection`. Проброс: app-слой
+  (`client-layout`) подписан на `selectEngineConfig` и зовёт
+  `duckdbManager.setEngineConfig` → воркер применяет `SET memory_limit`
+  (CONFIGURE_ENGINE), переотправляется при перезапуске воркера и
+  переприменяется после каждого initDB.
+  ⚠️ `threads` убран (v3): wasm-сборка EH скомпилирована без потоков, любой
+  `SET/RESET threads` бросает «compiled without threads». Spill на диск/
+  `temp_directory` (OPFS) — отдельная задача при необходимости.
 
 - 🔥 **Sidebar ререндерится «каждый кадр».**
   В отладке видно постоянное обновление `SidebarComponent`

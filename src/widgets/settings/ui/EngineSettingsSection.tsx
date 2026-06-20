@@ -17,27 +17,17 @@ const MEMORY_OPTIONS: { value: number | null; label: string }[] = [
   { value: 4096, label: '4 ГБ' },
 ];
 
-/** Число потоков DuckDB. null — авто (по бандлу wasm). */
-const THREAD_OPTIONS: { value: number | null; label: string }[] = [
-  { value: null, label: 'Авто' },
-  { value: 1, label: '1 (минимум памяти)' },
-  { value: 2, label: '2' },
-  { value: 4, label: '4 (быстрее)' },
-];
-
 /**
- * Настройки движка DuckDB: память ↔ время.
+ * Настройки движка DuckDB: потолок памяти.
  *
  * На слабых устройствах меньший `memory_limit` снижает пиковую память
- * (ценой возможного замедления больших запросов), а меньшее число потоков
- * уменьшает параллелизм и потребление памяти. Значения уезжают в воркер
- * (CONFIGURE_ENGINE) и применяются как `SET memory_limit` / `SET threads`.
+ * (ценой возможного замедления больших запросов). Значение уезжает в воркер
+ * (CONFIGURE_ENGINE) и применяется как `SET memory_limit`. Управление
+ * потоками недоступно: wasm-сборка EH скомпилирована без поддержки потоков.
  */
 export function EngineSettingsSection() {
   const memoryLimitMB = useAppSettingsStore((s) => s.duckdbMemoryLimitMB);
-  const threads = useAppSettingsStore((s) => s.duckdbThreads);
   const setMemoryLimitMB = useAppSettingsStore((s) => s.setDuckdbMemoryLimitMB);
-  const setThreads = useAppSettingsStore((s) => s.setDuckdbThreads);
 
   return (
     <Card className="p-6 border-l-4 border-l-emerald-500">
@@ -48,7 +38,7 @@ export function EngineSettingsSection() {
         <div className="flex-1 space-y-4">
           <div>
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-              Движок DuckDB (память ↔ время)
+              Движок DuckDB (память)
             </h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               На слабых устройствах можно ограничить память, чтобы обработать
@@ -77,28 +67,6 @@ export function EngineSettingsSection() {
               <p className="text-xs text-slate-400 mt-1.5">
                 Ниже лимит — меньше пик памяти, но тяжёлые запросы могут
                 замедлиться или упереться в потолок.
-              </p>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium mb-1.5 block text-slate-700 dark:text-slate-300">
-                Потоки
-              </label>
-              <Select
-                value={threads ?? AUTO}
-                onChange={(e) =>
-                  setThreads(e.target.value === AUTO ? null : Number(e.target.value))
-                }
-              >
-                {THREAD_OPTIONS.map((opt) => (
-                  <SelectOption key={opt.label} value={opt.value ?? AUTO}>
-                    {opt.label}
-                  </SelectOption>
-                ))}
-              </Select>
-              <p className="text-xs text-slate-400 mt-1.5">
-                Больше потоков — быстрее, но выше потребление памяти. В wasm-сборке
-                эффект потоков зависит от окружения.
               </p>
             </div>
           </div>

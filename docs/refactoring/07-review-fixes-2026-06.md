@@ -151,12 +151,16 @@ const absoluteTolerance = Math.max(range * (tolerancePercent / 100), 1);
 `selectEngineConfig` через `useShallow`; эффект зовёт
 `duckdbManager.setEngineConfig` только при реальном изменении значений.
 
-**UI** (`widgets/settings/ui/EngineSettingsSection.tsx`): два селекта —
-потолок памяти (Авто/256 МБ…4 ГБ) и потоки (Авто/1/2/4) — в странице настроек.
+**UI** (`widgets/settings/ui/EngineSettingsSection.tsx`): селект потолка
+памяти (Авто/256 МБ…4 ГБ) в странице настроек.
 
-Оговорка: `threads` в wasm-сборке EH фактически ограничен бандлом (оператор
-принимается, эффект зависит от окружения); spill на диск/`temp_directory`
-(OPFS) не делали — отдельная задача.
+**Правка по факту приёмки:** изначально был и `threads`. Оказалось — не
+«no-op», а ошибка: wasm EH скомпилирован без потоков, и `SET/RESET threads`
+бросает `Not implemented: DuckDB was compiled without threads`. Причём
+`RESET threads` выполнялся даже при дефолтном конфиге → ошибка на старте.
+`threads` убран полностью (store v3 с миграцией-дропом поля,
+payload/воркер/UI), остался только `memory_limit`. Spill на диск/
+`temp_directory` (OPFS) не делали — отдельная задача.
 
 ## Гейт (DuckDB-настройки)
 

@@ -5,12 +5,10 @@ import { createMigration } from '@/shared/lib/storage/migration';
 import type { AggregateFn } from '@/shared/lib/computation/lib/aggregate-functions';
 import type { AggregateFormulaOptions } from '@/shared/lib/computation/lib/types';
 
-/** Настройки движка DuckDB-wasm (память ↔ время). */
+/** Настройки движка DuckDB-wasm (память). */
 export interface EngineConfig {
   /** Потолок памяти DuckDB в МБ; null — без явного лимита (по умолчанию). */
   memoryLimitMB: number | null;
-  /** Число потоков DuckDB; null — авто (определяется wasm-бандлом). */
-  threads: number | null;
 }
 
 interface AppSettingsState {
@@ -21,13 +19,10 @@ interface AppSettingsState {
 
   /** Потолок памяти DuckDB в МБ; null — без явного лимита. */
   duckdbMemoryLimitMB: number | null;
-  /** Число потоков DuckDB; null — авто. */
-  duckdbThreads: number | null;
 
   setDefaultAggregate: (fn: AggregateFn) => void;
   setRequireExplicitAggregate: (value: boolean) => void;
   setDuckdbMemoryLimitMB: (value: number | null) => void;
-  setDuckdbThreads: (value: number | null) => void;
 }
 
 /**
@@ -42,24 +37,28 @@ export const useAppSettingsStore = create<AppSettingsState>()(
       defaultAggregate: 'SUM',
       requireExplicitAggregate: false,
       duckdbMemoryLimitMB: null,
-      duckdbThreads: null,
       setDefaultAggregate: (defaultAggregate) => set({ defaultAggregate }),
       setRequireExplicitAggregate: (requireExplicitAggregate) =>
         set({ requireExplicitAggregate }),
       setDuckdbMemoryLimitMB: (duckdbMemoryLimitMB) => set({ duckdbMemoryLimitMB }),
-      setDuckdbThreads: (duckdbThreads) => set({ duckdbThreads }),
     }),
     {
       name: 'app-settings-storage',
-      version: 2,
+      version: 3,
       migrate: createMigration({
         1: (state) => state,
         // v2: добавлены настройки движка DuckDB (null = авто/без лимита).
         2: (state) => ({
           ...(state as Partial<AppSettingsState>),
           duckdbMemoryLimitMB: null,
-          duckdbThreads: null,
         }),
+        // v3: убран duckdbThreads — wasm-сборка EH без потоков, SET threads
+        // бросает «compiled without threads». Управляем только памятью.
+        3: (state) => {
+          const next = { ...state };
+          delete next.duckdbThreads;
+          return next;
+        },
       }),
     }
   )
@@ -77,6 +76,5 @@ export function selectFormulaOptions(s: AppSettingsState): AggregateFormulaOptio
 export function selectEngineConfig(s: AppSettingsState): EngineConfig {
   return {
     memoryLimitMB: s.duckdbMemoryLimitMB,
-    threads: s.duckdbThreads,
   };
 }
