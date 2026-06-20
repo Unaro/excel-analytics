@@ -4,16 +4,38 @@ import { Sidebar } from '@/widgets/sidebar';
 import { MobileNav } from '@/widgets/mobile-nav';
 import { ThemeProvider } from '@/app/providers';
 import { Toaster } from 'sonner';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from '@/shared/ui/toast';
 import { useStoreHydration } from './hydration'; // ← ИЗМЕНЕНО: импортируем из app/
 import { useAppSettingsStore, selectEngineConfig } from '@/entities/app-settings';
+import { useDatasetStore } from '@/entities/dataset';
 import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';
+
+/** Маршруты, требующие хотя бы один (не-справочный) датасет. */
+const DATA_REQUIRED_PREFIXES = ['/dashboards', '/groups'];
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   // Глобальная гидрация Zustand-сторов
-  useStoreHydration();
+  const hydrated = useStoreHydration();
+
+  // Гард данных: без датасетов дашборды/группы недоступны — уводим на
+  // «Данные и Колонки». Покрывает и стартовый редирект (root → /dashboards),
+  // и прямой заход по URL. Срабатывает только после гидрации, чтобы не
+  // увести во время восстановления из IndexedDB.
+  const router = useRouter();
+  const pathname = usePathname();
+  const datasets = useDatasetStore(s => s.datasets);
+  const hasDataDataset = useMemo(
+    () => Object.values(datasets).some(ds => ds.role !== 'reference'),
+    [datasets]
+  );
+  useEffect(() => {
+    if (!hydrated) return;
+    const needsData = DATA_REQUIRED_PREFIXES.some(p => pathname?.startsWith(p));
+    if (needsData && !hasDataDataset) router.replace('/setup');
+  }, [hydrated, hasDataDataset, pathname, router]);
 
   // Настройки движка DuckDB (память ↔ время) → воркер. useShallow держит
   // ссылку стабильной (селектор возвращает новый объект), эффект срабатывает
