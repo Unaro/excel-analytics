@@ -58,17 +58,17 @@
   (`UploadStep`/`ColumnSetupStep`), `features/setup-dataset/model/sync-engine`,
   `duckdb/worker.ts` IMPORT_EXCEL, `duckdb/excel-parser.ts`.
 
-- ⭐ **Оптимизация вычислений главного дашборда (профилирование добавлено).**
-  **Шаг 1 (готово):** замеры фаз COMPUTE в `duckdb/worker.ts` — лог
-  `[Worker] ⏱️ Compute profile` (describe/compile/exec/build) через
-  `logger.info`. **Шаг 2 (после замеров):** бить по доминирующей фазе.
-  Кандидаты: DESCRIBE-round-trip на каждый пересчёт (кэшировать схему по
-  таблице, см. аудит №12); вложенные `cfg.virtualMetricBindings?.find()`
-  внутри `virtualMetrics.map` внутри `processedRows.map` — O(строк × метрик ×
-  привязок), заменить на Map (тот же паттерн, что уже применён в mergedResult);
-  аудит №11 (KPI в основной запрос — два SQL по одним данным) и №15
-  (линейные find в компиляторе). Хук-слой (`use-dashboard-computation`,
-  `use-computation`) уже с хешами/кэшем/abort — там запас мал.
+- ✅ **Оптимизация вычислений главного дашборда — профиль снят, узких мест нет.**
+  **Замер (1М строк, дашборд 4 группы):** total 17–39мс на пересчёт —
+  describe 2–5мс · compile 1–4мс · **exec 13–16мс (доминирует)** · build 0–1мс
+  (17мс на первом — холодный JIT, дальше ~0). Вывод: движок уже быстрый,
+  `exec` (скан+агрегация DuckDB) ужимать почти нечего, `build`-find'ы не стоят
+  ничего после прогрева — оптимизировать НЕ нужно. **Сделано:** кэш схемы
+  таблицы (`schemaCache` + `invalidateTableCaches`) — DESCRIBE гонялся на
+  каждый из нескольких COMPUTE за клик фильтра, теперь раз на таблицу
+  (аудит №12); попутно RELOAD_ARROW/IMPORT_EXCEL стали инвалидировать
+  prepared-кэш (был пропуск). **Осталось опционально:** аудит №11 (объединить
+  KPI-запрос с дашбордным — но это про число запросов, не про их скорость).
 
 - ✅ **Настройки движка DuckDB (память) — готово.**
   В `entities/app-settings`: `duckdbMemoryLimitMB` (null=авто, persist v3).
@@ -181,7 +181,8 @@ IMPORT_*), модель датасета (`entities/dataset/model/types.ts` — 
   kpi-compiler уже создаёт совместимые структуры.
 - ⭐ **№13 — hierarchyFilters в persist**: «застрявшие» фильтры после
   перезагрузки. Лечится `partialize` (ключи localStorage не переименовывать!).
-- ◌ №12 — кэш DESCRIBE в воркере (инвалидация в IMPORT_*/DROP_TABLE).
+- ✅ №12 — кэш DESCRIBE в воркере (`schemaCache`, инвалидация в
+  REGISTER/RELOAD/IMPORT/DROP через `invalidateTableCaches`).
 - ◌ №14 — deps-разнобой: `widgets.length` (use-kpi-calculation),
   `currentPath` (use-group-breakdown) — только примитивы/хеши.
 - ◌ №15/16 — линейные find в компиляторе, откат батча при ошибке импорта,

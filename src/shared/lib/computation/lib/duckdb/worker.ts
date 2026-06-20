@@ -250,6 +250,18 @@ let conn: duckdb.AsyncDuckDBConnection | null = null;
 // Менеджер пересылает их заново при перезапуске самого воркера.
 let engineConfig: ConfigureEnginePayload | null = null;
 
+// Кэш схемы таблицы (имена колонок из DESCRIBE). COMPUTE дёргает DESCRIBE на
+// каждый пересчёт (один клик фильтра = несколько COMPUTE), а схема меняется
+// только при импорте/перезагрузке/удалении таблицы. Инвалидируется вместе с
+// prepared-кэшем через invalidateTableCaches (аудит №12).
+const schemaCache = new Map<string, string[]>();
+
+/** Сбрасывает кэши, привязанные к таблице (prepared + схема). */
+function invalidateTableCaches(tableName: string): void {
+  preparedStatementCache.invalidateForTable(tableName);
+  schemaCache.delete(tableName);
+}
+
 /**
  * Применяет текущие настройки движка к открытому соединению.
  *
@@ -382,7 +394,7 @@ self.onmessage = async (e: MessageEvent) => {
       const tableName = buildTableName(datasetId);
 
       await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
-      preparedStatementCache.invalidateForTable(tableName);
+      invalidateTableCaches(tableName);
 
       const arrowTable = tableFromIPC(buffer);
       await conn!.insertArrowTable(arrowTable, { name: tableName });
@@ -412,17 +424,21 @@ self.onmessage = async (e: MessageEvent) => {
       // главного дашборда»): describe → compile → exec → build.
       const tComputeStart = performance.now();
 
-      // ─── ПОЛУЧАЕМ РЕАЛЬНУЮ СХЕМУ ИЗ DUCKDB ─────────────────
+      // ─── ПОЛУЧАЕМ РЕАЛЬНУЮ СХЕМУ ИЗ DUCKDB (с кэшем) ───────
       let effectiveParams = params;
       try {
-        const schemaResult = await conn!.query(`DESCRIBE ${tableName}`);
-        const realColumns = schemaResult.toArray().map(
-          (r) => (r as Record<string, unknown>)['column_name'] as string
-        );
-        logger.debug(
-          `[Worker] 🔍 DESCRIBE ${tableName}: ${realColumns.length} columns`,
-          realColumns
-        );
+        let realColumns = schemaCache.get(tableName);
+        if (!realColumns) {
+          const schemaResult = await conn!.query(`DESCRIBE ${tableName}`);
+          realColumns = schemaResult.toArray().map(
+            (r) => (r as Record<string, unknown>)['column_name'] as string
+          );
+          if (realColumns.length > 0) schemaCache.set(tableName, realColumns);
+          logger.debug(
+            `[Worker] 🔍 DESCRIBE ${tableName}: ${realColumns.length} columns`,
+            realColumns
+          );
+        }
         if (realColumns.length > 0) {
           effectiveParams = { ...params, validColumns: realColumns };
         }
@@ -646,6 +662,7 @@ self.onmessage = async (e: MessageEvent) => {
         const tInsertStart = performance.now();
 
         await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+        invalidateTableCaches(tableName);
 
         let classificationSample: Record<string, unknown[]> = {};
 
@@ -998,7 +1015,7 @@ self.onmessage = async (e: MessageEvent) => {
       const tableName = buildTableName(datasetId);
       try {
         await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
-        preparedStatementCache.invalidateForTable(tableName);
+        invalidateTableCaches(tableName);
         logger.debug(`[Worker] Dropped table: ${tableName}`);
         self.postMessage({ id, success: true });
       } catch (err) {
@@ -1171,6 +1188,7 @@ self.onmessage = async (e: MessageEvent) => {
       const tableName = buildTableName(datasetId);
 
       await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+      invalidateTableCaches(tableName);
       const arrowTable = tableFromIPC(buffer);
       await conn.insertArrowTable(arrowTable, { name: tableName });
 
