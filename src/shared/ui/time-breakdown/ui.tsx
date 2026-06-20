@@ -14,7 +14,7 @@
 // и дашбордом (серии = группы показателей).
 // ─────────────────────────────────────────────────────────────
 
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ReferenceLine, Label,
@@ -149,6 +149,31 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     return Array.from(byLabel.values()).sort((a, b) => b.total - a.total);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, effectiveMetricId]);
+
+  // Колесо мыши → горизонтальный скролл (вертикального колеса на широком
+  // 2D-чарте/таблице нет, листать иначе неудобно). Нативный листенер с
+  // passive:false — React вешает onWheel пассивно, и preventDefault не
+  // сработал бы. Перехватываем только при горизонтальном переполнении и
+  // ОТСУТСТВИИ вертикального (у высокой таблицы колесо листает строки).
+  useEffect(() => {
+    const els = [chartScrollRef.current, tableScrollRef.current].filter(
+      (el): el is HTMLDivElement => el !== null
+    );
+    const onWheel = (e: WheelEvent) => {
+      const el = e.currentTarget as HTMLDivElement;
+      const canX = el.scrollWidth > el.clientWidth;
+      const canY = el.scrollHeight > el.clientHeight;
+      if (!canX || canY || e.deltaY === 0) return;
+      const atStart = el.scrollLeft <= 0;
+      const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+      // На границах отдаём событие странице (вертикальный скролл страницы).
+      if ((e.deltaY < 0 && atStart) || (e.deltaY > 0 && atEnd)) return;
+      el.scrollLeft += e.deltaY;
+      e.preventDefault();
+    };
+    els.forEach((el) => el.addEventListener('wheel', onWheel, { passive: false }));
+    return () => els.forEach((el) => el.removeEventListener('wheel', onWheel));
+  }, [dates.length, rows.length]);
 
   const chartLabels = useMemo(() => {
     if (selectedLabels) {
