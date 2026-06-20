@@ -1,10 +1,11 @@
 'use client';
 import { memo, useMemo } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Rectangle, ReferenceLine, Label,
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
+import { ScrollableChart } from '@/shared/ui/scrollable-chart';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
@@ -39,8 +40,11 @@ export const GroupBarChart = memo(function GroupBarChart({
   return (
     <Card className="p-6">
       <h3 className="font-bold text-slate-900 dark:text-white mb-4">{title}</h3>
-      <div className="h-[400px] w-full">
-        <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={300}>
+      <ScrollableChart
+        slotCount={data.length}
+        slotWidth={Math.max(48, metricKeys.length * 28)}
+        height={400}
+      >
           <BarChart data={data} margin={{ top: 20, left: 20, right: 60, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} vertical={false} />
             <XAxis
@@ -134,8 +138,7 @@ export const GroupBarChart = memo(function GroupBarChart({
               );
             })}
           </BarChart>
-        </ResponsiveContainer>
-      </div>
+      </ScrollableChart>
     </Card>
   );
 });

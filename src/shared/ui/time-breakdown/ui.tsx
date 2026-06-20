@@ -17,8 +17,9 @@
 import { memo, useMemo, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, ReferenceLine, Label,
+  Legend, ReferenceLine, Label,
 } from 'recharts';
+import { ScrollableChart } from '@/shared/ui/scrollable-chart';
 import { Search, AlertTriangle, ChevronRight, TrendingUp } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
@@ -251,9 +252,11 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
         </div>
       </div>
 
-      {/* Линейный чарт: динамика выбранной метрики по сериям */}
-      <div className="px-4 pt-4 h-80">
-        <ResponsiveContainer width="100%" height="100%">
+      {/* Линейный чарт: динамика выбранной метрики по сериям.
+          При многих интервалах — горизонтальный скролл внутри бокса,
+          чтобы точки/подписи не сжимались, а страница не растягивалась. */}
+      <div className="px-4 pt-4">
+        <ScrollableChart slotCount={dates.length} slotWidth={56} height={304}>
           <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" />
             <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
@@ -307,7 +310,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               />
             ))}
           </LineChart>
-        </ResponsiveContainer>
+        </ScrollableChart>
       </div>
 
       {/* Pivot-таблица: строки — элементы, колонки — интервалы */}
