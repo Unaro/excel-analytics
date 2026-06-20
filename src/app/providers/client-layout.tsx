@@ -5,12 +5,23 @@ import { MobileNav } from '@/widgets/mobile-nav';
 import { ThemeProvider } from '@/app/providers';
 import { Toaster } from 'sonner';
 import { useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { toast } from '@/shared/ui/toast';
 import { useStoreHydration } from './hydration'; // ← ИЗМЕНЕНО: импортируем из app/
+import { useAppSettingsStore, selectEngineConfig } from '@/entities/app-settings';
+import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   // Глобальная гидрация Zustand-сторов
   useStoreHydration();
+
+  // Настройки движка DuckDB (память ↔ время) → воркер. useShallow держит
+  // ссылку стабильной (селектор возвращает новый объект), эффект срабатывает
+  // только при реальном изменении значений.
+  const engineConfig = useAppSettingsStore(useShallow(selectEngineConfig));
+  useEffect(() => {
+    void duckdbManager.setEngineConfig(engineConfig);
+  }, [engineConfig]);
 
   useEffect(() => {
     const warned = sessionStorage.getItem('crypto_warning_shown');

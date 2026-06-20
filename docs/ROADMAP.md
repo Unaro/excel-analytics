@@ -43,12 +43,14 @@
   Пересекается с хвостом аудита №11 (KPI в основной запрос) и №15
   (линейные find в компиляторе).
 
-- ⭐ **Настройки движка DuckDB (память ↔ время).**
-  На слабых устройствах дать возможность обработать большой файл ценой
-  времени, но с меньшим пиком памяти. Параметры DuckDB: `memory_limit`,
-  `threads`, возможно `temp_directory`/spill на диск. UI-настройка +
-  проброс в инициализацию воркера (`duckdb/manager.ts`/`worker.ts`).
-  Связать с глобальными настройками (`entities/app-settings`).
+- ✅ **Настройки движка DuckDB (память ↔ время) — готово.**
+  В `entities/app-settings`: `duckdbMemoryLimitMB` + `duckdbThreads` (null=авто,
+  persist v2). UI — `widgets/settings/ui/EngineSettingsSection`. Проброс:
+  app-слой (`client-layout`) подписан на `selectEngineConfig` и зовёт
+  `duckdbManager.setEngineConfig` → воркер применяет `SET memory_limit`/
+  `SET threads` (CONFIGURE_ENGINE), переотправляется при перезапуске воркера
+  и переприменяется после каждого initDB. Spill на диск/`temp_directory`
+  (OPFS) пока не делали — отдельная задача при необходимости.
 
 - 🔥 **Sidebar ререндерится «каждый кадр».**
   В отладке видно постоянное обновление `SidebarComponent`

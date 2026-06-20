@@ -130,7 +130,15 @@ export interface GetColumnPairsPayload {
   valueColumn: string;
 }
 
+export interface ConfigureEnginePayload {
+  /** Потолок памяти DuckDB в МБ; null — снять явный лимит. */
+  memoryLimitMB: number | null;
+  /** Число потоков DuckDB; null — оставить дефолт бандла. */
+  threads: number | null;
+}
+
 export type WorkerMessage =
+  | { type: 'CONFIGURE_ENGINE'; id: number; payload: ConfigureEnginePayload }
   | { type: 'REGISTER_ARROW'; id: number; payload: RegisterArrowPayload }
   | { type: 'COMPUTE'; id: number; payload: ComputePayload }
   | { type: 'IMPORT_EXCEL'; id: number; payload: ImportExcelPayload }
@@ -183,6 +191,40 @@ const MVP_BUNDLE = {
 let db: duckdb.AsyncDuckDB | null = null;
 let conn: duckdb.AsyncDuckDBConnection | null = null;
 
+// Настройки движка (память ↔ время). Хранятся на уровне модуля, чтобы
+// переживать пересоздание соединения и переприменяться после каждого initDB.
+// Менеджер пересылает их заново при перезапуске самого воркера.
+let engineConfig: ConfigureEnginePayload | null = null;
+
+/**
+ * Применяет текущие настройки движка к открытому соединению.
+ *
+ * `SET memory_limit` ограничивает пиковую память (ценой возможного
+ * замедления/спилла); `SET threads` управляет параллелизмом. В wasm-сборке
+ * EH число потоков фактически ограничено бандлом — оператор принимается,
+ * но эффект может быть нулевым; memory_limit работает.
+ */
+async function applyEngineConfig(): Promise<void> {
+  if (!conn || !engineConfig) return;
+  const { memoryLimitMB, threads } = engineConfig;
+  try {
+    if (memoryLimitMB != null && memoryLimitMB > 0) {
+      await conn.query(`SET memory_limit='${memoryLimitMB}MB'`);
+    } else {
+      // Снятие лимита: вернуть дефолт DuckDB.
+      await conn.query(`RESET memory_limit`);
+    }
+    if (threads != null && threads > 0) {
+      await conn.query(`SET threads=${Math.floor(threads)}`);
+    } else {
+      await conn.query(`RESET threads`);
+    }
+    logger.debug('[DuckDB] ⚙️ Engine config applied:', engineConfig);
+  } catch (err) {
+    logger.warn('[DuckDB] Failed to apply engine config:', err);
+  }
+}
+
 async function loadWorkerScript(workerUrl: string): Promise<Worker> {
   try {
     return new Worker(workerUrl);
@@ -214,6 +256,7 @@ async function initDB(): Promise<void> {
       conn = await db.connect();
       logger.debug('[DuckDB] ✅ Initialized with EH bundle');
       preparedStatementCache.bind(conn);
+      await applyEngineConfig();
     } catch (ehError) {
       logger.warn('[DuckDB] EH bundle failed, falling back to MVP:', ehError);
       try {
@@ -223,6 +266,8 @@ async function initDB(): Promise<void> {
         await db.instantiate(MVP_BUNDLE.mainModule);
         conn = await db.connect();
         logger.debug('[DuckDB] ✅ Initialized with MVP bundle (fallback)');
+        preparedStatementCache.bind(conn);
+        await applyEngineConfig();
       } catch (mvpError) {
         initPromise = null;
         throw new Error(
@@ -269,6 +314,16 @@ self.onmessage = async (e: MessageEvent) => {
 
     if (!conn) {
       throw new Error('DuckDB connection was not established after initDB()');
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // CONFIGURE_ENGINE — настройки память ↔ время (memory_limit/threads)
+    // ═══════════════════════════════════════════════════════════
+    if (type === 'CONFIGURE_ENGINE') {
+      engineConfig = payload;
+      await applyEngineConfig();
+      self.postMessage({ id, success: true });
+      return;
     }
 
     // ═══════════════════════════════════════════════════════════

@@ -2,6 +2,7 @@
 
 import { DatasetConfigSection } from './DatasetConfigSection';
 import { FormulaSettingsSection } from './FormulaSettingsSection';
+import { EngineSettingsSection } from './EngineSettingsSection';
 import { OrphanedDatasetsSection } from './OrphanedDatasetsSection';
 import { SystemResetSection } from './SystemResetSection';
 
@@ -25,6 +26,7 @@ export function SettingsContent() {
       </div>
       <div className="grid gap-6">
         <FormulaSettingsSection />
+        <EngineSettingsSection />
         <DatasetConfigSection />
         <OrphanedDatasetsSection />
         <SystemResetSection />

@@ -1,1 +1,6 @@
-export { useAppSettingsStore, selectFormulaOptions } from './model/store';
+export {
+  useAppSettingsStore,
+  selectFormulaOptions,
+  selectEngineConfig,
+} from './model/store';
+export type { EngineConfig } from './model/store';

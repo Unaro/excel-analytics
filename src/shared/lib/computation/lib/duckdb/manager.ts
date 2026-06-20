@@ -66,6 +66,16 @@ interface WorkerEventMap {
     payload: { datasetId: string; keyColumn: string; valueColumn: string };
     response: Array<[string, string]>;
   };
+  CONFIGURE_ENGINE: {
+    payload: EngineConfigPayload;
+    response: void;
+  };
+}
+
+/** Настройки движка DuckDB (память ↔ время), пробрасываемые в воркер. */
+export interface EngineConfigPayload {
+  memoryLimitMB: number | null;
+  threads: number | null;
 }
 
 interface WorkerResponseMessage {
@@ -95,6 +105,11 @@ export class DuckDBWorkerManager {
 
   private _status: DuckDBEngineStatus = 'no-data';
   private _statusListeners = new Set<(status: DuckDBEngineStatus) => void>();
+
+  // Последние применённые настройки движка. Воркер теряет PRAGMA при
+  // перезапуске (terminate/recreate), поэтому менеджер переотправляет их
+  // при каждом создании воркера в getWorker().
+  private engineConfig: EngineConfigPayload | null = null;
 
   subscribe(listener: (status: DuckDBEngineStatus) => void): () => void {
     this._statusListeners.add(listener);
@@ -136,8 +151,38 @@ export class DuckDBWorkerManager {
       if (this._status === 'disconnected') {
         this.setStatus('loading');
       }
+
+      // Свежий воркер не помнит PRAGMA — переотправляем настройки движка
+      // первым сообщением (postMessage упорядочен, значит initDB применит
+      // их до любой полезной нагрузки). Ответ игнорируется: id не в callbacks.
+      if (this.engineConfig) {
+        this.worker.postMessage({
+          type: 'CONFIGURE_ENGINE',
+          payload: this.engineConfig,
+          id: ++this.messageCounter,
+        });
+      }
     }
     return this.worker;
+  }
+
+  /**
+   * Применяет настройки движка (память ↔ время) к воркеру.
+   *
+   * Сохраняет их для переотправки после перезапуска воркера и шлёт
+   * CONFIGURE_ENGINE текущему. Вызывается из app-слоя при изменении
+   * глобальных настроек (`selectEngineConfig`).
+   */
+  async setEngineConfig(config: EngineConfigPayload): Promise<void> {
+    this.engineConfig = config;
+    // Не поднимаем воркер ради конфигурации: если его ещё нет, настройки
+    // уедут при первом getWorker(). Поднимаем только живой.
+    if (!this.worker) return;
+    try {
+      await this.dispatch('CONFIGURE_ENGINE', config, [], 5000);
+    } catch (err) {
+      logger.warn('[DuckDBManager] setEngineConfig failed:', err);
+    }
   }
 
   private handleWorkerDisconnect(reason: string) {

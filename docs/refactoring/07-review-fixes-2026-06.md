@@ -124,3 +124,41 @@ const absoluteTolerance = Math.max(range * (tolerancePercent / 100), 1);
 ## Гейт
 
 `type-check` ✓ · `lint` (0 ошибок) ✓ · `test` 137 passed ✓
+
+## Настройки движка DuckDB (память ↔ время)
+
+Задача из набора 2026-06-20. На слабых устройствах нужно дать обработать
+большой файл ценой времени, но с меньшим пиком памяти.
+
+**Модель** (`entities/app-settings/model/store.ts`): добавлены
+`duckdbMemoryLimitMB: number | null` и `duckdbThreads: number | null`
+(null = авто/без лимита). persist `version: 2` + миграция, добавляющая поля.
+Селектор `selectEngineConfig` (стабилизируется `useShallow` на месте чтения).
+
+**Воркер** (`duckdb/worker.ts`): сообщение `CONFIGURE_ENGINE` сохраняет
+конфиг на уровне модуля и применяет `applyEngineConfig()` —
+`SET memory_limit='<N>MB'` / `SET threads=<N>` (либо `RESET …` для авто).
+Конфиг переприменяется в конце `initDB()` (оба бандла EH/MVP), чтобы
+переживать пересоздание соединения. Заодно починен пропуск
+`preparedStatementCache.bind(conn)` в MVP-фолбэке.
+
+**Менеджер** (`duckdb/manager.ts`): поле `engineConfig` + метод
+`setEngineConfig`. Свежий воркер не помнит PRAGMA, поэтому `getWorker()`
+переотправляет конфиг первым сообщением (postMessage упорядочен → initDB
+применит до полезной нагрузки). Ответ игнорируется (id не в callbacks).
+
+**Проброс** (`app/providers/client-layout.tsx`): подписка на
+`selectEngineConfig` через `useShallow`; эффект зовёт
+`duckdbManager.setEngineConfig` только при реальном изменении значений.
+
+**UI** (`widgets/settings/ui/EngineSettingsSection.tsx`): два селекта —
+потолок памяти (Авто/256 МБ…4 ГБ) и потоки (Авто/1/2/4) — в странице настроек.
+
+Оговорка: `threads` в wasm-сборке EH фактически ограничен бандлом (оператор
+принимается, эффект зависит от окружения); spill на диск/`temp_directory`
+(OPFS) не делали — отдельная задача.
+
+## Гейт (DuckDB-настройки)
+
+`type-check` ✓ · `lint` (0 ошибок, варнинги — прежние) ✓ · `build` ✓ ·
+`test` 143 passed ✓
