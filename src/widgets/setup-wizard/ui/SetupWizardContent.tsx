@@ -52,7 +52,7 @@ export function SetupWizardContent() {
   const { importFile, isUploading } = useFileImport();
   const handleConfirmImport = async () => {
     if (!wizard.selectedFile) return;
-    const ok = await importFile(wizard.selectedFile);
+    const ok = await importFile(wizard.selectedFile, wizard.importParams ?? undefined);
     // Успех → сбрасываем выбранный файл; авто-навигация уведёт на «Колонки».
     if (ok) wizard.resetSelectedFile();
   };

@@ -143,10 +143,23 @@ export interface ComputePayload {
   params: ClientComputeParams;
 }
 
+export interface ImportParseOptions {
+  /** Разделитель колонок CSV. */
+  delimiter: string;
+  /** Десятичный разделитель чисел. */
+  decimalSeparator: '.' | ',';
+  /** Тип каждой колонки по имени; categorical/ignore → читать как VARCHAR
+   *  (сохраняет коды с ведущими нулями). */
+  columnTypes: Record<string, string>;
+}
+
 export interface ImportExcelPayload {
   datasetId: string;
   fileName: string;
   buffer: ArrayBuffer;
+  /** Явные параметры разбора (шаг «Импорт»). Есть → CSV идёт нативным
+   *  путём read_csv_auto (без SheetJS). Нет → прежний путь. */
+  parseOptions?: ImportParseOptions;
 }
 
 export interface GetPreviewPayload {
@@ -357,6 +370,125 @@ function markCancelled(targetId: number): void {
   // страхуемся от неограниченного роста.
   if (cancelledComputeIds.size > 500) cancelledComputeIds.clear();
   cancelledComputeIds.add(targetId);
+}
+
+/** Текстовый файл (CSV/TSV) — всё, что не xlsx/xls. */
+function isCsvFileName(fileName: string): boolean {
+  return !/\.(xlsx|xls)$/i.test(fileName);
+}
+
+/** Экранирование одинарных кавычек для SQL-строкового литерала. */
+function sqlStr(s: string): string {
+  return s.replace(/'/g, "''");
+}
+
+/**
+ * Быстрый импорт CSV: исходный буфер отдаётся DuckDB через `read_csv_auto`
+ * (без SheetJS). Уважает выбранные пользователем разделитель, десятичный
+ * разделитель и типы (categorical/ignore → VARCHAR, чтобы сохранить коды
+ * с ведущими нулями). Это путь ~×10 быстрее SheetJS для больших CSV.
+ */
+async function importCsvNative(
+  datasetId: string,
+  fileName: string,
+  buffer: ArrayBuffer,
+  opts: ImportParseOptions,
+  id: number
+): Promise<void> {
+  if (!conn || !db) throw new Error('DuckDB not initialized');
+  const tableName = buildTableName(datasetId);
+  const tStart = performance.now();
+
+  await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+  invalidateTableCaches(tableName);
+
+  const csvFileName = `${datasetId}_import.csv`;
+  db.registerFileBuffer(csvFileName, new Uint8Array(buffer));
+
+  const varcharCols = Object.entries(opts.columnTypes)
+    .filter(([, t]) => t === 'categorical' || t === 'ignore')
+    .map(([name]) => `'${sqlStr(name)}': 'VARCHAR'`);
+  const typesClause = varcharCols.length ? `, types = {${varcharCols.join(', ')}}` : '';
+
+  const buildSql = (withTypes: boolean) => `
+    CREATE TABLE ${tableName} AS SELECT * FROM read_csv_auto(
+      '${csvFileName}',
+      sample_size = 20000,
+      auto_detect = true,
+      ignore_errors = true,
+      null_padding = true,
+      all_varchar = false,
+      header = true,
+      delim = '${sqlStr(opts.delimiter)}',
+      decimal_separator = '${sqlStr(opts.decimalSeparator)}',
+      quote = '"'${withTypes ? typesClause : ''}
+    )
+  `;
+
+  try {
+    await conn.query(buildSql(true));
+  } catch (err) {
+    // Имя колонки в types могло не совпасть с заголовком файла — повторяем
+    // без жёстких типов (классификация всё равно применится на стороне UI).
+    if (typesClause) {
+      logger.warn('[Worker] read_csv types override failed, retrying without:', err);
+      await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+      await conn.query(buildSql(false));
+    } else {
+      throw err;
+    }
+  }
+
+  // TIME → VARCHAR (как в прежнем CSV-пути): тип TIME неудобен для UI.
+  const schema = (await conn.query(`DESCRIBE ${tableName}`)).toArray() as Array<{
+    column_name: string;
+    column_type: string;
+  }>;
+  for (const row of schema) {
+    const t = row.column_type.toUpperCase();
+    if (t === 'TIME' || t === 'TIME WITH TIME ZONE') {
+      await conn.query(
+        `ALTER TABLE ${tableName} ALTER COLUMN "${row.column_name}" TYPE VARCHAR`
+      );
+    }
+  }
+
+  const finalSchema = (await conn.query(`DESCRIBE ${tableName}`)).toArray() as Array<{
+    column_name: string;
+    column_type: string;
+  }>;
+  const configs = finalSchema.map((row, idx) => {
+    const duckType = row.column_type.toUpperCase();
+    let classification: 'numeric' | 'date' | 'categorical' = 'categorical';
+    if (/INT|DECIMAL|FLOAT|DOUBLE|NUMERIC|HUGEINT|REAL/.test(duckType)) {
+      classification = 'numeric';
+    } else if (duckType.includes('DATE') || duckType.includes('TIMESTAMP')) {
+      classification = 'date';
+    }
+    return {
+      columnName: row.column_name,
+      displayName: row.column_name,
+      alias: transliterate(row.column_name) || `col_${idx}`,
+      classification,
+      description: `Из файла ${fileName}`,
+    };
+  });
+
+  const countRes = await conn.query(`SELECT COUNT(*) as cnt FROM ${tableName}`);
+  const totalRows = Number(
+    toNumber((countRes.toArray()[0] as Record<string, unknown>).cnt) ?? 0
+  );
+
+  logger.info(
+    `[Worker] ⏱️ Import profile (csv-native, ${totalRows.toLocaleString()} rows, ` +
+      `${Math.round(performance.now() - tStart)}ms)`
+  );
+
+  self.postMessage({
+    id,
+    success: true,
+    result: { configs, totalRows, totalColumns: configs.length, sheetNames: [] },
+  });
 }
 
 self.onmessage = async (e: MessageEvent) => {
@@ -636,8 +768,25 @@ self.onmessage = async (e: MessageEvent) => {
     }
 
     if (type === 'IMPORT_EXCEL') {
-      const { datasetId, fileName, buffer } = payload;
+      const { datasetId, fileName, buffer, parseOptions } = payload;
       const tableName = buildTableName(datasetId);
+
+      // ── Быстрый путь: CSV с явными параметрами → нативный read_csv_auto.
+      // Отдаём исходный буфер прямо DuckDB (без SheetJS): порядок быстрее
+      // и уважает выбранные разделитель/десятичный/типы колонок.
+      if (parseOptions && isCsvFileName(fileName)) {
+        try {
+          await importCsvNative(datasetId, fileName, buffer, parseOptions, id);
+        } catch (err) {
+          logger.error('[Worker] Native CSV import failed:', err);
+          self.postMessage({
+            id,
+            success: false,
+            error: err instanceof Error ? err.message : 'Import failed',
+          });
+        }
+        return;
+      }
 
       try {
         // ─── ЭТАП 1: Парсинг Excel в JSON ───────────────────────

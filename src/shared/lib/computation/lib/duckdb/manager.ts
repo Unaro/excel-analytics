@@ -2,6 +2,7 @@ import { logger } from '@/shared/lib/logger';
 import type { DatasetRow, ColumnConfig } from '@/shared/lib/types/dataset';
 import type { ClientComputeParams } from '../types';
 import type { DashboardComputationResult } from '@/shared/lib/types/computation';
+import type { ImportParseOptions } from './worker';
 
 export interface ImportExcelResult {
   configs: ColumnConfig[];
@@ -430,7 +431,8 @@ export class DuckDBWorkerManager {
       current: number;
       total: number;
       percent: number;
-    }) => void
+    }) => void,
+    parseOptions?: ImportParseOptions
   ): Promise<ImportExcelResult> {
     const worker = this.getWorker();
     const id = ++this.messageCounter;
@@ -482,7 +484,7 @@ export class DuckDBWorkerManager {
       worker.addEventListener('message', handler);
 
       worker.postMessage(
-        { type: 'IMPORT_EXCEL', payload: { datasetId, fileName, buffer }, id },
+        { type: 'IMPORT_EXCEL', payload: { datasetId, fileName, buffer, parseOptions }, id },
         [buffer]
       );
     });

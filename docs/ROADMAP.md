@@ -53,9 +53,17 @@
   разделителя, тип каждой колонки над таблицей; автоугадывание типов
   (`guessColumnTypes`, учёт dec-разделителя и кодов `01:01`); `ImportParams`
   в сторе визарда. 31 тест в `file-preview.test.ts`.
-  ⬜ Фаза 3b: проброс `ImportParams` в импорт — CSV→нативный `read_csv_auto`
-  (`delim`/`decimal_separator`) + применение типов; xlsx→типы в нормализацию.
-  ⬜ Фаза 4: полировка. Исходное описание ниже.
+  ✅ Фаза 3b: проброс `ImportParams` в импорт. CSV с параметрами → нативный
+  `read_csv_auto` (`delim`/`decimal_separator`, без SheetJS — ×10 быстрее);
+  categorical/ignore → `types={...VARCHAR}` (сохраняет коды с ведущими нулями,
+  с фолбэком при несовпадении имён); типы колонок применяются к классификации
+  в `column-config` (на стороне UI). Цепочка: `ImportConfigStep` →
+  `useFileImport.importFile(file, params)` → `syncFromFile` →
+  `importExcelBuffer(...,parseOptions)` → worker `importCsvNative`. xlsx —
+  прежний SheetJS-путь + применение типов. Обратная совместимость: импорт без
+  params (replaceFile и пр.) идёт прежним путём.
+  ⬜ Фаза 4 (опц. полировка): RU-даты в нативном CSV (`dateformat`), прогресс
+  для нативного пути, перенос типов в шаг «Колонки».
 
   Пользователь хочет до тяжёлого импорта задать по превью: разделитель CSV,
   десятичный разделитель, тип каждой колонки (и защитить коды-ловушки вроде

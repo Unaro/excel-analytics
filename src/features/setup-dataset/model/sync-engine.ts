@@ -40,6 +40,7 @@ import { del, set } from 'idb-keyval';
 import { mergeColumnConfigs } from '@/shared/lib/services';
 import { generateColumnConfigsFromPgSchema } from '@/entities/dataset';
 import { DatasetRow } from '@/shared/lib/types';
+import type { ImportParams } from '../lib/file-preview';
 
 // ─────────────────────────────────────────────────────────────
 // syncFromFile
@@ -54,7 +55,7 @@ import { DatasetRow } from '@/shared/lib/types';
  *   3. Запрашиваем PREVIEW (500 строк) для UI
  *   4. Сохраняем метаданные и configs
  */
-export async function syncFromFile(file: File) {
+export async function syncFromFile(file: File, params?: ImportParams) {
   const { setSyncing, addDataset, setDatasetRows, switchDataset } =
     useDatasetStore.getState();
   const setConfigs = useColumnConfigStore.getState();
@@ -79,14 +80,32 @@ export async function syncFromFile(file: File) {
       // TODO: опционально обновлять Zustand-стор для UI-индикатора
     };
 
-    // 1. Импортируем весь файл в DuckDB
+    // 1. Импортируем весь файл в DuckDB.
+    // Параметры разбора (шаг «Импорт») → быстрый нативный путь для CSV.
+    const parseOptions = params
+      ? {
+          delimiter: params.delimiter ?? ',',
+          decimalSeparator: params.decimalSeparator,
+          columnTypes: params.columnTypes,
+        }
+      : undefined;
     const { configs, totalRows, totalColumns, sheetNames } =
       await duckdbManager.importExcelBuffer(
         datasetId,
         file.name,
         buffer,
-        onProgress  // ← передаём прогресс-коллбек
+        onProgress,
+        parseOptions
       );
+
+    // Применяем выбранные пользователем типы колонок (классификация —
+    // единый источник на стороне UI; влияет на метрики/ось/иерархию).
+    const finalConfigs = params?.columnTypes
+      ? configs.map((c) => ({
+          ...c,
+          classification: params.columnTypes[c.columnName] ?? c.classification,
+        }))
+      : configs;
 
     let arrowBuffer: Uint8Array | null = null;
     try {
@@ -115,7 +134,7 @@ export async function syncFromFile(file: File) {
       logger.warn('[syncFromFile] Preview fetch failed:', previewErr);
     }
 
-    setConfigs.setDatasetConfigs(datasetId, configs);
+    setConfigs.setDatasetConfigs(datasetId, finalConfigs);
 
     addDataset(datasetId, {
       name: file.name,

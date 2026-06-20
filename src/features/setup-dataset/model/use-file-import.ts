@@ -3,9 +3,10 @@
 import { useState, useCallback, useRef } from 'react';
 import { syncFromFile } from './sync-engine';
 import { toast } from '@/shared/ui/toast';
+import type { ImportParams } from '../lib/file-preview';
 
 export interface UseFileImportReturn {
-  importFile: (file: File) => Promise<boolean>;
+  importFile: (file: File, params?: ImportParams) => Promise<boolean>;
   isUploading: boolean;
   error: string | null;
   progress: number;
@@ -19,17 +20,17 @@ export function useFileImport(): UseFileImportReturn {
 
   const uploadInProgressRef = useRef<boolean>(false);
 
-const handleFileUpload = useCallback(async (file: File): Promise<boolean> => {
+const handleFileUpload = useCallback(async (file: File, params?: ImportParams): Promise<boolean> => {
     if (isUploading) return false;
-    
+
     setIsUploading(true);
     const toastId = 'file-import-' + Date.now();
     toast.loading('Чтение файла (может занять время)...', { id: toastId });
-    
+
     return new Promise<boolean>((resolve) => {
       setTimeout(async () => {
         try {
-          const res = await syncFromFile(file);
+          const res = await syncFromFile(file, params);
           if (res.success) {
             toast.success(`Датасет "${file.name}" загружен`, { id: toastId });
             resolve(true);
