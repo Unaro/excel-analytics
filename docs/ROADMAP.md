@@ -58,11 +58,17 @@
   (`UploadStep`/`ColumnSetupStep`), `features/setup-dataset/model/sync-engine`,
   `duckdb/worker.ts` IMPORT_EXCEL, `duckdb/excel-parser.ts`.
 
-- ⭐ **Оптимизация вычислений главного дашборда.**
-  Посмотреть, можно ли ускорить элементы дашборда: фильтр и калькуляцию
-  (`use-dashboard-computation`, query-compiler, пересчёт при смене фильтра).
-  Пересекается с хвостом аудита №11 (KPI в основной запрос) и №15
-  (линейные find в компиляторе).
+- ⭐ **Оптимизация вычислений главного дашборда (профилирование добавлено).**
+  **Шаг 1 (готово):** замеры фаз COMPUTE в `duckdb/worker.ts` — лог
+  `[Worker] ⏱️ Compute profile` (describe/compile/exec/build) через
+  `logger.info`. **Шаг 2 (после замеров):** бить по доминирующей фазе.
+  Кандидаты: DESCRIBE-round-trip на каждый пересчёт (кэшировать схему по
+  таблице, см. аудит №12); вложенные `cfg.virtualMetricBindings?.find()`
+  внутри `virtualMetrics.map` внутри `processedRows.map` — O(строк × метрик ×
+  привязок), заменить на Map (тот же паттерн, что уже применён в mergedResult);
+  аудит №11 (KPI в основной запрос — два SQL по одним данным) и №15
+  (линейные find в компиляторе). Хук-слой (`use-dashboard-computation`,
+  `use-computation`) уже с хешами/кэшем/abort — там запас мал.
 
 - ✅ **Настройки движка DuckDB (память) — готово.**
   В `entities/app-settings`: `duckdbMemoryLimitMB` (null=авто, persist v3).

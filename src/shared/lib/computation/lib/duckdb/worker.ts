@@ -55,6 +55,34 @@ function logImportTimings(
 }
 
 /**
+ * Логирует разбивку времени COMPUTE по фазам (профилирование дашборда).
+ *
+ * describe — DESCRIBE схемы (метаданные, round-trip на каждый пересчёт);
+ * compile — сборка SQL; exec — исполнение запроса DuckDB (скан+агрегация);
+ * build — toArray + пост-обработка + сборка групп в JS. Лог через
+ * logger.info (только dev), чтобы видеть, что доминирует при смене фильтра.
+ */
+function logComputeTimings(p: {
+  describeMs: number;
+  compileMs: number;
+  execMs: number;
+  buildMs: number;
+  sqlRows: number;
+  groups: number;
+}): void {
+  const total = p.describeMs + p.compileMs + p.execMs + p.buildMs;
+  const pct = (ms: number) => `${Math.round((ms / total) * 100)}%`;
+  logger.info(
+    `[Worker] ⏱️ Compute profile (${Math.round(total)}ms, ` +
+      `${p.sqlRows.toLocaleString()} sql-rows, ${p.groups} groups):\n` +
+      `  describe=${Math.round(p.describeMs)}ms (${pct(p.describeMs)}) · ` +
+      `compile=${Math.round(p.compileMs)}ms (${pct(p.compileMs)}) · ` +
+      `exec=${Math.round(p.execMs)}ms (${pct(p.execMs)}) · ` +
+      `build=${Math.round(p.buildMs)}ms (${pct(p.buildMs)})`
+  );
+}
+
+/**
  * Собирает сэмпл значений по каждой колонке для классификации.
  */
 function buildClassificationSample(
@@ -380,6 +408,10 @@ self.onmessage = async (e: MessageEvent) => {
 
       if (abortIfCancelled()) return;
 
+      // Профилирование COMPUTE по фазам (см. ROADMAP «Оптимизация вычислений
+      // главного дашборда»): describe → compile → exec → build.
+      const tComputeStart = performance.now();
+
       // ─── ПОЛУЧАЕМ РЕАЛЬНУЮ СХЕМУ ИЗ DUCKDB ─────────────────
       let effectiveParams = params;
       try {
@@ -401,9 +433,13 @@ self.onmessage = async (e: MessageEvent) => {
         );
       }
 
+      const tAfterDescribe = performance.now();
+
       const compiled = compileQuery(effectiveParams, 'duckdb');
 
       logger.debug(`[Worker] 📝 Compiled SQL (${compiled.sql.length} chars):`, compiled.sql.slice(0, 200) + '...');
+
+      const tAfterCompile = performance.now();
 
       // Отмена могла прийти, пока ждали DESCRIBE — не запускаем тяжёлый SQL
       if (abortIfCancelled()) return;
@@ -416,6 +452,8 @@ self.onmessage = async (e: MessageEvent) => {
       } else {
         table = await conn!.query(compiled.sql);
       }
+
+      const tAfterExec = performance.now();
 
       // SQL уже исполнен, но пост-обработка и сериализация результата
       // отменённой задачи никому не нужны
@@ -567,6 +605,16 @@ self.onmessage = async (e: MessageEvent) => {
         totalRecords: computeTotalRecordCount(rows),
         computedAt: Date.now(),
       };
+
+      const tBuildEnd = performance.now();
+      logComputeTimings({
+        describeMs: tAfterDescribe - tComputeStart,
+        compileMs: tAfterCompile - tAfterDescribe,
+        execMs: tAfterExec - tAfterCompile,
+        buildMs: tBuildEnd - tAfterExec,
+        sqlRows: allRows.length,
+        groups: groups.length,
+      });
 
       self.postMessage({ id, success: true, result });
     }
