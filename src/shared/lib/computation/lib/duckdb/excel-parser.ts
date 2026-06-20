@@ -1,6 +1,17 @@
 import * as XLSX from 'xlsx';
 import type { DatasetRow } from '@/shared/lib/types/dataset';
 
+export interface ParseTimings {
+  /** XLSX.read — распаковка и разбор книги (мс). */
+  readMs: number;
+  /** sheet_to_json по всем листам — материализация объектов строк (мс). */
+  toJsonMs: number;
+  /** normalizeRow по всем строкам — нормализация ячеек/регэкспы (мс). */
+  normalizeMs: number;
+  /** Итог парсинга (мс). */
+  totalMs: number;
+}
+
 export interface ParsedExcel {
   /** Все строки всех листов в плоском массиве */
   flatRows: DatasetRow[];
@@ -8,6 +19,8 @@ export interface ParsedExcel {
   sheetNames: string[];
   /** Имена колонок (из первого листа) */
   headers: string[];
+  /** Замеры подэтапов парсинга — для профилирования больших файлов. */
+  timings: ParseTimings;
 }
 
 /**
@@ -20,15 +33,23 @@ export interface ParsedExcel {
  *   3. Excel TIME (год 1899) корректно извлекается как строка "HH:MM" или "HH:MM:SS"
  */
 export function parseExcelToJson(fileBuffer: ArrayBuffer): ParsedExcel {
+  const t0 = performance.now();
+
   const workbook = XLSX.read(fileBuffer, {
     type: 'array',
     cellDates: true,
     raw: true,
   });
+  const tRead = performance.now();
 
   const sheetNames = workbook.SheetNames;
   if (sheetNames.length === 0) {
-    return { flatRows: [], sheetNames: [], headers: [] };
+    return {
+      flatRows: [],
+      sheetNames: [],
+      headers: [],
+      timings: { readMs: tRead - t0, toJsonMs: 0, normalizeMs: 0, totalMs: tRead - t0 },
+    };
   }
 
   const firstSheet = workbook.Sheets[sheetNames[0]];
@@ -42,23 +63,39 @@ export function parseExcelToJson(fileBuffer: ArrayBuffer): ParsedExcel {
     ?.map((h) => (h === null || h === undefined ? '' : String(h).trim()))
     .filter((h) => h !== '') ?? [];
 
+  // Замеряем материализацию объектов (sheet_to_json) и нормализацию
+  // раздельно: для 1М строк это два разных по природе узких места
+  // (аллокация объектов SheetJS vs. регэкспы в normalizeValue).
+  let toJsonMs = 0;
+  let normalizeMs = 0;
   const flatRows: DatasetRow[] = [];
 
   for (const sheetName of sheetNames) {
     const sheet = workbook.Sheets[sheetName];
+
+    const tJson0 = performance.now();
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
       defval: null,
       raw: true,
     });
+    toJsonMs += performance.now() - tJson0;
 
+    const tNorm0 = performance.now();
     for (const row of rows) {
       const normalized = normalizeRow(row);
       if (isRowEmpty(normalized)) continue;
       flatRows.push(normalized);
     }
+    normalizeMs += performance.now() - tNorm0;
   }
 
-  return { flatRows, sheetNames, headers };
+  const totalMs = performance.now() - t0;
+  return {
+    flatRows,
+    sheetNames,
+    headers,
+    timings: { readMs: tRead - t0, toJsonMs, normalizeMs, totalMs },
+  };
 }
 
 function normalizeRow(row: Record<string, unknown>): DatasetRow {

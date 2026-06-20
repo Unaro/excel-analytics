@@ -12,7 +12,7 @@ import type { ClientComputeParams } from '../types';
 import { buildTableName } from './table-name';
 import { exportTableInChunks } from './chunked-export';
 import { preparedStatementCache } from './prepared-statement-cache';
-import { parseExcelToJson, classifyColumn } from './excel-parser';
+import { parseExcelToJson, classifyColumn, type ParseTimings } from './excel-parser';
 import { DatasetRow } from '@/shared/lib/types';
 
 /**
@@ -24,6 +24,33 @@ import { DatasetRow } from '@/shared/lib/types';
  */
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Логирует разбивку времени импорта по фазам (профилирование больших файлов).
+ *
+ * Парсинг делится на read (XLSX.read), toJson (sheet_to_json) и normalize
+ * (normalizeValue/регэкспы); вставка — единой фазой. Лог идёт через
+ * logger.info (виден только в dev), throughput — строк/сек по самой долгой
+ * стадии, чтобы сразу видеть узкое место.
+ */
+function logImportTimings(
+  strategy: 'csv' | 'batched',
+  parse: ParseTimings,
+  insertMs: number,
+  rows: number
+): void {
+  const totalMs = parse.totalMs + insertMs;
+  const pct = (ms: number) => `${Math.round((ms / totalMs) * 100)}%`;
+  const rps = (ms: number) => (ms > 0 ? Math.round(rows / (ms / 1000)).toLocaleString() : '∞');
+  logger.info(
+    `[Worker] ⏱️ Import profile (${strategy}, ${rows.toLocaleString()} rows, ` +
+      `${Math.round(totalMs)}ms, ${rps(totalMs)} rows/s):\n` +
+      `  read=${Math.round(parse.readMs)}ms (${pct(parse.readMs)}) · ` +
+      `toJson=${Math.round(parse.toJsonMs)}ms (${pct(parse.toJsonMs)}) · ` +
+      `normalize=${Math.round(parse.normalizeMs)}ms (${pct(parse.normalizeMs)}) · ` +
+      `insert=${Math.round(insertMs)}ms (${pct(insertMs)})`
+  );
 }
 
 /**
@@ -559,7 +586,7 @@ self.onmessage = async (e: MessageEvent) => {
         // ─── ЭТАП 1: Парсинг Excel в JSON ───────────────────────
         await yieldToEventLoop();
 
-        const { flatRows, sheetNames, headers } = parseExcelToJson(buffer);
+        const { flatRows, sheetNames, headers, timings } = parseExcelToJson(buffer);
 
         if (flatRows.length === 0) {
           throw new Error('Файл пуст или не содержит валидных данных');
@@ -572,6 +599,10 @@ self.onmessage = async (e: MessageEvent) => {
         // ─── ЭТАП 2: Выбор стратегии импорта ────────────────────
         const BATCH_THRESHOLD = 50_000;
         const useBatchedInsert = flatRows.length > BATCH_THRESHOLD;
+
+        // Профилирование импорта (см. ROADMAP «Производительность обработки
+        // файлов»): засекаем фазу вставки, чтобы сопоставить с фазами парсинга.
+        const tInsertStart = performance.now();
 
         await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
 
@@ -727,6 +758,8 @@ self.onmessage = async (e: MessageEvent) => {
             toNumber((countResult.toArray()[0] as Record<string, unknown>).cnt) ?? 0
           );
 
+          logImportTimings('csv', timings, performance.now() - tInsertStart, flatRows.length);
+
           self.postMessage({
             id,
             success: true,
@@ -759,6 +792,8 @@ self.onmessage = async (e: MessageEvent) => {
         const finalTotalRows = Number(
           toNumber((finalCountResult.toArray()[0] as Record<string, unknown>).cnt) ?? 0
         );
+
+        logImportTimings('batched', timings, performance.now() - tInsertStart, flatRows.length);
 
         self.postMessage({
           id,
