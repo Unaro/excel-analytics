@@ -11,5 +11,18 @@ export {
   refreshPgDataset,
 } from './model/sync-engine';
 export { removeDatasetCompletely } from './model/remove-dataset';
-export { buildFilePreview, isCsvFileName, detectLineEnding } from './lib/file-preview';
-export type { FilePreview, FilePreviewOptions } from './lib/file-preview';
+export {
+  buildFilePreview,
+  buildCsvPreviewFromText,
+  isCsvFileName,
+  detectLineEnding,
+  guessColumnTypes,
+  guessColumnType,
+  CSV_PREFIX_BYTES,
+} from './lib/file-preview';
+export type {
+  FilePreview,
+  FilePreviewOptions,
+  ImportParams,
+  DecimalSeparator,
+} from './lib/file-preview';

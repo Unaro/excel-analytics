@@ -5,6 +5,8 @@ import {
   parseCsvPreview,
   buildFilePreview,
   isCsvFileName,
+  guessColumnType,
+  guessColumnTypes,
 } from './file-preview';
 
 const encode = (s: string) => new TextEncoder().encode(s).buffer;
@@ -81,6 +83,48 @@ describe('parseCsvPreview: разбор с кавычками и лимитом'
       ['1', '2'],
       ['3', '4'],
     ]);
+  });
+});
+
+describe('guessColumnType: тип по сэмплу и десятичному разделителю', () => {
+  it('числа с точкой при dec="."', () => {
+    expect(guessColumnType(['309514.26', '105.08', '5368'], '.')).toBe('numeric');
+  });
+  it('числа с запятой при dec="," ', () => {
+    expect(guessColumnType(['79,15', '108', '12,5'], ',')).toBe('numeric');
+  });
+  it('те же запятые при dec="." числами НЕ считаются', () => {
+    expect(guessColumnType(['79,15', '12,5', '3,1'], '.')).toBe('categorical');
+  });
+  it('коды-время 01:01 → текст, не число и не дата', () => {
+    expect(guessColumnType(['01:01', '01:02', '02:01:01'], '.')).toBe('categorical');
+  });
+  it('ISO-даты → date', () => {
+    expect(guessColumnType(['2024-01-15', '2024-02-20'], '.')).toBe('date');
+  });
+  it('русские даты → date', () => {
+    expect(guessColumnType(['15.01.2024', '20.02.2024'], '.')).toBe('date');
+  });
+  it('пустой сэмпл → categorical', () => {
+    expect(guessColumnType(['', '  '], '.')).toBe('categorical');
+  });
+  it('пробельные тысячи "1 234,56" при dec="," → numeric', () => {
+    expect(guessColumnType(['1 234,56', '2 000,00'], ',')).toBe('numeric');
+  });
+});
+
+describe('guessColumnTypes: по колонкам', () => {
+  it('транспонирует и угадывает каждую колонку', () => {
+    const headers = ['Код', 'Сумма', 'Дата'];
+    const rows = [
+      ['01:01', '100.5', '2024-01-15'],
+      ['01:02', '200.0', '2024-02-15'],
+    ];
+    expect(guessColumnTypes(headers, rows, '.')).toEqual({
+      'Код': 'categorical',
+      'Сумма': 'numeric',
+      'Дата': 'date',
+    });
   });
 });
 

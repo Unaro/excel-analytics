@@ -133,6 +133,10 @@ export function SetupWizardContent() {
             preview={wizard.preview}
             previewLoading={wizard.previewLoading}
             isImporting={isUploading || wizard.isSyncing}
+            importParams={wizard.importParams}
+            onDelimiterChange={wizard.setDelimiter}
+            onDecimalChange={wizard.setDecimalSeparator}
+            onColumnTypeChange={wizard.setColumnType}
             onImport={handleConfirmImport}
             onCancel={() => {
               wizard.resetSelectedFile();

@@ -1,4 +1,18 @@
 import * as XLSX from 'xlsx';
+import type { ColumnClassification } from '@/shared/lib/types';
+
+/** Десятичный разделитель чисел в исходном файле. */
+export type DecimalSeparator = '.' | ',';
+
+/** Параметры разбора, выбранные пользователем на шаге «Импорт». */
+export interface ImportParams {
+  /** Разделитель колонок (CSV); null — xlsx. */
+  delimiter: string | null;
+  /** Десятичный разделитель чисел. */
+  decimalSeparator: DecimalSeparator;
+  /** Тип каждой колонки по имени (numeric/date/categorical/ignore). */
+  columnTypes: Record<string, ColumnClassification>;
+}
 
 /**
  * Лёгкий предпросмотр файла ДО тяжёлого импорта.
@@ -33,7 +47,7 @@ export interface FilePreviewOptions {
 
 const DEFAULT_PREVIEW_ROWS = 50;
 /** Сколько байт CSV читаем под предпросмотр (хватает на десятки строк). */
-const CSV_PREFIX_BYTES = 512 * 1024;
+export const CSV_PREFIX_BYTES = 512 * 1024;
 /** Кандидаты разделителей в порядке проверки. */
 const CANDIDATE_DELIMITERS = [',', ';', '\t', '|'] as const;
 
@@ -141,6 +155,35 @@ export function parseCsvPreview(
 }
 
 /** Строит предпросмотр из буфера файла. */
+/**
+ * Строит CSV-предпросмотр из уже декодированного текста (префикса файла).
+ * Вынесено отдельно, чтобы живой перепарсинг при смене разделителя был
+ * синхронным — без повторного чтения файла.
+ */
+export function buildCsvPreviewFromText(
+  text: string,
+  opts: FilePreviewOptions & { bufferTruncated?: boolean } = {}
+): FilePreview {
+  const maxRows = opts.maxRows ?? DEFAULT_PREVIEW_ROWS;
+  const newline = detectLineEnding(text);
+  // Заголовок = до первого перевода строки любого вида (\n или \r).
+  const firstBreak = text.search(/[\r\n]/);
+  const headerLine = firstBreak === -1 ? text : text.slice(0, firstBreak);
+  const delimiter = opts.delimiter ?? detectDelimiter(headerLine);
+
+  const parsed = parseCsvPreview(text, delimiter, maxRows);
+  const headers = (parsed[0] ?? []).map((h) => h.trim());
+  const rows = parsed.slice(1, maxRows + 1);
+  return {
+    isCsv: true,
+    delimiter,
+    newline,
+    headers,
+    rows,
+    truncated: !!opts.bufferTruncated || parsed.length > maxRows,
+  };
+}
+
 export function buildFilePreview(
   buffer: ArrayBuffer,
   fileName: string,
@@ -154,23 +197,10 @@ export function buildFilePreview(
       ? buffer.slice(0, CSV_PREFIX_BYTES)
       : buffer;
     const text = new TextDecoder('utf-8').decode(prefix);
-    const newline = detectLineEnding(text);
-    // Заголовок = до первого перевода строки любого вида (\n или \r).
-    const firstBreak = text.search(/[\r\n]/);
-    const headerLine = firstBreak === -1 ? text : text.slice(0, firstBreak);
-    const delimiter = opts.delimiter ?? detectDelimiter(headerLine);
-
-    const parsed = parseCsvPreview(text, delimiter, maxRows);
-    const headers = (parsed[0] ?? []).map((h) => h.trim());
-    const rows = parsed.slice(1, maxRows + 1);
-    return {
-      isCsv: true,
-      delimiter,
-      newline,
-      headers,
-      rows,
-      truncated: buffer.byteLength > CSV_PREFIX_BYTES || parsed.length > maxRows,
-    };
+    return buildCsvPreviewFromText(text, {
+      ...opts,
+      bufferTruncated: buffer.byteLength > CSV_PREFIX_BYTES,
+    });
   }
 
   // xlsx/xls: ограничиваем разбор первыми строками через sheetRows.
@@ -204,4 +234,71 @@ export function buildFilePreview(
     rows,
     truncated: matrix.length > maxRows + 1,
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Автоугадывание типа колонки по сэмплу предпросмотра
+// ─────────────────────────────────────────────────────────────
+
+const TIME_STRING_RE = /^\d{1,2}:\d{2}(:\d{2})?$/;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}/;
+const RU_DATE_RE = /^\d{1,2}[./]\d{1,2}[./]\d{4}/;
+const NUMBER_RE = /^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/**
+ * Нормализует строку к числовому виду под выбранный десятичный разделитель.
+ * Пробелы (тысячные) убираются всегда; при десятичной запятой запятая → точка.
+ */
+function toNumberString(raw: string, dec: DecimalSeparator): string {
+  // Пробелы (обычный/NBSP/узкий) — разделители тысяч, убираем всегда.
+  const s = raw.trim().replace(/[\s\u00A0\u202F]/g, '');
+  // dec=',' → запятая в точку; dec='.' → запятую НЕ трогаем, значит значение
+  // с запятой числом не считается (защита от 79,15 при десятичной точке).
+  return dec === ',' ? s.replace(',', '.') : s;
+}
+
+/**
+ * Угадывает тип колонки по сэмплу строковых значений и десятичному
+ * разделителю. Эвристика: >50% чисел → numeric, >50% дат → date, иначе
+ * categorical. Время вида `HH:MM` исключается из чисел/дат (это коды/время).
+ * `ignore` автоматически не ставится — только вручную.
+ */
+export function guessColumnType(
+  values: string[],
+  dec: DecimalSeparator
+): ColumnClassification {
+  const valid = values.filter((v) => v != null && v.trim() !== '');
+  if (valid.length === 0) return 'categorical';
+
+  let nums = 0;
+  let dates = 0;
+  for (const v of valid) {
+    const t = v.trim();
+    if (TIME_STRING_RE.test(t)) continue;
+    if (ISO_DATE_RE.test(t) || RU_DATE_RE.test(t)) {
+      dates++;
+      continue;
+    }
+    if (NUMBER_RE.test(toNumberString(t, dec))) nums++;
+  }
+  if (nums / valid.length > 0.5) return 'numeric';
+  if (dates / valid.length > 0.5) return 'date';
+  return 'categorical';
+}
+
+/**
+ * Угадывает типы всех колонок предпросмотра: транспонирует строки по индексу
+ * колонки и прогоняет `guessColumnType`. Возвращает карту имя→тип.
+ */
+export function guessColumnTypes(
+  headers: string[],
+  rows: string[][],
+  dec: DecimalSeparator
+): Record<string, ColumnClassification> {
+  const result: Record<string, ColumnClassification> = {};
+  headers.forEach((header, ci) => {
+    const column = rows.map((r) => r[ci] ?? '');
+    result[header] = guessColumnType(column, dec);
+  });
+  return result;
 }
