@@ -1,7 +1,7 @@
 // features/BuildFormula/ui.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Variable, Plus, Type } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { Input } from '@/shared/ui/input';
@@ -85,6 +85,16 @@ function parseFormulaToTokens(formula: string): Token[] {
   return out;
 }
 
+/** Имена переменных формулы сверх дефолтных (включая аргументы агрегатов). */
+function extractCustomVars(tokens: Token[]): string[] {
+  const names = new Set<string>();
+  for (const t of tokens) {
+    if (t.type === 'variable') names.add(t.value);
+    if (t.arg) names.add(t.arg);
+  }
+  return [...names].filter((n) => !DEFAULT_VARS.includes(n));
+}
+
 //──────────────────────────────────────────────────────────
 // ОСНОВНОЙ КОМПОНЕНТ
 //──────────────────────────────────────────────────────────
@@ -92,6 +102,18 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
   const [tokens, setTokens] = useState<Token[]>(() => parseFormulaToTokens(initialFormula));
   const [customNumber, setCustomNumber] = useState('');
   const [customVar, setCustomVar] = useState('');
+  // Пул кастомных абстрактных переменных (сверх дефолтных). Засеян из формулы,
+  // чтобы при повторном открытии шаблона свои переменные были доступны как
+  // кнопки и в слотах FN(·), а не только как одноразовый токен.
+  const [customVars, setCustomVars] = useState<string[]>(
+    () => extractCustomVars(parseFormulaToTokens(initialFormula))
+  );
+
+  /** Полный пул абстрактных переменных: дефолтные + кастомные. */
+  const allVars = useMemo(
+    () => Array.from(new Set([...DEFAULT_VARS, ...customVars])),
+    [customVars]
+  );
 
   // Синхронизация токенов с onChange
   useEffect(() => {
@@ -115,10 +137,10 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
     setTokens((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Переменные для слотов агрегатов: дефолтные + уже использованные в формуле
+  // Переменные для слотов агрегатов: весь пул + уже использованные в формуле
   const slotVars = Array.from(
     new Set([
-      ...DEFAULT_VARS,
+      ...allVars,
       ...tokens.filter((t) => t.type === 'variable').map((t) => t.value),
       ...tokens.filter((t) => t.arg).map((t) => t.arg as string),
     ])
@@ -131,13 +153,21 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
   };
 
   const handleAddCustomVar = () => {
-    if (!customVar || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(customVar)) return;
-    if (ALL_FUNCS.includes(customVar.toUpperCase())) {
+    const name = customVar.trim();
+    if (!name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) return;
+    if (ALL_FUNCS.includes(name.toUpperCase())) {
       alert('Это имя зарезервировано для функций');
       return;
     }
-    addToken('variable', customVar);
+    // В пул (а не одноразовым токеном): становится переиспользуемой кнопкой и
+    // доступна в слотах FN(·). На холст ставится кликом по кнопке/в слоте.
+    setCustomVars((prev) => (prev.includes(name) || DEFAULT_VARS.includes(name) ? prev : [...prev, name]));
     setCustomVar('');
+  };
+
+  /** Убрать кастомную переменную из пула (в токенах формулы остаётся). */
+  const removeCustomVar = (name: string) => {
+    setCustomVars((prev) => prev.filter((v) => v !== name));
   };
 
   //──────────────────────────────────────────────────────────
@@ -211,7 +241,6 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
 
   // Константы для панелей инструментов
   const operators = ['+', '-', '*', '/', '(', ')'];
-  const defaultVars = DEFAULT_VARS;
 
   return (
     <div className="space-y-4">
@@ -287,15 +316,36 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
               Переменные (Абстрактные)
             </span>
             <div className="flex flex-wrap gap-1.5 mb-3">
-              {defaultVars.map((v) => (
-                <button
-                  key={v}
-                  onClick={() => addToken('variable', v)}
-                  className="w-8 h-8 flex items-center justify-center bg-white dark:bg-slate-800 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-orange-100 dark:border-orange-900/30 rounded font-bold transition-colors shadow-sm"
-                >
-                  {v}
-                </button>
-              ))}
+              {allVars.map((v) => {
+                const isCustom = !DEFAULT_VARS.includes(v);
+                return (
+                  <div key={v} className="relative group/var">
+                    <button
+                      onClick={() => addToken('variable', v)}
+                      title={isCustom ? `Своя переменная «${v}»` : undefined}
+                      className={cn(
+                        'min-w-8 h-8 px-2 flex items-center justify-center rounded font-bold transition-colors shadow-sm border',
+                        'bg-white dark:bg-slate-800 text-orange-600 dark:text-orange-400',
+                        'hover:bg-orange-50 dark:hover:bg-orange-900/20',
+                        isCustom
+                          ? 'border-orange-300 dark:border-orange-700'
+                          : 'border-orange-100 dark:border-orange-900/30'
+                      )}
+                    >
+                      {v}
+                    </button>
+                    {isCustom && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeCustomVar(v); }}
+                        title="Убрать переменную из пула"
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 flex items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-rose-500 hover:text-white opacity-0 group-hover/var:opacity-100 transition-opacity shadow"
+                      >
+                        <X size={9} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="flex gap-2">
               <div className="relative flex-1">
