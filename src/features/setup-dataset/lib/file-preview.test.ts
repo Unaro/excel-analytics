@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   detectDelimiter,
+  detectLineEnding,
   parseCsvPreview,
   buildFilePreview,
   isCsvFileName,
@@ -36,6 +37,14 @@ describe('detectDelimiter: разделитель по заголовку', () =
   });
 });
 
+describe('detectLineEnding: разделитель строк', () => {
+  it('LF', () => expect(detectLineEnding('a,b\n1,2')).toBe('\n'));
+  it('CRLF', () => expect(detectLineEnding('a,b\r\n1,2')).toBe('\r\n'));
+  it('CR (классический Mac)', () => expect(detectLineEnding('a,b\r1,2')).toBe('\r'));
+  it('нет переводов строк → LF по умолчанию', () =>
+    expect(detectLineEnding('a,b,c')).toBe('\n'));
+});
+
 describe('parseCsvPreview: разбор с кавычками и лимитом', () => {
   it('простые строки', () => {
     const rows = parseCsvPreview('a,b\n1,2\n3,4', ',', 50);
@@ -64,6 +73,15 @@ describe('parseCsvPreview: разбор с кавычками и лимитом'
       ['1', '2'],
     ]);
   });
+
+  it('CR-only (классический Mac) корректно бьётся на строки', () => {
+    const rows = parseCsvPreview('a,b\r1,2\r3,4', ',', 50);
+    expect(rows).toEqual([
+      ['a', 'b'],
+      ['1', '2'],
+      ['3', '4'],
+    ]);
+  });
 });
 
 describe('buildFilePreview: CSV', () => {
@@ -74,10 +92,24 @@ describe('buildFilePreview: CSV', () => {
     );
     expect(preview.isCsv).toBe(true);
     expect(preview.delimiter).toBe(';');
+    expect(preview.newline).toBe('\n');
     expect(preview.headers).toEqual(['Код', 'Имя']);
     expect(preview.rows).toEqual([
       ['01:01', 'Район'],
       ['01:02', 'Микрорайон'],
+    ]);
+  });
+
+  it('CRLF определяется и заголовок режется корректно', () => {
+    const preview = buildFilePreview(
+      encode('a,b\r\n1,2\r\n3,4'),
+      'win.csv'
+    );
+    expect(preview.newline).toBe('\r\n');
+    expect(preview.headers).toEqual(['a', 'b']);
+    expect(preview.rows).toEqual([
+      ['1', '2'],
+      ['3', '4'],
     ]);
   });
 

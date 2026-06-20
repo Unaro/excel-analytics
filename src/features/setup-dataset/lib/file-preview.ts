@@ -14,6 +14,8 @@ export interface FilePreview {
   isCsv: boolean;
   /** Применённый разделитель (только CSV); null — xlsx. */
   delimiter: string | null;
+  /** Определённый разделитель строк (только CSV); null — xlsx. */
+  newline: '\r\n' | '\n' | '\r' | null;
   /** Имена колонок (первая строка). */
   headers: string[];
   /** Первые строки данных (без заголовка), значения как строки. */
@@ -64,8 +66,22 @@ export function detectDelimiter(headerLine: string): string {
 }
 
 /**
- * Разбирает первые `maxRows` строк CSV-текста с учётом кавычек и экранирования
- * (`""` внутри поля). Возвращает массив строк-ячеек (включая заголовок).
+ * Определяет разделитель строк по первому переводу строки:
+ * `\r\n` (Windows), `\n` (Unix) или `\r` (классический Mac).
+ */
+export function detectLineEnding(text: string): '\r\n' | '\n' | '\r' {
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '\r') return text[i + 1] === '\n' ? '\r\n' : '\r';
+    if (ch === '\n') return '\n';
+  }
+  return '\n';
+}
+
+/**
+ * Разбирает первые `maxRows` строк CSV-текста с учётом кавычек, экранирования
+ * (`""` внутри поля) и любых разделителей строк (`\n`, `\r\n`, `\r`).
+ * Возвращает массив строк-ячеек (включая заголовок).
  */
 export function parseCsvPreview(
   text: string,
@@ -76,8 +92,18 @@ export function parseCsvPreview(
   let field = '';
   let row: string[] = [];
   let inQuotes = false;
+  let done = false;
 
-  for (let i = 0; i < text.length; i++) {
+  // +1 на заголовок: набрав достаточно строк, останавливаемся.
+  const pushRow = () => {
+    row.push(field);
+    rows.push(row);
+    row = [];
+    field = '';
+    if (rows.length >= maxRows + 1) done = true;
+  };
+
+  for (let i = 0; i < text.length && !done; i++) {
     const ch = text[i];
     if (inQuotes) {
       if (ch === '"') {
@@ -98,18 +124,16 @@ export function parseCsvPreview(
       row.push(field);
       field = '';
     } else if (ch === '\n') {
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = '';
-      // +1 на заголовок: останавливаемся, набрав достаточно строк.
-      if (rows.length >= maxRows + 1) break;
-    } else if (ch !== '\r') {
+      pushRow();
+    } else if (ch === '\r') {
+      pushRow();
+      if (text[i + 1] === '\n') i++; // съедаем \n в составе \r\n
+    } else {
       field += ch;
     }
   }
   // Хвост без завершающего перевода строки.
-  if (rows.length < maxRows + 1 && (field.length > 0 || row.length > 0)) {
+  if (!done && (field.length > 0 || row.length > 0)) {
     row.push(field);
     rows.push(row);
   }
@@ -130,8 +154,10 @@ export function buildFilePreview(
       ? buffer.slice(0, CSV_PREFIX_BYTES)
       : buffer;
     const text = new TextDecoder('utf-8').decode(prefix);
-    const firstLineEnd = text.indexOf('\n');
-    const headerLine = firstLineEnd === -1 ? text : text.slice(0, firstLineEnd);
+    const newline = detectLineEnding(text);
+    // Заголовок = до первого перевода строки любого вида (\n или \r).
+    const firstBreak = text.search(/[\r\n]/);
+    const headerLine = firstBreak === -1 ? text : text.slice(0, firstBreak);
     const delimiter = opts.delimiter ?? detectDelimiter(headerLine);
 
     const parsed = parseCsvPreview(text, delimiter, maxRows);
@@ -140,6 +166,7 @@ export function buildFilePreview(
     return {
       isCsv: true,
       delimiter,
+      newline,
       headers,
       rows,
       truncated: buffer.byteLength > CSV_PREFIX_BYTES || parsed.length > maxRows,
@@ -155,7 +182,7 @@ export function buildFilePreview(
   });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
-    return { isCsv: false, delimiter: null, headers: [], rows: [], truncated: false };
+    return { isCsv: false, delimiter: null, newline: null, headers: [], rows: [], truncated: false };
   }
   const sheet = workbook.Sheets[sheetName];
   const matrix = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
@@ -172,6 +199,7 @@ export function buildFilePreview(
   return {
     isCsv: false,
     delimiter: null,
+    newline: null,
     headers,
     rows,
     truncated: matrix.length > maxRows + 1,

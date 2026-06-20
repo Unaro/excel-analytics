@@ -22,6 +22,12 @@ const DELIM_LABEL: Record<string, string> = {
   '|': 'вертикальная черта ( | )',
 };
 
+const NEWLINE_LABEL: Record<string, string> = {
+  '\r\n': 'CRLF (Windows)',
+  '\n': 'LF (Unix)',
+  '\r': 'CR (Mac)',
+};
+
 /**
  * Шаг «Импорт»: предпросмотр первых строк файла перед тяжёлой загрузкой.
  *
@@ -58,6 +64,11 @@ export function ImportConfigStep({
             {preview.isCsv && preview.delimiter && (
               <Badge variant="outline">
                 Разделитель: {DELIM_LABEL[preview.delimiter] ?? preview.delimiter}
+              </Badge>
+            )}
+            {preview.isCsv && preview.newline && (
+              <Badge variant="outline">
+                Строки: {NEWLINE_LABEL[preview.newline] ?? preview.newline}
               </Badge>
             )}
           </div>
