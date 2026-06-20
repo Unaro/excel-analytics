@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { GroupBreakdownTable } from './GroupBreakdownTable';
 import { GroupPageHeader } from './GroupPageHeader';
 import { GroupKpiGrid } from './GroupKpiGrid';
@@ -91,6 +91,23 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
       : base;
   }, [oneDimBreakdown, sortConfig]);
 
+  // Видимость элементов (категорий) на барах/радаре — переключается чекбоксами
+  // в таблице (аналог 2-D). Скрытые исключаются только из чартов, таблица
+  // показывает всё.
+  const [chartHiddenLabels, setChartHiddenLabels] = useState<Set<string>>(new Set());
+  const toggleChartLabel = useCallback((label: string) => {
+    setChartHiddenLabels(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }, []);
+  const visibleChartBreakdown = useMemo(
+    () => chartBreakdown.filter(item => !chartHiddenLabels.has(item.label)),
+    [chartBreakdown, chartHiddenLabels]
+  );
+
   const summaryVirtualMetrics = summary?.virtualMetrics ?? [];
 
   if (!group) {
@@ -179,7 +196,19 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         />
       )}
 
-      {/* Одномерные режимы: иерархия ИЛИ время (на листе) */}
+      {/* Одномерные режимы: иерархия ИЛИ время (на листе).
+          Чарты — НАД таблицей. */}
+      {!isComputing && !isTwoDimensional && visibleChartBreakdown.length > 0 && (
+        <GroupChartsPanel
+          breakdown={visibleChartBreakdown}
+          virtualMetrics={summaryVirtualMetrics}
+          metricConfigs={virtualMetrics}
+          activeMetricIds={activeMetricIds}
+          chartTypes={chartTypes}
+          resolveLabel={resolveLabel}
+        />
+      )}
+
       {!isComputing && !isTwoDimensional && oneDimBreakdown && oneDimBreakdown.length > 0 && (
         <GroupBreakdownTable
           breakdown={oneDimBreakdown}
@@ -200,17 +229,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           groupMetricIds={groupMetricIds}
           metricTemplateIds={metricTemplateIds}
           resolveLabel={resolveLabel}
-        />
-      )}
-
-      {!isComputing && !isTwoDimensional && chartBreakdown.length > 0 && (
-        <GroupChartsPanel
-          breakdown={chartBreakdown}
-          virtualMetrics={summaryVirtualMetrics}
-          metricConfigs={virtualMetrics}
-          activeMetricIds={activeMetricIds}
-          chartTypes={chartTypes}
-          resolveLabel={resolveLabel}
+          chartHiddenLabels={chartHiddenLabels}
+          onToggleChartLabel={chartTypes.length > 0 ? toggleChartLabel : undefined}
         />
       )}
     </div>
