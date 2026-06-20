@@ -37,7 +37,12 @@ export const GroupRadarChart = memo(function GroupRadarChart({
     [metricConfigs, metricKeys]
   );
 
-  // Авто-домен по значениям метрик: малые величины (доли < 1) не схлопываются.
+  // Авто-домен по значениям метрик И порогов вместе. Важно: пороговые
+  // полигоны рисуются на той же радиальной оси, и recharts по умолчанию
+  // (allowDataOverflow=false) расширяет ось под ВСЕ серии. Если считать домен
+  // только по метрикам, порог вне диапазона раздувает ось → метрика <1
+  // схлопывается к центру, а сам порог уходит за край и не виден. Включаем
+  // пороги в расчёт — ось охватывает и то, и другое.
   const radarDomain = useMemo(() => {
     const vals: number[] = [];
     for (const row of data) {
@@ -46,8 +51,11 @@ export const GroupRadarChart = memo(function GroupRadarChart({
         if (typeof v === 'number') vals.push(v);
       }
     }
+    for (const group of groupedThresholds) {
+      if (Number.isFinite(group.y)) vals.push(group.y);
+    }
     return autoRadarDomain(vals);
-  }, [data, metricKeys]);
+  }, [data, metricKeys, groupedThresholds]);
 
   if (data.length === 0) return null;
 
