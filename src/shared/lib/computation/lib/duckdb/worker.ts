@@ -47,6 +47,7 @@ function logImportTimings(
     `[Worker] ⏱️ Import profile (${strategy}, ${rows.toLocaleString()} rows, ` +
       `${Math.round(totalMs)}ms, ${rps(totalMs)} rows/s):\n` +
       `  read=${Math.round(parse.readMs)}ms (${pct(parse.readMs)}) · ` +
+      `header=${Math.round(parse.headerMs)}ms (${pct(parse.headerMs)}) · ` +
       `toJson=${Math.round(parse.toJsonMs)}ms (${pct(parse.toJsonMs)}) · ` +
       `normalize=${Math.round(parse.normalizeMs)}ms (${pct(parse.normalizeMs)}) · ` +
       `insert=${Math.round(insertMs)}ms (${pct(insertMs)})`

@@ -4,6 +4,8 @@ import type { DatasetRow } from '@/shared/lib/types/dataset';
 export interface ParseTimings {
   /** XLSX.read — распаковка и разбор книги (мс). */
   readMs: number;
+  /** Извлечение строки заголовков (только первая строка листа) (мс). */
+  headerMs: number;
   /** sheet_to_json по всем листам — материализация объектов строк (мс). */
   toJsonMs: number;
   /** normalizeRow по всем строкам — нормализация ячеек/регэкспы (мс). */
@@ -48,20 +50,20 @@ export function parseExcelToJson(fileBuffer: ArrayBuffer): ParsedExcel {
       flatRows: [],
       sheetNames: [],
       headers: [],
-      timings: { readMs: tRead - t0, toJsonMs: 0, normalizeMs: 0, totalMs: tRead - t0 },
+      timings: {
+        readMs: tRead - t0,
+        headerMs: 0,
+        toJsonMs: 0,
+        normalizeMs: 0,
+        totalMs: tRead - t0,
+      },
     };
   }
 
   const firstSheet = workbook.Sheets[sheetNames[0]];
-  const firstRows = XLSX.utils.sheet_to_json<unknown[]>(firstSheet, {
-    header: 1,
-    defval: null,
-    raw: true,
-  });
-
-  const headers = (firstRows[0] as unknown[])
-    ?.map((h) => (h === null || h === undefined ? '' : String(h).trim()))
-    .filter((h) => h !== '') ?? [];
+  const tHeader0 = performance.now();
+  const headers = extractHeaderRow(firstSheet);
+  const headerMs = performance.now() - tHeader0;
 
   // Замеряем материализацию объектов (sheet_to_json) и нормализацию
   // раздельно: для 1М строк это два разных по природе узких места
@@ -94,8 +96,33 @@ export function parseExcelToJson(fileBuffer: ArrayBuffer): ParsedExcel {
     flatRows,
     sheetNames,
     headers,
-    timings: { readMs: tRead - t0, toJsonMs, normalizeMs, totalMs },
+    timings: { readMs: tRead - t0, headerMs, toJsonMs, normalizeMs, totalMs },
   };
+}
+
+/**
+ * Извлекает только строку заголовков (первую строку листа).
+ *
+ * `sheet_to_json(header:1)` без ограничения диапазона материализует ВЕСЬ
+ * лист (для 1М строк — несколько секунд впустую) ради одной строки.
+ * Ограничиваем чтение первой строкой через `range` из `!ref`.
+ */
+function extractHeaderRow(sheet: XLSX.WorkSheet): string[] {
+  const opts: XLSX.Sheet2JSONOpts = { header: 1, defval: null, raw: true };
+  const ref = sheet['!ref'];
+  if (ref) {
+    const range = XLSX.utils.decode_range(ref);
+    opts.range = {
+      s: { r: range.s.r, c: range.s.c },
+      e: { r: range.s.r, c: range.e.c },
+    };
+  }
+  const firstRows = XLSX.utils.sheet_to_json<unknown[]>(sheet, opts);
+  return (
+    (firstRows[0] as unknown[] | undefined)
+      ?.map((h) => (h === null || h === undefined ? '' : String(h).trim()))
+      .filter((h) => h !== '') ?? []
+  );
 }
 
 function normalizeRow(row: Record<string, unknown>): DatasetRow {
