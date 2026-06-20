@@ -1,7 +1,7 @@
 'use client';
 
 import { ResponsiveContainer } from 'recharts';
-import type { ReactElement } from 'react';
+import { forwardRef, type ReactElement, type UIEvent } from 'react';
 
 interface ScrollableChartProps {
   /** Число срезов по X (категорий/интервалов) — задаёт ширину контента. */
@@ -12,6 +12,8 @@ interface ScrollableChartProps {
   height: number | string;
   /** Один recharts-чарт (BarChart/LineChart/…) для ResponsiveContainer. */
   children: ReactElement;
+  /** Скролл бокса — для синхронизации с другим контейнером (таблицей). */
+  onScroll?: (e: UIEvent<HTMLDivElement>) => void;
 }
 
 /**
@@ -23,25 +25,24 @@ interface ScrollableChartProps {
  * `slotCount × slotWidth`, а скролл живёт ВНУТРИ фикс-бокса. При малом
  * числе срезов `minWidth: 100%` растягивает чарт на всю ширину (скролла нет).
  */
-export function ScrollableChart({
-  slotCount,
-  slotWidth,
-  height,
-  children,
-}: ScrollableChartProps) {
-  return (
-    <div
-      className="w-full overflow-x-auto overflow-y-hidden custom-scrollbar"
-      style={{ height }}
-    >
+export const ScrollableChart = forwardRef<HTMLDivElement, ScrollableChartProps>(
+  function ScrollableChart({ slotCount, slotWidth, height, children, onScroll }, ref) {
+    return (
       <div
-        className="h-full"
-        style={{ width: Math.max(slotCount, 1) * slotWidth, minWidth: '100%' }}
+        ref={ref}
+        onScroll={onScroll}
+        className="w-full overflow-x-auto overflow-y-hidden custom-scrollbar"
+        style={{ height }}
       >
-        <ResponsiveContainer width="100%" height="100%">
-          {children}
-        </ResponsiveContainer>
+        <div
+          className="h-full"
+          style={{ width: Math.max(slotCount, 1) * slotWidth, minWidth: '100%' }}
+        >
+          <ResponsiveContainer width="100%" height="100%">
+            {children}
+          </ResponsiveContainer>
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
+);

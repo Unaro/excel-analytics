@@ -14,7 +14,7 @@
 // и дашбордом (серии = группы показателей).
 // ─────────────────────────────────────────────────────────────
 
-import { memo, useMemo, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend, ReferenceLine, Label,
@@ -99,6 +99,24 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const [searchQuery, setSearchQuery] = useState('');
   // null — авто-режим top-N; Set — явный выбор пользователя
   const [selectedLabels, setSelectedLabels] = useState<Set<string> | null>(null);
+
+  // Чарт и pivot-таблица — одна ось дат: их горизонтальные скроллы связаны,
+  // чтобы листать вместе (а не наводиться на каждый скроллбар отдельно).
+  // Пропорционально по доле прокрутки — устойчиво к разной ширине контента.
+  const chartScrollRef = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const syncingRef = useRef(false);
+  const syncScroll = (from: HTMLDivElement | null, to: HTMLDivElement | null) => {
+    if (!from || !to || syncingRef.current) return;
+    const fromMax = from.scrollWidth - from.clientWidth;
+    const toMax = to.scrollWidth - to.clientWidth;
+    if (fromMax <= 0 || toMax <= 0) return;
+    const target = (from.scrollLeft / fromMax) * toMax;
+    if (Math.abs(to.scrollLeft - target) < 1) return;
+    syncingRef.current = true;
+    to.scrollLeft = target;
+    requestAnimationFrame(() => { syncingRef.current = false; });
+  };
 
   const metricValue = (item: BreakdownItem | undefined): number | null => {
     const vm = item?.virtualMetrics.find(v => v.virtualMetricId === effectiveMetricId);
@@ -256,7 +274,13 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
           При многих интервалах — горизонтальный скролл внутри бокса,
           чтобы точки/подписи не сжимались, а страница не растягивалась. */}
       <div className="px-4 pt-4">
-        <ScrollableChart slotCount={dates.length} slotWidth={56} height={304}>
+        <ScrollableChart
+          ref={chartScrollRef}
+          onScroll={() => syncScroll(chartScrollRef.current, tableScrollRef.current)}
+          slotCount={dates.length}
+          slotWidth={56}
+          height={304}
+        >
           <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" />
             <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
@@ -313,8 +337,13 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
         </ScrollableChart>
       </div>
 
-      {/* Pivot-таблица: строки — элементы, колонки — интервалы */}
-      <div className="overflow-x-auto custom-scrollbar max-h-[480px] overflow-y-auto border-t border-slate-100 dark:border-slate-800">
+      {/* Pivot-таблица: строки — элементы, колонки — интервалы.
+          Горизонталь синхронизирована с чартом, вертикаль скроллится внутри. */}
+      <div
+        ref={tableScrollRef}
+        onScroll={() => syncScroll(tableScrollRef.current, chartScrollRef.current)}
+        className="overflow-x-auto custom-scrollbar max-h-[480px] overflow-y-auto border-t border-slate-100 dark:border-slate-800"
+      >
         <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800">
           <thead className="bg-slate-50 dark:bg-slate-900/50 sticky top-0 z-10">
             <tr>
