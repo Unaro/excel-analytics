@@ -4,13 +4,16 @@ import { persist } from 'zustand/middleware';
 import { createMigration } from '@/shared/lib/storage/migration';
 import { nanoid } from 'nanoid';
 import { MetricTemplate } from '@/shared/lib/validators';
+import type { ColorConfig } from '@/shared/lib/types/dashboard';
 
 interface MetricTemplateState {
   templates: MetricTemplate[];
-  
+
   // Действия
   addTemplate: (template: Omit<MetricTemplate, 'id' | 'createdAt' | 'updatedAt'>) => string;
   updateTemplate: (id: string, updates: Partial<Omit<MetricTemplate, 'id' | 'createdAt'>>) => void;
+  /** Условное форматирование шаблона — единый источник для дашборда и групп. */
+  setTemplateColorConfig: (id: string, colorConfig: ColorConfig) => void;
   deleteTemplate: (id: string) => void;
   duplicateTemplate: (id: string) => string | null;
   
@@ -53,6 +56,16 @@ export const useMetricTemplateStore = create<MetricTemplateState>()(
         }));
       },
       
+      setTemplateColorConfig: (id, colorConfig) => {
+        set((state) => ({
+          templates: state.templates.map((template) =>
+            template.id === id
+              ? { ...template, colorConfig, updatedAt: Date.now() }
+              : template
+          ),
+        }));
+      },
+
       deleteTemplate: (id) => {
         set((state) => ({
           templates: state.templates.filter((template) => template.id !== id),

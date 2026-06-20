@@ -123,6 +123,12 @@ export const MetricTemplateSchema = z.object({
    * переопределена (GroupMetric.unit).
    */
   unit: z.string().optional(),
+  /**
+   * Условное форматирование — единый источник правды на шаблоне. Любая
+   * колонка дашборда / метрика группы с этим templateId наследует правила;
+   * редактирование в дашборде и в /groups/[id] меняет одни и те же правила.
+   */
+  colorConfig: ColorConfigSchema.optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });

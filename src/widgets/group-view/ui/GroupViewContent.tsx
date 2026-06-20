@@ -65,6 +65,12 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     return group?.metrics.map(m => m.id) ?? [];
   }, [group]);
 
+  // metricId группы → templateId: ячейки таблицы берут CF из шаблона.
+  const metricTemplateIds = useMemo(
+    () => Object.fromEntries((group?.metrics ?? []).map(m => [m.id, m.templateId])),
+    [group]
+  );
+
   // Одномерные потребители не должны видеть устаревшие 2-D строки:
   // при выключении разбивки по дате isTwoDimensional меняется мгновенно,
   // а result обновляется асинхронно — без фильтра label'ы дублируются
@@ -192,6 +198,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           activeMetricIds={activeMetricIds}
           groupId={groupId}
           groupMetricIds={groupMetricIds}
+          metricTemplateIds={metricTemplateIds}
           resolveLabel={resolveLabel}
         />
       )}

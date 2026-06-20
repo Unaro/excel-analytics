@@ -5,6 +5,7 @@ import { useMemo } from 'react';
 import { MetricCell } from '@/entities/metric';
 import type { DisplayFormat } from '@/entities/metric';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
+import { useMetricTemplateStore } from '@/entities/metric';
 
 interface GroupMetricCellProps {
   groupId: string;
@@ -14,6 +15,8 @@ interface GroupMetricCellProps {
   displayFormat: DisplayFormat;
   decimalPlaces: number;
   unit?: string;
+  /** Шаблон метрики — единый источник условного форматирования. */
+  templateId?: string;
 }
 
 /**
@@ -27,10 +30,17 @@ export function GroupMetricCell({
   displayFormat,
   decimalPlaces,
   unit,
+  templateId,
 }: GroupMetricCellProps) {
-  const colorConfig = useGroupMetricConfigStore(
+  // Единый источник CF — шаблон; групповой стор остаётся фолбэком для
+  // немигрированных метрик (правила «переедут» при редактировании).
+  const groupColorConfig = useGroupMetricConfigStore(
     (s) => s.configsByGroup[groupId]?.[metricId]?.colorConfig
   );
+  const templateColorConfig = useMetricTemplateStore(
+    (s) => (templateId ? s.templates.find((t) => t.id === templateId)?.colorConfig : undefined)
+  );
+  const colorConfig = templateColorConfig ?? groupColorConfig;
 
   const metric = useMemo(
     () => ({

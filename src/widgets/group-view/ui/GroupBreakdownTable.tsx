@@ -26,6 +26,8 @@ interface GroupBreakdownTableProps {
   onSortChange: (config: SortConfig) => void;
   groupId: string;
   groupMetricIds: string[];
+  /** metricId группы → templateId: для CF-ячейки (единый источник на шаблоне). */
+  metricTemplateIds?: Record<string, string>;
   /**
    * Метка измерения при временно́й группировке (например «Дата · месяц»).
    * Передаётся вместе с nextLevel=null: drill-down по датам невозможен.
@@ -50,6 +52,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
   onSortChange,
   groupId,
   groupMetricIds,
+  metricTemplateIds,
   dimensionLabel,
   resolveLabel,
 }: GroupBreakdownTableProps) {
@@ -171,6 +174,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                         <GroupMetricConfigPopover
                           groupId={groupId}
                           metricId={groupMetricId}
+                          templateId={metricTemplateIds?.[groupMetricId]}
                           metricName={vm.virtualMetricName}
                         />
                       )}
@@ -230,6 +234,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                         <GroupMetricCell
                           groupId={groupId}
                           metricId={groupMetricId}
+                          templateId={metricTemplateIds?.[groupMetricId]}
                           value={val.value}
                           formattedValue={val.formattedValue}
                           displayFormat={meta.displayFormat}
@@ -261,6 +266,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                         <GroupMetricCell
                           groupId={groupId}
                           metricId={groupMetricId}
+                          templateId={metricTemplateIds?.[groupMetricId]}
                           value={vm.value}
                           formattedValue={vm.formattedValue}
                           displayFormat={meta.displayFormat}

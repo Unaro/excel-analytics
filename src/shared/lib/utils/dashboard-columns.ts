@@ -61,9 +61,10 @@ export function resolveColumnTemplateId(
 }
 
 /**
- * «Эффективная» колонка: имя, формат, decimals и единица подставлены
- * из шаблона (colorConfig и прочее — из самой колонки). Такую метрику
- * получает движок и таблица — формат больше не хранится на колонке.
+ * «Эффективная» колонка: имя, формат, decimals, единица и условное
+ * форматирование подставлены из шаблона. colorConfig — единый источник на
+ * шаблоне; column.colorConfig остаётся фолбэком для немигрированных колонок
+ * (правила «переедут» на шаблон при первом редактировании).
  */
 export function buildEffectiveColumn(
   column: DashboardColumn,
@@ -72,7 +73,7 @@ export function buildEffectiveColumn(
   return {
     id: column.id,
     order: column.order,
-    colorConfig: column.colorConfig,
+    colorConfig: template?.colorConfig ?? column.colorConfig,
     name: column.name || template?.name || 'Метрика',
     displayFormat: template?.displayFormat ?? column.displayFormat ?? 'number',
     decimalPlaces: template?.decimalPlaces ?? column.decimalPlaces ?? 2,

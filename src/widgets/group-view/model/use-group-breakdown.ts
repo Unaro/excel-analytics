@@ -118,12 +118,17 @@ export function useGroupBreakdown(
   const virtualMetricsForUI = useMemo<VirtualMetric[]>(() => {
     if (!group) return [];
     return virtualMetrics.map(vm => {
-      const colorConfig = vm.sourceMetricId
-        ? groupMetricConfigs?.[vm.sourceMetricId]?.colorConfig
+      // CF — единый источник на шаблоне; групповой стор остаётся фолбэком
+      // для немигрированных метрик (правила «переедут» при редактировании).
+      const m = vm.sourceMetricId
+        ? group.metrics.find(gm => gm.id === vm.sourceMetricId)
         : undefined;
+      const tpl = m ? templates.find(t => t.id === m.templateId) : undefined;
+      const colorConfig = tpl?.colorConfig
+        ?? (vm.sourceMetricId ? groupMetricConfigs?.[vm.sourceMetricId]?.colorConfig : undefined);
       return { ...vm, colorConfig };
     });
-  }, [virtualMetrics, groupMetricConfigs]);
+  }, [virtualMetrics, groupMetricConfigs, group, templates]);
 
   const dashboardGroupsConfig = useMemo<IndicatorGroupInDashboard[]>(() => {
     if (!group) return [];

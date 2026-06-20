@@ -4,11 +4,13 @@ import { useCallback, useMemo } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Settings, Plus } from 'lucide-react';
 import { useDashboardStore } from '@/entities/dashboard';
+import { useMetricTemplateStore } from '@/entities/metric';
 import { cn } from '@/shared/lib/utils';
 import { nanoid } from 'nanoid';
 import { DragDropList } from '@/shared/ui/drag-drop-list';
 import { RuleCard } from '../../shared/ui/rule-card/ui/RuleCard';
 import { FormattingRule } from '@/shared/lib/utils/formatting-rules';
+import type { ColorConfig } from '@/shared/lib/types/dashboard';
 
 interface MetricConfigPopoverProps {
   dashboardId: string;
@@ -31,9 +33,28 @@ export function MetricConfigPopover({ dashboardId, metricId }: MetricConfigPopov
   });
 
   const updateMetric = useDashboardStore((s) => s.updateVirtualMetric);
+  const setTemplateColorConfig = useMetricTemplateStore((s) => s.setTemplateColorConfig);
 
-  const rules = useMemo(() => metric?.colorConfig?.rules || [], [metric?.colorConfig?.rules]);
-  const currentColorConfig = useMemo(() => metric?.colorConfig, [metric?.colorConfig]);
+  // CF — единый источник на шаблоне; colorConfig колонки остаётся фолбэком
+  // для немигрированных колонок (правила «переедут» при первой правке).
+  const templateId = metric?.templateId;
+  const templateColorConfig = useMetricTemplateStore(
+    (s) => (templateId ? s.templates.find((t) => t.id === templateId)?.colorConfig : undefined)
+  );
+  const currentColorConfig = useMemo(
+    () => templateColorConfig ?? metric?.colorConfig,
+    [templateColorConfig, metric?.colorConfig]
+  );
+  const rules = useMemo(() => currentColorConfig?.rules || [], [currentColorConfig?.rules]);
+
+  // Запись: в шаблон (единый источник), иначе — в колонку дашборда (фолбэк).
+  const commit = useCallback(
+    (colorConfig: ColorConfig) => {
+      if (templateId) setTemplateColorConfig(templateId, colorConfig);
+      else updateMetric(dashboardId, metricId, { colorConfig });
+    },
+    [templateId, setTemplateColorConfig, updateMetric, dashboardId, metricId]
+  );
 
   const addRule = useCallback(() => {
     const newRule: FormattingRule = {
@@ -42,51 +63,28 @@ export function MetricConfigPopover({ dashboardId, metricId }: MetricConfigPopov
       value: 0,
       color: 'emerald',
     };
-    updateMetric(dashboardId, metricId, {
-      colorConfig: {
-        ...(currentColorConfig || {}),
-        rules: [...(currentColorConfig?.rules || []), newRule],
-      },
-    });
-  }, [dashboardId, metricId, updateMetric, currentColorConfig]);
+    commit({ rules: [...(currentColorConfig?.rules || []), newRule] });
+  }, [commit, currentColorConfig]);
 
   const removeRule = useCallback((ruleId: string) => {
-    updateMetric(dashboardId, metricId, {
-      colorConfig: {
-        ...(currentColorConfig || {}),
-        rules: (currentColorConfig?.rules || []).filter(r => r.id !== ruleId),
-      },
-    });
-  }, [dashboardId, metricId, updateMetric, currentColorConfig]);
+    commit({ rules: (currentColorConfig?.rules || []).filter(r => r.id !== ruleId) });
+  }, [commit, currentColorConfig]);
 
   const duplicateRule = useCallback((rule: FormattingRule) => {
-    updateMetric(dashboardId, metricId, {
-      colorConfig: {
-        ...(currentColorConfig || {}),
-        rules: [...(currentColorConfig?.rules || []), { ...rule, id: nanoid() }],
-      },
-    });
-  }, [dashboardId, metricId, updateMetric, currentColorConfig]);
+    commit({ rules: [...(currentColorConfig?.rules || []), { ...rule, id: nanoid() }] });
+  }, [commit, currentColorConfig]);
 
   const updateRule = useCallback((ruleId: string, updates: Partial<FormattingRule>) => {
-    updateMetric(dashboardId, metricId, {
-      colorConfig: {
-        ...(currentColorConfig || {}),
-        rules: (currentColorConfig?.rules || []).map(r =>
-          r.id === ruleId ? { ...r, ...updates } : r
-        ),
-      },
+    commit({
+      rules: (currentColorConfig?.rules || []).map(r =>
+        r.id === ruleId ? { ...r, ...updates } : r
+      ),
     });
-  }, [dashboardId, metricId, updateMetric, currentColorConfig]);
+  }, [commit, currentColorConfig]);
 
   const reorderRules = useCallback((newOrder: FormattingRule[]) => {
-    updateMetric(dashboardId, metricId, {
-      colorConfig: {
-        ...(currentColorConfig || {}),
-        rules: newOrder,
-      },
-    });
-  }, [dashboardId, metricId, updateMetric, currentColorConfig]);
+    commit({ rules: newOrder });
+  }, [commit]);
 
   if (!metric) return null;
 
