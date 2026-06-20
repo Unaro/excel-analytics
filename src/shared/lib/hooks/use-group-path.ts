@@ -37,13 +37,21 @@ export function useGroupPath(): GroupPathReturn {
       const newPathValue = newPath.length > 0 ? encodeURIComponent(JSON.stringify(newPath)) : null;
 
       const currentPathValue = params.get('path');
-      if (currentPathValue === newPathValue) return;
+      // legacy `filters` (заход с дашборда) перебивает чтение при отсутствии
+      // `path`. Пока он есть — навигация ОБЯЗАНА перезаписать URL, иначе сброс
+      // к корню (newPathValue=null) становится no-op и откатывает к исходному
+      // фильтру дашборда. Учитываем его в no-op-проверке и удаляем при записи.
+      const hasLegacyFilters = params.has('filters');
+      if (currentPathValue === newPathValue && !hasLegacyFilters) return;
 
       if (newPathValue) {
         params.set('path', newPathValue);
       } else {
         params.delete('path');
       }
+      // Однократная миграция: после первой навигации легаси-параметр убираем,
+      // дальше единственный источник пути — `path`.
+      params.delete('filters');
 
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     },

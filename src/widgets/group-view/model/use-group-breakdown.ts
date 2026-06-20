@@ -249,8 +249,12 @@ const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.
       [nextLevel, resolveLabel, currentPath, setPath]
   );
 
+  // Клик по хлебной крошке = выбрать ЭТОТ уровень (оставить его в пути),
+  // а не удалить. slice(0, idx+1) сохраняет кликнутый уровень и отбрасывает
+  // только более глубокие. Подъём выше — клик по родительской крошке или
+  // «Все данные».
   const resetToLevel = useCallback((levelIndex: number) => {
-    setPath(currentPath.slice(0, levelIndex));
+    setPath(currentPath.slice(0, levelIndex + 1));
   }, [currentPath, setPath]);
 
   const resetAll = useCallback(() => {
