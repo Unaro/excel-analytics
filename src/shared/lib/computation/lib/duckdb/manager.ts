@@ -344,8 +344,13 @@ export class DuckDBWorkerManager {
 
   async computeDashboard(
     params: ClientComputeParams,
-    arrowBuffer?: Uint8Array,
-    signal?: AbortSignal 
+    // Ленивый загрузчик Arrow-буфера: нужен ТОЛЬКО для пути восстановления
+    // (таблица пропала). Раньше движок читал буфер (сотни МБ) из IndexedDB
+    // на КАЖДЫЙ COMPUTE — это блокировало главный поток на ~секунду и было
+    // главной причиной лага фильтра. Теперь читаем его лениво и лишь когда
+    // восстановление реально потребовалось.
+    loadArrowBuffer?: () => Promise<Uint8Array | undefined>,
+    signal?: AbortSignal
   ): Promise<DashboardComputationResult> {
     if (signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
@@ -361,6 +366,10 @@ export class DuckDBWorkerManager {
       const message = err instanceof Error ? err.message : String(err);
       const isTableMissing =
         message.includes('Catalog Error') && message.includes('does not exist');
+
+      const arrowBuffer = isTableMissing && loadArrowBuffer
+        ? await loadArrowBuffer()
+        : undefined;
 
       if (isTableMissing && arrowBuffer) {
         try {
