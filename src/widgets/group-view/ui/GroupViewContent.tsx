@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useEffect } from 'react';
+import { useMemo } from 'react';
 import { GroupBreakdownTable } from './GroupBreakdownTable';
 import { GroupPageHeader } from './GroupPageHeader';
 import { GroupKpiGrid } from './GroupKpiGrid';
@@ -35,7 +35,6 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
 
   const {
     group,
-    currentPath,
     nextLevel,
     summary,
     breakdown,
@@ -77,12 +76,14 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
 
   const chartBreakdown = useMemo(() => {
     const base = oneDimBreakdown ?? [];
-    const sorted = sortConfig
+    // Сырые (уникальные) label — позиция категории на оси. Резолв словаря
+    // НЕ применяем здесь: разные коды могут давать одно имя → дубль категорий
+    // → recharts роняет ключи осей (tick-<угол>). Имя показывается через
+    // tickFormatter/тултип в самих чартах.
+    return sortConfig
       ? sortBreakdown(base, sortConfig.key, sortConfig.direction)
       : base;
-    // Чарты — display-only: метки можно резолвить прямо в данных
-    return sorted.map(item => ({ ...item, label: resolveLabel(item.label) }));
-  }, [oneDimBreakdown, sortConfig, resolveLabel]);
+  }, [oneDimBreakdown, sortConfig]);
 
   const summaryVirtualMetrics = summary?.virtualMetrics ?? [];
 
@@ -202,6 +203,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           metricConfigs={virtualMetrics}
           activeMetricIds={activeMetricIds}
           chartTypes={chartTypes}
+          resolveLabel={resolveLabel}
         />
       )}
     </div>

@@ -22,9 +22,15 @@ describe('autoRadarDomain: авто-домен радара', () => {
     expect(autoRadarDomain([0])).toEqual([-1, 1]);
   });
 
-  it('нечисловые/пустые — undefined (дефолт recharts)', () => {
-    expect(autoRadarDomain([])).toBeUndefined();
-    expect(autoRadarDomain([NaN, Infinity])).toBeUndefined();
+  it('все нули — невырожденный домен (иначе дубль ключей tick-0)', () => {
+    const [min, max] = autoRadarDomain([0, 0, 0]);
+    expect(min).toBeLessThan(max);
+    expect([min, max]).toEqual([-1, 1]);
+  });
+
+  it('пустые/нечисловые — нейтральный невырожденный [0, 1]', () => {
+    expect(autoRadarDomain([])).toEqual([0, 1]);
+    expect(autoRadarDomain([NaN, Infinity])).toEqual([0, 1]);
   });
 
   it('игнорирует нечисловые среди валидных', () => {

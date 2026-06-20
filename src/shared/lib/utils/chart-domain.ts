@@ -10,9 +10,13 @@
 
 /**
  * Возвращает [min, max] для PolarRadiusAxis по реальным значениям метрик.
- * undefined — числовых значений нет (оставить дефолт recharts).
+ *
+ * Домен ВСЕГДА невырожденный (min < max). Это важно: при вырожденном домене
+ * (например, дефолтный [0, 'auto'] на сплошных нулях схлопывается в [0, 0])
+ * recharts 3.x генерит несколько тиков с координатой 0 и одинаковым ключом
+ * `tick-0` → React-предупреждение о дублирующихся ключах.
  */
-export function autoRadarDomain(values: number[]): [number, number] | undefined {
+export function autoRadarDomain(values: number[]): [number, number] {
   let min = Infinity;
   let max = -Infinity;
   for (const v of values) {
@@ -20,11 +24,13 @@ export function autoRadarDomain(values: number[]): [number, number] | undefined 
     if (v < min) min = v;
     if (v > max) max = v;
   }
-  if (min === Infinity) return undefined;
+
+  // Нет числовых значений — нейтральный невырожденный домен.
+  if (min === Infinity) return [0, 1];
 
   if (min === max) {
-    // Единственное значение — раздвигаем симметрично, чтобы точка не легла
-    // ровно на край/центр.
+    // Единственное значение (в т.ч. все нули) — раздвигаем симметрично,
+    // чтобы точка не легла ровно на край/центр и домен не выродился.
     const pad = Math.abs(min) * 0.1 || 1;
     return [min - pad, max + pad];
   }

@@ -18,6 +18,8 @@ interface GroupRadarChartProps {
   metricNames: Record<string, string>;
   title: string;
   metricConfigs?: VirtualMetric[];
+  /** Код → имя (словарь): для подписей оси/тултипа. Позиция — по сырому name. */
+  resolveLabel?: (label: string) => string;
 }
 
 export const GroupRadarChart = memo(function GroupRadarChart({
@@ -26,7 +28,10 @@ export const GroupRadarChart = memo(function GroupRadarChart({
   metricNames,
   title,
   metricConfigs,
+  resolveLabel,
 }: GroupRadarChartProps) {
+  const displayLabel = (v: unknown) =>
+    resolveLabel ? resolveLabel(String(v)) : String(v);
   const groupedThresholds = useMemo(
     () => groupThresholdsByValue(metricConfigs || [], metricKeys),
     [metricConfigs, metricKeys]
@@ -55,9 +60,15 @@ export const GroupRadarChart = memo(function GroupRadarChart({
             <PolarGrid stroke="#94a3b8" strokeOpacity={0.3} />
             <PolarAngleAxis
               dataKey="name"
+              tickFormatter={displayLabel}
               tick={{ fontSize: 11, fill: '#94a3b8' }}
             />
-            <PolarRadiusAxis domain={radarDomain} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+            {/* tick={false}: подписи радиальной оси скрыты намеренно.
+                recharts строит тики через renderTicks только при truthy tick;
+                на «мелком» float-домене niceTicks плодит тики с одинаковой
+                координатой → дубль ключей `tick-<radius>`. Зум задаёт domain
+                (масштаб полигона), а точные значения видны в тултипе. */}
+            <PolarRadiusAxis domain={radarDomain} tick={false} axisLine={false} />
             {groupedThresholds.map((group, gi) => {
               const thresholdKey = `__threshold_${gi}`;
               return (
@@ -123,7 +134,7 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                 if (filtered.length === 0) return null;
                 return (
                   <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
-                    <div className="font-bold text-slate-900 dark:text-white mb-2">{label}</div>
+                    <div className="font-bold text-slate-900 dark:text-white mb-2">{displayLabel(label)}</div>
                     {filtered.map((entry, i) => (
                       <div key={i} className="flex justify-between gap-3">
                         <span style={{ color: entry.color ?? '#6366f1' }}>

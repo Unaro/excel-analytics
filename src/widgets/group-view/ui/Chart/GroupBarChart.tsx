@@ -21,6 +21,8 @@ interface GroupBarChartProps {
   metricNames: Record<string, string>;
   title: string;
   metricConfigs?: VirtualMetric[];
+  /** Код → имя (словарь): для подписей оси/тултипа. Позиция — по сырому name. */
+  resolveLabel?: (label: string) => string;
 }
 
 export const GroupBarChart = memo(function GroupBarChart({
@@ -29,7 +31,10 @@ export const GroupBarChart = memo(function GroupBarChart({
   metricNames,
   title,
   metricConfigs,
+  resolveLabel,
 }: GroupBarChartProps) {
+  const displayLabel = (v: unknown) =>
+    resolveLabel ? resolveLabel(String(v)) : String(v);
   const groupedThresholds = useMemo(
     () => groupThresholdsByValue(metricConfigs || [], metricKeys),
     [metricConfigs, metricKeys]
@@ -49,6 +54,7 @@ export const GroupBarChart = memo(function GroupBarChart({
             <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} vertical={false} />
             <XAxis
               dataKey="name"
+              tickFormatter={displayLabel}
               tick={{ fontSize: 11, fill: '#94a3b8' }}
               axisLine={false}
               tickLine={false}
@@ -65,7 +71,7 @@ export const GroupBarChart = memo(function GroupBarChart({
                 if (!active || !payload || !payload.length) return null;
                 return (
                   <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
-                    <div className="font-bold text-slate-900 dark:text-white mb-2">{label}</div>
+                    <div className="font-bold text-slate-900 dark:text-white mb-2">{displayLabel(label)}</div>
                     {payload.map((entry, i) => (
                       <div key={i} className="flex justify-between gap-3">
                         <span style={{ color: entry.color ?? '#6366f1' }}>

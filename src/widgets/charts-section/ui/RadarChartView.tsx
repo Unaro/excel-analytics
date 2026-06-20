@@ -33,7 +33,7 @@ export const RadarChartView = memo(function RadarChartView({
       <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
         <PolarGrid stroke={axisColor} strokeOpacity={0.2} />
         <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: axisColor }} />
-        <PolarRadiusAxis angle={30} domain={radarDomain ?? [0, 'auto']} tick={false} axisLine={false} />
+        <PolarRadiusAxis angle={30} domain={radarDomain} tick={false} axisLine={false} />
         {groupedThresholds.map((group, gi) => {
           const thresholdKey = `__threshold_${gi}`;
           return (
