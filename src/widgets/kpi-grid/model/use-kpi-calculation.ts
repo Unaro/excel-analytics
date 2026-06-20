@@ -164,6 +164,7 @@ export function useKPICalculation(
     buildParams,
     buildCacheKey,
     deps: [configHash, filtersHash, widgets.length, formulaOptionsHash],
+    label: 'kpi',
   });
 
   return useMemo(() => {

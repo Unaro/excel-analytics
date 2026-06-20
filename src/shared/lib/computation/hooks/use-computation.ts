@@ -20,6 +20,8 @@ export interface UseComputationOptions {
   debounceMs?: number;
   autoExecute?: boolean;
   deps?: unknown[];
+  /** Метка для профиля задержки (например 'dashboard' / 'hierarchy:НП'). */
+  label?: string;
 }
 
 export interface UseComputationResult {
@@ -65,6 +67,7 @@ export function useComputation({
   debounceMs = 100,
   autoExecute = true,
   deps = [],
+  label = 'compute',
 }: UseComputationOptions): UseComputationResult {
   const [result, setResult] = useState<DashboardComputationResult | null>(null);
   const [isComputing, setIsComputing] = useState(false);
@@ -72,6 +75,9 @@ export function useComputation({
   const requestVersionRef = useRef(0);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Момент, когда работа была запрошена (изменение deps) — для замера
+  // сквозной задержки «клик → результат» (debounce + очередь + воркер).
+  const pendingStartRef = useRef<number | null>(null);
 
   // ✅ NEW: Храним последние версии функций в refs
   const buildParamsRef = useRef(buildParams);
@@ -105,6 +111,20 @@ export function useComputation({
 
       const currentVersion = ++requestVersionRef.current;
 
+      // Замер сквозной задержки: для force-пути (recalculate без debounce)
+      // ставим отметку здесь, если её ещё не поставил execute().
+      if (pendingStartRef.current === null) pendingStartRef.current = performance.now();
+      const logLatency = (kind: 'cache' | 'worker') => {
+        const start = pendingStartRef.current;
+        pendingStartRef.current = null;
+        if (start != null) {
+          logger.info(
+            `[useComputation] ⏱️ ${label} → ${kind} ${Math.round(performance.now() - start)}ms ` +
+              `(debounce ${debounceMs}ms incl.)`
+          );
+        }
+      };
+
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
@@ -121,6 +141,7 @@ export function useComputation({
           if (cached) {
             setResult(cached.result);
             setIsComputing(false);
+            logLatency('cache');
             return;
           }
         }
@@ -134,6 +155,7 @@ export function useComputation({
 
         setResult(computedResult);
         setIsComputing(false);
+        logLatency('worker');
 
         cache.set(cacheKey, computedResult).catch(err => {
           logger.warn('[useComputation] Cache save failed:', err);
@@ -148,10 +170,13 @@ export function useComputation({
       }
     },
     // ✅ УБРАЛИ buildParams и buildCacheKey из зависимостей!
-    [activeDatasetId, isSyncing, cache, engine]
+    [activeDatasetId, isSyncing, cache, engine, label, debounceMs]
   );
 
   const execute = useCallback(async (): Promise<void> => {
+    // Отметка старта = момент запроса работы (до debounce), чтобы профиль
+    // включал ожидание debounce — главный подозреваемый в «лаге после клика».
+    if (pendingStartRef.current === null) pendingStartRef.current = performance.now();
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }

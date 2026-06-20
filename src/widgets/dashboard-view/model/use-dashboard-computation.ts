@@ -177,6 +177,7 @@ export function useDashboardComputation(
     buildParams,
     buildCacheKey,
     deps: [compositeHash, dashboard?.id],
+    label: 'dashboard',
   });
 
   // Запись результата в useComputedMetricsStore удалена вместе со стором:

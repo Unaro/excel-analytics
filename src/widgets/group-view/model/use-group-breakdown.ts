@@ -219,6 +219,7 @@ const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.
     buildParams,
     buildCacheKey,
     deps: [filtersHash, configHash, group?.id],
+    label: 'group',
   });
 
   const summary = computeResult?.groups[0] ?? null;

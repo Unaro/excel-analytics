@@ -115,6 +115,15 @@ export function useHierarchyLevelNodes(
     const controller = new AbortController();
     setIsLoading(true);
 
+    // Профиль задержки: уровни иерархии считаются БЕЗ debounce и занимают
+    // единственный воркер раньше таблицы дашборда (см. ROADMAP «лаг фильтра»).
+    const tStart = performance.now();
+    const logLatency = (kind: 'cache' | 'worker') =>
+      logger.info(
+        `[HierarchyNodes] ⏱️ ${columnName} → ${kind} ` +
+          `${Math.round(performance.now() - tStart)}ms`
+      );
+
     const compute = async () => {
       const { groups, dashboardGroupsConfig, metricTemplates, virtualMetrics } = buildDummyParams(columnName);
 
@@ -146,6 +155,7 @@ export function useHierarchyLevelNodes(
         })).sort((a, b) => a.displayValue.localeCompare(b.displayValue, undefined, { numeric: true }));
         setNodes(mapped);
         setIsLoading(false);
+        logLatency('cache');
         return;
       }
 
@@ -185,6 +195,7 @@ export function useHierarchyLevelNodes(
         })).sort((a, b) => a.displayValue.localeCompare(b.displayValue, undefined, { numeric: true }));
 
         setNodes(mapped);
+        logLatency('worker');
       } catch (err) {
         // Отмена — штатный исход при размонтировании/смене уровня
         if (err instanceof DOMException && err.name === 'AbortError') return;
