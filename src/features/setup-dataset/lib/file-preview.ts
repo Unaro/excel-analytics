@@ -12,6 +12,13 @@ export interface ImportParams {
   decimalSeparator: DecimalSeparator;
   /** Тип каждой колонки по имени (numeric/date/categorical/ignore). */
   columnTypes: Record<string, ColumnClassification>;
+  /**
+   * Формат дат в стиле strptime для нативного CSV (`read_csv_auto`).
+   * Задаётся, когда date-колонки записаны в нероссийском для DuckDB виде
+   * (напр. `15.03.2024` → `%d.%m.%Y`); для ISO (`2024-03-15`) не нужен —
+   * автодетект DuckDB справляется. undefined — формат не навязываем.
+   */
+  dateFormat?: string;
 }
 
 /**
@@ -301,4 +308,41 @@ export function guessColumnTypes(
     result[header] = guessColumnType(column, dec);
   });
   return result;
+}
+
+// День-месяц-год с точкой/слешем: `15.03.2024`, `1/3/2024`.
+const RU_DOT_DATE_RE = /^\d{1,2}\.\d{1,2}\.\d{4}/;
+const RU_SLASH_DATE_RE = /^\d{1,2}\/\d{1,2}\/\d{4}/;
+
+/**
+ * Определяет strptime-формат date-колонок для нативного CSV (`read_csv_auto`).
+ *
+ * DuckDB автоматически разбирает только ISO-даты (`2024-03-15`). Российский
+ * формат `15.03.2024` авто-детект оставит строкой — нужен явный `dateformat`.
+ * Смотрим только на колонки, помеченные пользователем как `date`, и берём
+ * формат по большинству значений (датасет однороден). ISO/смешанное →
+ * undefined: формат не навязываем, чтобы не сломать авто-детект.
+ */
+export function detectDateFormat(
+  headers: string[],
+  rows: string[][],
+  columnTypes: Record<string, ColumnClassification>
+): string | undefined {
+  let dot = 0;
+  let slash = 0;
+  let total = 0;
+  headers.forEach((header, ci) => {
+    if (columnTypes[header] !== 'date') return;
+    for (const r of rows) {
+      const v = (r[ci] ?? '').trim();
+      if (v === '') continue;
+      total++;
+      if (RU_DOT_DATE_RE.test(v)) dot++;
+      else if (RU_SLASH_DATE_RE.test(v)) slash++;
+    }
+  });
+  if (total === 0) return undefined;
+  if (dot / total > 0.5) return '%d.%m.%Y';
+  if (slash / total > 0.5) return '%d/%m/%Y';
+  return undefined;
 }

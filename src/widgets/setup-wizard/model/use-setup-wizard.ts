@@ -7,6 +7,7 @@ import {
   buildCsvPreviewFromText,
   isCsvFileName,
   guessColumnTypes,
+  detectDateFormat,
   CSV_PREFIX_BYTES,
   type FilePreview,
   type ImportParams,
@@ -154,6 +155,19 @@ export function useSetupWizard() {
 
   const hasMultipleDatasets = dataDatasetCount > 0;
 
+  // Параметры импорта + автоопределённый формат дат (RU `15.03.2024` →
+  // `%d.%m.%Y`). Считаем здесь, чтобы не дублировать в каждом сеттере типов:
+  // зависит от типов колонок и сэмпла превью, пересчёт при их изменении.
+  const importParamsFinal = useMemo<ImportParams | null>(() => {
+    if (!importParams || !preview) return importParams;
+    const dateFormat = detectDateFormat(
+      preview.headers,
+      preview.rows,
+      importParams.columnTypes
+    );
+    return dateFormat ? { ...importParams, dateFormat } : importParams;
+  }, [importParams, preview]);
+
   return {
     step,
     setStep,
@@ -172,7 +186,7 @@ export function useSetupWizard() {
     selectedFile,
     preview,
     previewLoading,
-    importParams,
+    importParams: importParamsFinal,
     handleFileSelected,
     setDelimiter,
     setDecimalSeparator,

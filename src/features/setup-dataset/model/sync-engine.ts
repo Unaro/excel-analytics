@@ -87,6 +87,7 @@ export async function syncFromFile(file: File, params?: ImportParams) {
           delimiter: params.delimiter ?? ',',
           decimalSeparator: params.decimalSeparator,
           columnTypes: params.columnTypes,
+          dateFormat: params.dateFormat,
         }
       : undefined;
     const { configs, totalRows, totalColumns, sheetNames } =

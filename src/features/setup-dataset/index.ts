@@ -18,6 +18,7 @@ export {
   detectLineEnding,
   guessColumnTypes,
   guessColumnType,
+  detectDateFormat,
   CSV_PREFIX_BYTES,
 } from './lib/file-preview';
 export type {

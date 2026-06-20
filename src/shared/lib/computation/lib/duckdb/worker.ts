@@ -151,6 +151,9 @@ export interface ImportParseOptions {
   /** Тип каждой колонки по имени; categorical/ignore → читать как VARCHAR
    *  (сохраняет коды с ведущими нулями). */
   columnTypes: Record<string, string>;
+  /** strptime-формат дат для read_csv_auto (напр. `%d.%m.%Y` для RU-дат);
+   *  undefined — полагаемся на авто-детект (ISO). */
+  dateFormat?: string;
 }
 
 export interface ImportExcelPayload {
@@ -409,6 +412,10 @@ async function importCsvNative(
     .filter(([, t]) => t === 'categorical' || t === 'ignore')
     .map(([name]) => `'${sqlStr(name)}': 'VARCHAR'`);
   const typesClause = varcharCols.length ? `, types = {${varcharCols.join(', ')}}` : '';
+  // RU-даты (`15.03.2024`) авто-детект DuckDB не разбирает — навязываем формат.
+  const dateClause = opts.dateFormat
+    ? `, dateformat = '${sqlStr(opts.dateFormat)}'`
+    : '';
 
   const buildSql = (withTypes: boolean) => `
     CREATE TABLE ${tableName} AS SELECT * FROM read_csv_auto(
@@ -421,7 +428,7 @@ async function importCsvNative(
       header = true,
       delim = '${sqlStr(opts.delimiter)}',
       decimal_separator = '${sqlStr(opts.decimalSeparator)}',
-      quote = '"'${withTypes ? typesClause : ''}
+      quote = '"'${dateClause}${withTypes ? typesClause : ''}
     )
   `;
 

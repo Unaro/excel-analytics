@@ -7,6 +7,7 @@ import {
   isCsvFileName,
   guessColumnType,
   guessColumnTypes,
+  detectDateFormat,
 } from './file-preview';
 
 const encode = (s: string) => new TextEncoder().encode(s).buffer;
@@ -125,6 +126,39 @@ describe('guessColumnTypes: по колонкам', () => {
       'Сумма': 'numeric',
       'Дата': 'date',
     });
+  });
+});
+
+describe('detectDateFormat: формат date-колонок для нативного CSV', () => {
+  const headers = ['Дата', 'Сумма'];
+
+  it('RU точечный формат → %d.%m.%Y', () => {
+    const rows = [['15.03.2024', '100'], ['01.12.2023', '200']];
+    expect(detectDateFormat(headers, rows, { 'Дата': 'date', 'Сумма': 'numeric' }))
+      .toBe('%d.%m.%Y');
+  });
+
+  it('RU слеш-формат → %d/%m/%Y', () => {
+    const rows = [['15/03/2024', '100'], ['1/12/2023', '200']];
+    expect(detectDateFormat(headers, rows, { 'Дата': 'date', 'Сумма': 'numeric' }))
+      .toBe('%d/%m/%Y');
+  });
+
+  it('ISO-даты → undefined (авто-детект DuckDB)', () => {
+    const rows = [['2024-03-15', '100'], ['2023-12-01', '200']];
+    expect(detectDateFormat(headers, rows, { 'Дата': 'date', 'Сумма': 'numeric' }))
+      .toBeUndefined();
+  });
+
+  it('игнорирует колонки, не помеченные как date', () => {
+    const rows = [['15.03.2024', '100']];
+    // «Дата» помечена categorical → не учитываем; date-колонок нет → undefined
+    expect(detectDateFormat(headers, rows, { 'Дата': 'categorical', 'Сумма': 'numeric' }))
+      .toBeUndefined();
+  });
+
+  it('пустой сэмпл → undefined', () => {
+    expect(detectDateFormat(headers, [['', '']], { 'Дата': 'date' })).toBeUndefined();
   });
 });
 
