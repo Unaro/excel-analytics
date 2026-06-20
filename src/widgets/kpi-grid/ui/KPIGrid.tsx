@@ -2,23 +2,19 @@
 
 import { Card } from '@/shared/ui/card';
 import { Trash2, Calculator } from 'lucide-react';
-import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
+import { useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
-import { HierarchyFilterValue } from '@/shared/lib/validators';
-import { useKPICalculation } from '../model/use-kpi-calculation';
+import type { KPIResult } from '@/shared/lib/computation/lib/kpi-compiler';
 
 interface KPIGridProps {
   dashboardId: string;
-  widgets: KPIWidget[];
-  currentFilters: HierarchyFilterValue[];
+  /** Значения KPI из общего прохода дашборда (№11) — больше не считаем сами. */
+  results: KPIResult[];
   isEditMode?: boolean;
 }
 
-export function KPIGrid({ dashboardId, widgets, currentFilters, isEditMode = false }: KPIGridProps) {
-  const results = useKPICalculation(dashboardId, widgets, currentFilters);
+export function KPIGrid({ dashboardId, results, isEditMode = false }: KPIGridProps) {
   const removeWidget = useDashboardStore(s => s.removeKPIWidget);
-
-  
 
   if (results.length === 0) return null;
 

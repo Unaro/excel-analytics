@@ -11,8 +11,46 @@ import type {
 } from '@/shared/lib/validators';
 import { KPIWidget } from '@/shared/lib/types/dashboard';
 import { extractVariables } from '@/shared/lib/utils/formula';
+import type { DashboardComputationResult } from '@/shared/lib/types/computation';
 
 export const KPI_VIRTUAL_GROUP_ID = 'kpi_virtual_group';
+
+export interface KPIResult {
+  widget: KPIWidget;
+  template: MetricTemplate;
+  value: number;
+  formattedValue: string;
+  error?: string;
+}
+
+/**
+ * Извлекает значения KPI-виджетов из общего результата вычисления дашборда
+ * (KPI-группа теперь считается одним проходом вместе с дашбордом — см. №11).
+ */
+export function mapResultsToKPI(
+  result: DashboardComputationResult,
+  widgets: KPIWidget[],
+  templates: MetricTemplate[],
+  widgetToVmMap: Map<string, string>
+): KPIResult[] {
+  const kpiGroup = result.groups.find(g => g.groupId === KPI_VIRTUAL_GROUP_ID);
+  if (!kpiGroup) return [];
+
+  return widgets.map(widget => {
+    const template = templates.find(t => t.id === widget.templateId)!;
+    const vmId = widgetToVmMap.get(widget.id);
+    const vmResult = kpiGroup.virtualMetrics.find(
+      vm => vm.virtualMetricId === vmId
+    );
+    return {
+      widget,
+      template,
+      value: vmResult?.value ?? 0,
+      formattedValue: vmResult?.formattedValue ?? '—',
+      error: vmResult?.error,
+    };
+  });
+}
 
 export interface CompiledKPI {
   groups: IndicatorGroup[];

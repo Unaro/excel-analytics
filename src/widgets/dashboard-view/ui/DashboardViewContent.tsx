@@ -1,7 +1,7 @@
 'use client';
 
 import { use, useMemo, useState } from 'react';
-import { KPIWidget, useDashboardStore } from '@/entities/dashboard';
+import { useDashboardStore } from '@/entities/dashboard';
 import { HierarchyTree } from '@/widgets/hierarchy-filter';
 import { KPIGrid } from '@/widgets/kpi-grid';
 import { DashboardMetricsTable } from '@/widgets/dashboard-metrics-table';
@@ -25,7 +25,6 @@ import type { BreakdownItem } from '@/shared/lib/types/computation';
 import { HierarchyFilterValue } from '@/shared/lib/validators';
 
 
-const EMPTY_WIDGETS: KPIWidget[] = [];
 const EMPTY_FILTERS: HierarchyFilterValue[] = [];
 
 /** Подписи размерностей временно́й группировки. */
@@ -76,7 +75,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   const [dateGranularity, setDateGranularity] = useState<DateGranularity | null>(null);
 
   // Вычисление метрик дашборда
-  const { result, isComputing, error, recalculate, dateColumn, effectiveVirtualMetrics } =
+  const { result, isComputing, error, recalculate, dateColumn, effectiveVirtualMetrics, kpiResults } =
     useDashboardComputation(dashboardId, { dateGranularity });
 
   // Данные дашборда
@@ -92,12 +91,6 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
       s => s.dashboards.find(d => d.id === dashboardId)?.hierarchyFilters ?? EMPTY_FILTERS
     )
   );
-
-  const kpiWidgets = useMemo(
-    () => dashboard?.kpiWidgets ?? EMPTY_WIDGETS,
-    [dashboard?.kpiWidgets]
-  );
-
 
   // UI-состояние чартов и таблицы — на эффективных колонках (формат из
   // шаблона), а не на хранимых (которые несут только templateId/colorConfig).
@@ -179,8 +172,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
           <ErrorBoundary label="KPI Grid" onReset={recalculate}>
             <KPIGrid
               dashboardId={dashboardId}
-              widgets={kpiWidgets}
-              currentFilters={hierarchyFilters}
+              results={kpiResults}
               isEditMode={true}
             />
           </ErrorBoundary>

@@ -23,15 +23,23 @@ import type {
   IndicatorGroupInDashboard,
   VirtualMetric,
 } from '@/shared/lib/validators';
-import type { Dashboard } from '@/entities/dashboard';
+import type { Dashboard, KPIWidget } from '@/entities/dashboard';
 import type { CacheKey } from '@/shared/lib/storage';
 import { useComputation } from '@/shared/lib/computation/hooks/use-computation';
+import {
+  compileKPIsToComputeParams,
+  mapResultsToKPI,
+  KPI_VIRTUAL_GROUP_ID,
+  type KPIResult,
+} from '@/shared/lib/computation/lib/kpi-compiler';
 
 const EMPTY_FILTERS: HierarchyFilterValue[] = [];
 const EMPTY_DASHBOARD_GROUPS: IndicatorGroupInDashboard[] = [];
 const EMPTY_VIRTUAL_METRICS: VirtualMetric[] = [];
 const EMPTY_GROUPS: IndicatorGroup[] = [];
 const EMPTY_TEMPLATES: MetricTemplate[] = [];
+const EMPTY_WIDGETS: KPIWidget[] = [];
+const EMPTY_KPI_RESULTS: KPIResult[] = [];
 
 const EMPTY_CONFIGS: ColumnConfig[] = [];
 
@@ -79,6 +87,42 @@ export function useDashboardComputation(
   const storedColumns = dashboard?.virtualMetrics ?? EMPTY_VIRTUAL_METRICS;
   const groups = useIndicatorGroupStore(useShallow(s => s.groups)) ?? EMPTY_GROUPS;
   const metricTemplates = useMetricTemplateStore(useShallow(s => s.templates)) ?? EMPTY_TEMPLATES;
+
+  // Колонки, доступные движку (без ignore). Для PG это whitelist (обязателен
+  // в query-compiler), для файла — фильтр. Раньше дашборд его не передавал, и
+  // KPI считались отдельным запросом со своим validColumns; теперь нужно здесь.
+  const validColumns = useMemo(
+    () => columnConfigs.filter(c => c.classification !== 'ignore').map(c => c.columnName),
+    [columnConfigs]
+  );
+
+  // №11: KPI-группа складывается в ТОТ ЖЕ compute, что и дашборд (один проход
+  // по данным с тем же WHERE), вместо отдельного SQL. Виджеты живут на самом
+  // дашборде, читаем их здесь.
+  const kpiWidgets = dashboard?.kpiWidgets ?? EMPTY_WIDGETS;
+  const compiledKpi = useMemo(
+    () => compileKPIsToComputeParams(kpiWidgets, metricTemplates),
+    [kpiWidgets, metricTemplates]
+  );
+  const hasKpi = compiledKpi.groups[0].metrics.length > 0;
+  // Хеш структуры KPI-виджетов (id/шаблон/имя/привязки) — для инвалидации
+  // кэша при изменении набора KPI. Формулы шаблонов уже покрыты configHash.
+  const kpiConfigHash = useMemo(() => {
+    if (kpiWidgets.length === 0) return '';
+    return (
+      'kpi:' +
+      kpiWidgets
+        .map(
+          w =>
+            `${w.id}|${w.templateId}|${w.customName ?? ''}|` +
+            Object.entries(w.bindings)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([k, v]) => `${k}=${v}`)
+              .join(',')
+        )
+        .join(';')
+    );
+  }, [kpiWidgets]);
 
   // Колонка дашборда = шаблон. Здесь приводим хранимые колонки к виду,
   // понятному движку и таблице:
@@ -128,28 +172,41 @@ export function useDashboardComputation(
   const formulaOptions = useAppSettingsStore(useShallow(selectFormulaOptions));  
   const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.requireExplicit}`;
 
+  // validColumns влияет на компиляцию (фильтр/whitelist) → в хеш кэша, иначе
+  // смена классификации колонки на ignore не пересчитает дашборд.
+  const validColumnsHash = useMemo(() => validColumns.join(','), [validColumns]);
+
   const compositeHash = useMemo(
     () =>
-      `${filtersHash}:${configHash}:${formulaOptionsHash}` +
+      `${filtersHash}:${configHash}:${formulaOptionsHash}:vc:${validColumnsHash}` +
+      (kpiConfigHash ? `:${kpiConfigHash}` : '') +
       (isTimeMode ? `:dc:${dateColumn.columnName}:dg:${dateGranularity}` : ''),
-    [filtersHash, configHash, formulaOptionsHash, isTimeMode, dateColumn, dateGranularity]
+    [filtersHash, configHash, formulaOptionsHash, validColumnsHash, kpiConfigHash, isTimeMode, dateColumn, dateGranularity]
   );
 
   const buildParams = useCallback((): ClientComputeParams | null => {
     if (!dashboard || !activeDatasetId) return null;
+    // KPI-группа добавляется к группам дашборда → один SQL на оба (№11).
+    // breakdown по датам KPI не нужен, поэтому groupByDate* на KPI не влияет
+    // (синтетическая группа без drill — движок вернёт по ней только сводку).
     return {
       datasetId: activeDatasetId,
       dashboardId,
       encryptedConfig: encryptedConnection,
       tableName: 'placeholder',
       filters: hierarchyFilters,
-      groups,
-      dashboardGroupsConfig,
+      groups: hasKpi ? [...groups, ...compiledKpi.groups] : groups,
+      dashboardGroupsConfig: hasKpi
+        ? [...dashboardGroupsConfig, ...compiledKpi.dashboardGroupsConfig]
+        : dashboardGroupsConfig,
       metricTemplates,
-      virtualMetrics,
+      virtualMetrics: hasKpi
+        ? [...virtualMetrics, ...compiledKpi.virtualMetrics]
+        : virtualMetrics,
       groupByDateColumn: isTimeMode ? dateColumn.columnName : undefined,
       groupByDateGranularity: isTimeMode ? dateGranularity : undefined,
       formulaOptions,
+      validColumns,
       pgSchema,
       pgTable,
     };
@@ -157,7 +214,7 @@ export function useDashboardComputation(
     dashboard, activeDatasetId, dashboardId, encryptedConnection,
     hierarchyFilters, groups, dashboardGroupsConfig,
     metricTemplates, virtualMetrics, isTimeMode, dateColumn, dateGranularity,
-    formulaOptions,
+    hasKpi, compiledKpi, formulaOptions, validColumns,
     pgSchema, pgTable,
   ]);
 
@@ -186,7 +243,16 @@ export function useDashboardComputation(
 
   const mergedResult = useMemo<DashboardComputationResult | null>(() => {
     if (!result) return null;
-    if (virtualMetrics.length === 0) return result;
+    // Синтетическая KPI-группа не должна протекать в потребителей дашборда
+    // (чарты/таблица/статы) — исключаем её из групп результата (№11).
+    const dashboardGroups = result.groups.filter(
+      g => g.groupId !== KPI_VIRTUAL_GROUP_ID
+    );
+    if (virtualMetrics.length === 0) {
+      return dashboardGroups.length === result.groups.length
+        ? result
+        : { ...result, groups: dashboardGroups };
+    }
     // id → актуальное имя: один проход вместо .find() на каждую ячейку
     // (иначе O(groups × строк × метрик × |virtualMetrics|)).
     const nameById = new Map(virtualMetrics.map(f => [f.id, f.name]));
@@ -194,7 +260,7 @@ export function useDashboardComputation(
       const name = nameById.get(vm.virtualMetricId);
       return name === undefined ? vm : { ...vm, virtualMetricName: name };
     };
-    const updatedGroups = result.groups.map(group => ({
+    const updatedGroups = dashboardGroups.map(group => ({
       ...group,
       virtualMetrics: group.virtualMetrics.map(withFreshName),
       breakdown: group.breakdown?.map(item => ({
@@ -205,6 +271,13 @@ export function useDashboardComputation(
     return { ...result, virtualMetrics, groups: updatedGroups };
   }, [result, virtualMetrics]);
 
+  // KPI-значения извлекаются из того же результата (KPI-группа считалась
+  // вместе с дашбордом). KPIGrid получает их готовыми, без своего compute.
+  const kpiResults = useMemo<KPIResult[]>(() => {
+    if (!result || !hasKpi) return EMPTY_KPI_RESULTS;
+    return mapResultsToKPI(result, kpiWidgets, metricTemplates, compiledKpi.widgetToVmMap);
+  }, [result, hasKpi, kpiWidgets, metricTemplates, compiledKpi.widgetToVmMap]);
+
   return {
     result: mergedResult,
     isComputing,
@@ -213,5 +286,7 @@ export function useDashboardComputation(
     dateColumn,
     /** Эффективные колонки (формат из шаблона) — для таблицы и flatten. */
     effectiveVirtualMetrics: virtualMetrics,
+    /** Значения KPI-виджетов из общего прохода (№11). */
+    kpiResults,
   };
 }
