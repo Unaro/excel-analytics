@@ -58,8 +58,10 @@ import {
 
 /**
  * Создаёт группы показателей из колонок-метрик агрегата: по одной группе на
- * верхний заголовок шапки (proposeGroups), метрика = SUM(колонка) через общий
- * шаблон «Сумма». Снятые в панели группы (excludeGroups) пропускаются.
+ * верхний заголовок шапки (proposeGroups). Для КАЖДОЙ колонки заводится свой
+ * шаблон `SUM(колонка)` с именем колонки — иначе на дашборде все метрики
+ * схлопываются в одну (общий шаблон = одна идентичность: нельзя добавить
+ * вторую колонку и переименовать). Снятые в панели группы пропускаются.
  */
 function createAggregateGroups(
   datasetId: string,
@@ -79,33 +81,29 @@ function createAggregateGroups(
   const templateStore = useMetricTemplateStore.getState();
   const groupStore = useIndicatorGroupStore.getState();
 
-  // Общий шаблон «Сумма»: SUM(value), value привязывается к колонке метрики.
-  // Переиспользуем существующий, чтобы не плодить дубли при каждом импорте.
-  const existing = templateStore.templates.find(
-    t => t.formula === 'SUM(value)' && t.name === 'Сумма'
-  );
-  const sumTemplateId = existing
-    ? existing.id
-    : templateStore.addTemplate({
-        name: 'Сумма',
+  let created = 0;
+  for (const [groupName, cols] of byGroup) {
+    if (exclude.has(groupName)) continue;
+    const metrics = cols.map((col, i) => {
+      // Свой шаблон на колонку: имя = составное имя колонки (уникально и понятно
+      // в списке шаблонов/на дашборде), формула SUM(value), value → колонка.
+      const templateId = templateStore.addTemplate({
+        name: col.fullName,
         formula: 'SUM(value)',
         dependencies: [{ type: 'field', alias: 'value' }],
         displayFormat: 'number',
         decimalPlaces: 2,
       });
-
-  let created = 0;
-  for (const [groupName, cols] of byGroup) {
-    if (exclude.has(groupName)) continue;
-    const metrics = cols.map((col, i) => ({
-      id: nanoid(),
-      templateId: sumTemplateId,
-      fieldBindings: [{ id: nanoid(), fieldAlias: 'value', columnName: col.fullName }],
-      metricBindings: [],
-      enabled: true,
-      order: i,
-      customName: col.name || col.fullName,
-    }));
+      return {
+        id: nanoid(),
+        templateId,
+        fieldBindings: [{ id: nanoid(), fieldAlias: 'value', columnName: col.fullName }],
+        metricBindings: [],
+        enabled: true,
+        order: i,
+        customName: col.name || col.fullName,
+      };
+    });
     groupStore.addGroup({ name: groupName, fieldMappings: [], metrics, order: created }, datasetId);
     created++;
   }
