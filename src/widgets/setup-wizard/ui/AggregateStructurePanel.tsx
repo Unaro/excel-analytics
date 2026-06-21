@@ -72,10 +72,24 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
     return tokens.length ? { tokens } : {};
   }, [emptyTokensText]);
 
+  // Выбор групп к созданию (фаза 1 — снятый чекбокс = не создавать).
+  const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = (name: string) =>
+    setExcludedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+
   // Сообщаем разметку наверх — для импорта (фаза 1).
   useEffect(() => {
-    onLayoutChange?.({ headerRows, keyColumns, empty: emptyCfg });
-  }, [headerRows, keyColumns, emptyCfg, onLayoutChange]);
+    onLayoutChange?.({
+      headerRows,
+      keyColumns,
+      empty: emptyCfg,
+      excludeGroups: Array.from(excludedGroups),
+    });
+  }, [headerRows, keyColumns, emptyCfg, excludedGroups, onLayoutChange]);
 
   const { columns, classified, groups, tree } = useMemo(() => {
     const headerMatrix = rawMatrix.slice(0, headerRows);
@@ -89,15 +103,6 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       tree: buildHierarchyPreview(rows, keyColumns, { empty: emptyCfg, maxNodes: 60 }),
     };
   }, [rawMatrix, headerRows, keyColumns, emptyCfg]);
-
-  // Выбор групп к созданию (фаза 0 — визуально; на импорт не влияет).
-  const [excludedGroups, setExcludedGroups] = useState<Set<string>>(new Set());
-  const toggleGroup = (name: string) =>
-    setExcludedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(name)) next.delete(name); else next.add(name);
-      return next;
-    });
 
   const toggleKey = (index: number) =>
     setKeyColumns(prev =>

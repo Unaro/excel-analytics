@@ -40,11 +40,74 @@ import { del, set } from 'idb-keyval';
 import { mergeColumnConfigs } from '@/shared/lib/services';
 import { generateColumnConfigsFromPgSchema } from '@/entities/dataset';
 import { useHierarchyStore } from '@/entities/hierarchy';
+import { useMetricTemplateStore } from '@/entities/metric';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { DatasetRow } from '@/shared/lib/types';
 import type { ColumnClassification } from '@/shared/lib/types';
 import type { ImportParams } from '../lib/file-preview';
 import { readAggregateMatrix } from '../lib/file-preview';
-import { flattenLeaves, toAggregateCsv, type AggregateLayoutConfig } from '../lib/aggregate-layout';
+import {
+  flattenLeaves,
+  toAggregateCsv,
+  type AggregateLayoutConfig,
+  type AggregateColumn,
+} from '../lib/aggregate-layout';
+
+/**
+ * Создаёт группы показателей из колонок-метрик агрегата: по одной группе на
+ * верхний заголовок шапки (proposeGroups), метрика = SUM(колонка) через общий
+ * шаблон «Сумма». Снятые в панели группы (excludeGroups) пропускаются.
+ */
+function createAggregateGroups(
+  datasetId: string,
+  columns: AggregateColumn[],
+  excludeGroups?: string[]
+): number {
+  const byGroup = new Map<string, AggregateColumn[]>();
+  for (const col of columns) {
+    if (col.role !== 'metric') continue;
+    const key = col.groupName || '(без группы)';
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key)!.push(col);
+  }
+  if (byGroup.size === 0) return 0;
+
+  const exclude = new Set(excludeGroups ?? []);
+  const templateStore = useMetricTemplateStore.getState();
+  const groupStore = useIndicatorGroupStore.getState();
+
+  // Общий шаблон «Сумма»: SUM(value), value привязывается к колонке метрики.
+  // Переиспользуем существующий, чтобы не плодить дубли при каждом импорте.
+  const existing = templateStore.templates.find(
+    t => t.formula === 'SUM(value)' && t.name === 'Сумма'
+  );
+  const sumTemplateId = existing
+    ? existing.id
+    : templateStore.addTemplate({
+        name: 'Сумма',
+        formula: 'SUM(value)',
+        dependencies: [{ type: 'field', alias: 'value' }],
+        displayFormat: 'number',
+        decimalPlaces: 2,
+      });
+
+  let created = 0;
+  for (const [groupName, cols] of byGroup) {
+    if (exclude.has(groupName)) continue;
+    const metrics = cols.map((col, i) => ({
+      id: nanoid(),
+      templateId: sumTemplateId,
+      fieldBindings: [{ id: nanoid(), fieldAlias: 'value', columnName: col.fullName }],
+      metricBindings: [],
+      enabled: true,
+      order: i,
+      customName: col.name || col.fullName,
+    }));
+    groupStore.addGroup({ name: groupName, fieldMappings: [], metrics, order: created }, datasetId);
+    created++;
+  }
+  return created;
+}
 
 // ─────────────────────────────────────────────────────────────
 // syncFromFile
@@ -96,6 +159,7 @@ export async function syncFromFile(
     let importBuffer: ArrayBuffer = buffer;
     let importFileName = file.name;
     let aggregateKeyNames: string[] | null = null;
+    let aggregateColumns: AggregateColumn[] | null = null;
     let effectiveTypes: Record<string, ColumnClassification> | undefined = params?.columnTypes;
     let parseOptions = params
       ? {
@@ -119,6 +183,7 @@ export async function syncFromFile(
       effectiveTypes = columnTypes;
       parseOptions = { delimiter: ',', decimalSeparator: '.', columnTypes, dateFormat: undefined };
       aggregateKeyNames = flat.keyColumnNames;
+      aggregateColumns = flat.columns;
       logger.info(`[syncFromFile] Агрегат сплющен: ${flat.rows.length} листьев, ${flat.keyColumnNames.length} уровней`);
     }
 
@@ -189,6 +254,12 @@ export async function syncFromFile(
       for (const name of aggregateKeyNames) {
         hierarchy.addLevel(datasetId, { columnName: name, displayName: name });
       }
+    }
+
+    // Агрегат: метрики шапки → группы показателей (SUM по колонке).
+    if (aggregateColumns) {
+      const n = createAggregateGroups(datasetId, aggregateColumns, aggregate?.excludeGroups);
+      logger.info(`[syncFromFile] Создано групп показателей: ${n}`);
     }
 
     setDatasetRows(datasetId, previewRows);

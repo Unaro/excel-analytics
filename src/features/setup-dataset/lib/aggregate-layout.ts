@@ -297,6 +297,8 @@ export interface AggregateLayoutConfig {
   keyColumns: number[];
   empty?: EmptyConfig;
   totalKeywords?: string[];
+  /** Группы шапки, которые НЕ создавать (имена как в proposeGroups). */
+  excludeGroups?: string[];
 }
 
 export interface FlattenResult {
