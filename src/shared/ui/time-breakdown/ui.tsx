@@ -25,8 +25,8 @@ import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
-import { formatCompactNumber, formatRu } from '@/shared/lib/utils/format';
-import { checkRule, COLOR_STYLES, toDisplayScale } from '@/shared/lib/utils/metric-colors';
+import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { checkRule, COLOR_STYLES, toDisplayScale, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
@@ -186,10 +186,13 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
 
   const chartData = useMemo(() => {
     const rowByLabel = new Map(rows.map(r => [r.label, r]));
+    const fmt = currentMetric?.displayFormat;
     return dates.map(date => {
       const point: Record<string, string | number | null> = { date };
       for (const label of chartLabels) {
-        point[label] = metricValue(rowByLabel.get(label)?.cells.get(date));
+        // Масштаб отображения, как и порог-линия (group.y): percent доля → %.
+        const raw = metricValue(rowByLabel.get(label)?.cells.get(date));
+        point[label] = raw === null ? null : toDisplayScale(raw, fmt);
       }
       return point;
     });
@@ -321,7 +324,9 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                 fontSize: 12,
               }}
               formatter={(value) =>
-                typeof value === 'number' ? formatRu(value) : '—'
+                typeof value === 'number'
+                  ? formatDisplayValue(value, currentMetric?.displayFormat, currentMetric?.unit)
+                  : '—'
               }
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />

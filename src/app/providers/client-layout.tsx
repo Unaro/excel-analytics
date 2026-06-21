@@ -73,7 +73,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
             контента), из-за чего широкие таблицы/чарты раздували main и всю
             страницу. С min-w-0 main держит ширину вьюпорта, а внутренние
             overflow-x-auto (pivot-таблица, ScrollableChart) скроллятся в себе. */}
-        <main className="flex-1 min-w-0 lg:ml-64 min-h-[calc(100vh-4rem)] lg:min-h-screen p-4 md:p-8">
+        <main className="flex-1 min-w-0 lg:ml-64 min-h-[calc(100vh-4rem)] lg:min-h-screen p-4">
           {children}
         </main>
       </div>

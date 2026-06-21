@@ -4,8 +4,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, ReferenceLine, Label, Rectangle,
 } from 'recharts';
-import { formatCompactNumber, formatRu } from '@/shared/lib/utils/format';
-import { getColorForValue } from '@/shared/lib/utils/metric-colors';
+import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { ChartComponentProps } from '../model/types';
@@ -49,22 +49,25 @@ export const BarChartView = memo(function BarChartView({
             return (
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-lg shadow-xl text-sm">
                 <p className="font-bold text-slate-900 dark:text-white mb-2">{label}</p>
-                {filtered.map((entry, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <div
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: entry.color ?? '#6366f1' }}
-                    />
-                    <span className="text-slate-500 dark:text-slate-400 text-xs">
-                      {metricNames[String(entry.dataKey)]}:
-                    </span>
-                    <span className="font-mono font-medium text-slate-900 dark:text-slate-200 ml-auto">
-                      {typeof entry.value === 'number'
-                        ? formatRu(entry.value)
-                        : String(entry.value ?? '—')}
-                    </span>
-                  </div>
-                ))}
+                {filtered.map((entry, i) => {
+                  const vm = virtualMetrics.find(v => v.id === entry.dataKey);
+                  return (
+                    <div key={i} className="flex items-center gap-2">
+                      <div
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: entry.color ?? '#6366f1' }}
+                      />
+                      <span className="text-slate-500 dark:text-slate-400 text-xs">
+                        {metricNames[String(entry.dataKey)]}:
+                      </span>
+                      <span className="font-mono font-medium text-slate-900 dark:text-slate-200 ml-auto">
+                        {typeof entry.value === 'number'
+                          ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
+                          : String(entry.value ?? '—')}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             );
           }}
@@ -107,7 +110,8 @@ export const BarChartView = memo(function BarChartView({
               shape={(props: CustomBarShapeProps) => {
                 const { x = 0, y = 0, width = 0, height = 0, value, fill } = props;
                 const numericValue = typeof value === 'number' ? value : null;
-                const conditionalColor = getColorForValue(numericValue, rules, vm?.displayFormat);
+                // value уже в масштабе отображения — формат НЕ передаём (двойной ×100).
+                const conditionalColor = getColorForValue(numericValue, rules);
                 const finalFill = conditionalColor || fill || defaultColor;
                 return (
                   <Rectangle

@@ -4,7 +4,7 @@ import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   Radar, Legend, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { getColorForValue } from '@/shared/lib/utils/metric-colors';
+import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import type { ChartComponentProps } from '../model/types';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
@@ -71,7 +71,8 @@ export const RadarChartView = memo(function RadarChartView({
                 const { cx = 0, cy = 0, payload } = props;
                 const rawValue = payload?.[metricId];
                 const numericValue = typeof rawValue === 'number' ? rawValue : null;
-                const conditionalColor = getColorForValue(numericValue, rules, vm?.displayFormat);
+                // payload уже в масштабе отображения — формат НЕ передаём.
+                const conditionalColor = getColorForValue(numericValue, rules);
                 const isHighlighted = !!conditionalColor;
                 return (
                   <circle
@@ -99,7 +100,9 @@ export const RadarChartView = memo(function RadarChartView({
             return (
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-lg shadow-xl text-sm">
                 <p className="font-bold text-slate-900 dark:text-white mb-2">{label}</p>
-                {filtered.map((entry, i) => (
+                {filtered.map((entry, i) => {
+                  const vm = virtualMetrics.find(v => v.id === entry.dataKey);
+                  return (
                   <div key={i} className="flex items-center gap-2">
                     <div
                       className="w-2 h-2 rounded-full"
@@ -110,11 +113,12 @@ export const RadarChartView = memo(function RadarChartView({
                     </span>
                     <span className="font-mono font-medium text-slate-900 dark:text-slate-200 ml-auto">
                       {typeof entry.value === 'number'
-                        ? formatRu(entry.value)
+                        ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
                         : String(entry.value ?? '—')}
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             );
           }}

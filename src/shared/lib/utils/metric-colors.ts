@@ -33,6 +33,17 @@ export function toDisplayScale(value: number, format?: string): number {
 }
 
 /**
+ * Форматирует УЖЕ масштабированное (display) значение для подписи на чарте.
+ * `percent`/`percent_raw` → «N%» (значение уже в процентах после toDisplayScale),
+ * остальные форматы → число ru-RU с опциональной единицей измерения.
+ */
+export function formatDisplayValue(displayValue: number, format?: string, unit?: string): string {
+  const num = displayValue.toLocaleString('ru-RU');
+  if (format === 'percent' || format === 'percent_raw') return `${num}%`;
+  return unit ? `${num} ${unit}` : num;
+}
+
+/**
  * Проверяет значение против оператора правила условного форматирования.
  * `between` — включающий диапазон [threshold, threshold2].
  */

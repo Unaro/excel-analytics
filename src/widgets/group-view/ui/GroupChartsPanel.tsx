@@ -5,6 +5,7 @@ import { GroupBarChart } from './Chart/GroupBarChart';
 import { GroupRadarChart } from './Chart/GroupRadarChart';
 import { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
+import { toDisplayScale } from '@/shared/lib/utils/metric-colors';
 import { ThresholdLegend } from '@/shared/ui/threshold-marker/ThresholdLegend';
 import { DataItem } from '@/shared/lib/types/chart-data';
 import { ChartType } from '@/shared/lib/types/chart';
@@ -38,6 +39,14 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
   );
   const metricKeys = activeMetrics.map(vm => vm.virtualMetricId);
 
+  // id метрики → её формат отображения: чарты строятся в масштабе отображения
+  // (percent-доля → проценты), чтобы метрики с разными форматами сводились
+  // (0.7 как percent и 70 как percent_raw обе дают 70).
+  const formatById = useMemo(() => {
+    const map = new Map<string, string | undefined>();
+    metricConfigs.forEach(vm => map.set(vm.id, vm.displayFormat));
+    return map;
+  }, [metricConfigs]);
 
   const groupedThresholds = useMemo(
     () => groupThresholdsByValue(metricConfigs, metricKeys),
@@ -49,14 +58,14 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
       const row: DataItem = { name: item.label };
       activeMetrics.forEach(vm => {
         const val = item.virtualMetrics.find(m => m.virtualMetricId === vm.virtualMetricId);
-        row[vm.virtualMetricId] = val?.value ?? 0;
+        row[vm.virtualMetricId] = toDisplayScale(val?.value ?? 0, formatById.get(vm.virtualMetricId));
       });
       groupedThresholds.forEach((group, gi) => {
         row[`__threshold_${gi}`] = group.y;
       });
       return row;
     });
-  }, [breakdown, activeMetrics, groupedThresholds]);
+  }, [breakdown, activeMetrics, groupedThresholds, formatById]);
 
   
   const metricNames = useMemo(() => {

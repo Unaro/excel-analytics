@@ -5,7 +5,7 @@ import {
   Radar, Legend, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
-import { getColorForValue } from '@/shared/lib/utils/metric-colors';
+import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
@@ -114,7 +114,8 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                     const { cx = 0, cy = 0, payload } = props;
                     const rawValue = payload?.[key];
                     const numericValue = typeof rawValue === 'number' ? rawValue : null;
-                    const conditionalColor = getColorForValue(numericValue, rules, vm?.displayFormat);
+                    // payload уже в масштабе отображения — формат НЕ передаём.
+                    const conditionalColor = getColorForValue(numericValue, rules);
                     const isHighlighted = !!conditionalColor;
                     return (
                       <circle
@@ -144,18 +145,21 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                 return (
                   <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
                     <div className="font-bold text-slate-900 dark:text-white mb-2">{displayLabel(label)}</div>
-                    {filtered.map((entry, i) => (
-                      <div key={i} className="flex justify-between gap-3">
-                        <span style={{ color: entry.color ?? '#6366f1' }}>
-                          {metricNames[String(entry.dataKey)]}
-                        </span>
-                        <span className="font-mono font-bold">
-                          {typeof entry.value === 'number'
-                            ? formatRu(entry.value)
-                            : String(entry.value ?? '—')}
-                        </span>
-                      </div>
-                    ))}
+                    {filtered.map((entry, i) => {
+                      const vm = metricConfigs?.find(v => v.id === entry.dataKey);
+                      return (
+                        <div key={i} className="flex justify-between gap-3">
+                          <span style={{ color: entry.color ?? '#6366f1' }}>
+                            {metricNames[String(entry.dataKey)]}
+                          </span>
+                          <span className="font-mono font-bold">
+                            {typeof entry.value === 'number'
+                              ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
+                              : String(entry.value ?? '—')}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               }}

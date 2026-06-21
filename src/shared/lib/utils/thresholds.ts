@@ -3,9 +3,10 @@ import { FormattingRule } from './formatting-rules';
 
 export interface GroupedThreshold {
   /**
-   * Позиция ReferenceLine на оси (масштаб ПОСТРОЕНИЯ графика = сырые
-   * значения). Для percent порог переводится из процентов в долю
-   * (÷100), чтобы линия совпала с сырыми барами.
+   * Позиция ReferenceLine на оси. Чарты строятся в МАСШТАБЕ ОТОБРАЖЕНИЯ
+   * (бары прогоняются через toDisplayScale: percent доля → проценты), поэтому
+   * порог — это значение как его ввёл пользователь (= labelValue). Это чинит
+   * сведение метрик с разными форматами (percent 0.7 и percent_raw 70 → обе 70).
    */
   y: number;
   /** Значение для ПОДПИСИ (масштаб отображения — как ввёл пользователь). */
@@ -20,11 +21,6 @@ export interface GroupedThreshold {
   primaryColor: string;
   /** Является ли это "наложением" (2+ правил) */
   isOverlap: boolean;
-}
-
-/** Перевод порога из масштаба отображения в масштаб построения графика. */
-function toPlotScale(value: number, format?: string): number {
-  return format === 'percent' ? value / 100 : value;
 }
 
 const METRIC_COLOR_HEX: Record<string, string> = {
@@ -64,11 +60,13 @@ export function groupThresholdsByValue(
   for (const metricId of activeMetricIds) {
     const vm = virtualMetrics.find(v => v.id === metricId);
     if (!vm?.colorConfig?.rules) continue;
-    const fmt = vm.displayFormat;
 
+    // Чарты в масштабе отображения: порог = значение пользователя как есть
+    // (y совпадает с labelValue). Раньше для percent делили на 100 под сырые
+    // бары — теперь бары сами приводятся к display-масштабу.
     const pushPoint = (v: number, rule: FormattingRule) =>
       points.push({
-        y: toPlotScale(v, fmt),
+        y: v,
         labelValue: v,
         metricName: vm.name,
         metricId,

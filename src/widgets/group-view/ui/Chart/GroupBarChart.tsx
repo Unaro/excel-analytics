@@ -7,8 +7,8 @@ import {
 import { Card } from '@/shared/ui/card';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
 import type { VirtualMetric } from '@/shared/lib/validators';
-import { getColorForValue } from '@/shared/lib/utils/metric-colors';
-import { formatCompactNumber, formatRu } from '@/shared/lib/utils/format';
+import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
+import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
@@ -72,18 +72,21 @@ export const GroupBarChart = memo(function GroupBarChart({
                 return (
                   <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
                     <div className="font-bold text-slate-900 dark:text-white mb-2">{displayLabel(label)}</div>
-                    {payload.map((entry, i) => (
-                      <div key={i} className="flex justify-between gap-3">
-                        <span style={{ color: entry.color ?? '#6366f1' }}>
-                          {metricNames[String(entry.dataKey)]}
-                        </span>
-                        <span className="font-mono font-bold">
-                          {typeof entry.value === 'number'
-                            ? formatRu(entry.value)
-                            : String(entry.value ?? '—')}
-                        </span>
-                      </div>
-                    ))}
+                    {payload.map((entry, i) => {
+                      const vm = metricConfigs?.find(v => v.id === entry.dataKey);
+                      return (
+                        <div key={i} className="flex justify-between gap-3">
+                          <span style={{ color: entry.color ?? '#6366f1' }}>
+                            {metricNames[String(entry.dataKey)]}
+                          </span>
+                          <span className="font-mono font-bold">
+                            {typeof entry.value === 'number'
+                              ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
+                              : String(entry.value ?? '—')}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               }}
@@ -127,7 +130,9 @@ export const GroupBarChart = memo(function GroupBarChart({
                   shape={(props: CustomBarShapeProps) => {
                     const { x = 0, y = 0, width = 0, height = 0, value, fill } = props;
                     const numericValue = typeof value === 'number' ? value : null;
-                    const conditionalColor = getColorForValue(numericValue, rules, vm?.displayFormat);
+                    // value уже в масштабе отображения (данные прогнаны через
+                    // toDisplayScale) — формат НЕ передаём, иначе двойной ×100.
+                    const conditionalColor = getColorForValue(numericValue, rules);
                     const finalFill = conditionalColor || fill || defaultColor;
                     return (
                       <Rectangle
