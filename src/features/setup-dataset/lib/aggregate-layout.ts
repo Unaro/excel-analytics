@@ -1,0 +1,268 @@
+// ─────────────────────────────────────────────────────────────
+// Разметка файла-агрегата (мега-босс, фаза 0).
+//
+// Чистая логика детекта структуры по матрице превью: каскад ключевых колонок
+// (иерархия кодируется глубиной заполненного ключа), классификация строк
+// (лист / промежуточный узел / «Итого»), составные имена из multi-row шапки,
+// предпросмотр групп и дерева иерархии.
+//
+// Движок и импорт НЕ трогаются — это только парсинг + модель разметки.
+// Детект — best-effort предложение; пользователь подтверждает на шаге «Структура».
+// План: docs/architecture/aggregate-files.md
+// ─────────────────────────────────────────────────────────────
+
+/** Роль колонки в агрегате. */
+export type ColumnRole = 'key' | 'metric' | 'attribute';
+/** Тип строки данных. */
+export type RowKind = 'leaf' | 'node' | 'total';
+
+export interface AggregateColumn {
+  index: number;
+  /** Верхний заголовок (из групповой строки шапки); '' — нет. */
+  groupName: string;
+  /** Имя из нижней строки шапки. */
+  name: string;
+  /** Составное имя: «группа · имя» либо просто имя. */
+  fullName: string;
+  role: ColumnRole;
+}
+
+export interface ClassifiedRow {
+  cells: string[];
+  /** Глубина = порядковый индекс самого правого заполненного ключа (0-based).
+   *  -1 — ни один ключ не заполнен. */
+  level: number;
+  kind: RowKind;
+  /** Метка самого глубокого заполненного ключа (для total — текст метки). */
+  label: string;
+}
+
+/** Настройка трактовки пустоты (0 — НЕ пустота по умолчанию). */
+export interface EmptyConfig {
+  /** Доп. значения, считающиеся пустотой («—», «н/д», …). Регистр игнорируется. */
+  tokens?: string[];
+}
+
+const DEFAULT_TOTAL_KEYWORDS = ['итого', 'всего', 'total'];
+// Число с десятичной запятой/точкой и пробелами-тысячами (как в превью).
+const NUMBER_RE = /^-?\d+(?:[.,]\d+)?$/;
+// «Код»: двоеточия/слеши (8:01:06) или ведущий ноль у многозначного (007).
+const CODE_RE = /[:/]|^0\d/;
+
+/** Пустая ли ячейка с учётом настройки. `0` пустотой НЕ считается. */
+export function isEmptyCell(value: string | null | undefined, cfg?: EmptyConfig): boolean {
+  if (value == null) return true;
+  const s = String(value).trim();
+  if (s === '') return true;
+  if (cfg?.tokens?.length) {
+    const lower = s.toLowerCase();
+    if (cfg.tokens.some(t => t.trim().toLowerCase() === lower)) return true;
+  }
+  return false;
+}
+
+/** Похоже ли значение на код (ключ), а не на число-метрику. */
+function isCodeLike(s: string): boolean {
+  return CODE_RE.test(s);
+}
+
+/** Доля «чисто числовых» (не кодовых) значений в колонке. */
+function metricScore(values: string[], cfg?: EmptyConfig): number {
+  const nonEmpty = values.filter(v => !isEmptyCell(v, cfg));
+  if (nonEmpty.length === 0) return 0;
+  let numeric = 0;
+  for (const v of nonEmpty) {
+    const s = v.trim();
+    if (isCodeLike(s)) continue;
+    const norm = s.replace(/\s/g, '').replace(',', '.');
+    if (NUMBER_RE.test(norm)) numeric++;
+  }
+  return numeric / nonEmpty.length;
+}
+
+/** Колонка — числовая метрика (а не ключ/атрибут)? */
+export function isMetricColumn(values: string[], cfg?: EmptyConfig): boolean {
+  return metricScore(values, cfg) > 0.6;
+}
+
+/**
+ * Предлагает каскад ключевых колонок: ведущий ряд колонок-меток до первой
+ * чисто-числовой метрики. Кодовые колонки (8, 8:01:06) остаются ключами.
+ * Минимум одна колонка (первая) — ключ. Пользователь правит на шаге «Структура».
+ */
+export function detectKeyColumns(
+  rows: string[][],
+  columnCount: number,
+  cfg?: EmptyConfig
+): number[] {
+  const keys: number[] = [];
+  for (let c = 0; c < columnCount; c++) {
+    const colValues = rows.map(r => r[c] ?? '');
+    if (isMetricColumn(colValues, cfg)) break;
+    keys.push(c);
+  }
+  return keys.length > 0 ? keys : [0];
+}
+
+/**
+ * Строит колонки с ролями и составными именами.
+ * `headerMatrix` — 1 или 2 строки шапки. Верхняя (групповая) forward-fill'ится
+ * вправо (имитация объединённых ячеек), нижняя — имена колонок.
+ */
+export function buildColumns(
+  headerMatrix: string[][],
+  keyColumns: number[],
+  rows: string[][],
+  cfg?: EmptyConfig
+): AggregateColumn[] {
+  const hasGroupRow = headerMatrix.length >= 2;
+  const groupRow = hasGroupRow ? headerMatrix[0] : [];
+  const nameRow = hasGroupRow ? headerMatrix[1] : (headerMatrix[0] ?? []);
+  const columnCount = Math.max(
+    nameRow.length,
+    ...rows.map(r => r.length),
+    keyColumns.length ? Math.max(...keyColumns) + 1 : 0
+  );
+
+  // Forward-fill групповой строки: значение «протекает» вправо до след. непустого.
+  const filledGroups: string[] = [];
+  let carry = '';
+  for (let c = 0; c < columnCount; c++) {
+    const g = (groupRow[c] ?? '').trim();
+    if (g !== '') carry = g;
+    filledGroups[c] = carry;
+  }
+
+  const keySet = new Set(keyColumns);
+  const columns: AggregateColumn[] = [];
+  for (let c = 0; c < columnCount; c++) {
+    const name = (nameRow[c] ?? '').trim();
+    const groupName = hasGroupRow ? filledGroups[c] : '';
+    const fullName = groupName && groupName !== name ? `${groupName} · ${name}` : name;
+    let role: ColumnRole;
+    if (keySet.has(c)) {
+      role = 'key';
+    } else {
+      const colValues = rows.map(r => r[c] ?? '');
+      role = isMetricColumn(colValues, cfg) ? 'metric' : 'attribute';
+    }
+    columns.push({ index: c, groupName, name, fullName, role });
+  }
+  return columns;
+}
+
+/**
+ * Классифицирует строку: уровень (глубина каскада), тип (лист/узел/итого),
+ * метку. `keyColumns` — порядок каскада; глубина = индекс самого правого
+ * заполненного ключа.
+ */
+export function classifyRow(
+  cells: string[],
+  keyColumns: number[],
+  opts?: { empty?: EmptyConfig; totalKeywords?: string[] }
+): ClassifiedRow {
+  const cfg = opts?.empty;
+  const keywords = (opts?.totalKeywords ?? DEFAULT_TOTAL_KEYWORDS).map(k => k.toLowerCase());
+
+  let deepest = -1;
+  let label = '';
+  let totalLabel = '';
+  for (let i = 0; i < keyColumns.length; i++) {
+    const raw = cells[keyColumns[i]] ?? '';
+    if (!isEmptyCell(raw, cfg)) {
+      deepest = i;
+      label = String(raw).trim();
+      const lower = label.toLowerCase();
+      if (keywords.some(k => lower.includes(k))) totalLabel = label;
+    }
+  }
+
+  if (totalLabel) {
+    return { cells, level: deepest, kind: 'total', label: totalLabel };
+  }
+  const isLeaf = deepest === keyColumns.length - 1 && deepest >= 0;
+  return {
+    cells,
+    level: deepest,
+    kind: isLeaf ? 'leaf' : 'node',
+    label,
+  };
+}
+
+/** Классифицирует все строки данных. */
+export function classifyRows(
+  rows: string[][],
+  keyColumns: number[],
+  opts?: { empty?: EmptyConfig; totalKeywords?: string[] }
+): ClassifiedRow[] {
+  return rows.map(cells => classifyRow(cells, keyColumns, opts));
+}
+
+export interface HierarchyPreviewNode {
+  label: string;
+  level: number;
+  children: HierarchyPreviewNode[];
+}
+
+/**
+ * Строит дерево иерархии из каскада ключей (для предпросмотра на шаге
+ * «Структура»). Строки «Итого» в дерево не входят. Предполагается, что предки
+ * повторяются в листовых строках (как в реальных выгрузках). Узлов не больше
+ * `maxNodes`.
+ */
+export function buildHierarchyPreview(
+  rows: ClassifiedRow[],
+  keyColumns: number[],
+  opts?: { empty?: EmptyConfig; maxNodes?: number }
+): HierarchyPreviewNode[] {
+  const cfg = opts?.empty;
+  const max = opts?.maxNodes ?? 200;
+  const roots: HierarchyPreviewNode[] = [];
+  const byPath = new Map<string, HierarchyPreviewNode>();
+  let count = 0;
+
+  for (const row of rows) {
+    if (row.kind === 'total' || row.level < 0) continue;
+    let parent = roots;
+    let pathKey = '';
+    for (let i = 0; i <= row.level; i++) {
+      const raw = row.cells[keyColumns[i]] ?? '';
+      if (isEmptyCell(raw, cfg)) break; // пропуск предка — дальше не строим
+      const part = String(raw).trim();
+      pathKey = pathKey ? `${pathKey}${part}` : part;
+      let node = byPath.get(pathKey);
+      if (!node) {
+        if (count >= max) return roots;
+        node = { label: part, level: i, children: [] };
+        byPath.set(pathKey, node);
+        parent.push(node);
+        count++;
+      }
+      parent = node.children;
+    }
+  }
+  return roots;
+}
+
+export interface ProposedGroup {
+  /** Имя верхнего заголовка шапки (источник группы). '' — без группы. */
+  groupName: string;
+  /** Колонки-метрики этой группы (составные имена). */
+  metrics: string[];
+}
+
+/**
+ * Предлагает группы показателей по верхним заголовкам шапки: метрики с общим
+ * `groupName` объединяются в одну группу. Пользователь выбирает чекбоксами,
+ * что создавать (UI шага «Структура»).
+ */
+export function proposeGroups(columns: AggregateColumn[]): ProposedGroup[] {
+  const byGroup = new Map<string, string[]>();
+  for (const col of columns) {
+    if (col.role !== 'metric') continue;
+    const key = col.groupName || '';
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key)!.push(col.fullName);
+  }
+  return Array.from(byGroup.entries()).map(([groupName, metrics]) => ({ groupName, metrics }));
+}

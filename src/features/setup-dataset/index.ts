@@ -27,3 +27,22 @@ export type {
   ImportParams,
   DecimalSeparator,
 } from './lib/file-preview';
+export {
+  isEmptyCell,
+  isMetricColumn,
+  detectKeyColumns,
+  buildColumns,
+  classifyRow,
+  classifyRows,
+  buildHierarchyPreview,
+  proposeGroups,
+} from './lib/aggregate-layout';
+export type {
+  ColumnRole,
+  RowKind,
+  AggregateColumn,
+  ClassifiedRow,
+  EmptyConfig,
+  HierarchyPreviewNode,
+  ProposedGroup,
+} from './lib/aggregate-layout';
