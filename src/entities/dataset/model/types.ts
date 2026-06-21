@@ -1,5 +1,6 @@
 // entities/dataset/model/types.ts
 import type { DatasetRow, ColumnStatistics } from '@/shared/lib/types/dataset';
+import type { AggregateLayoutConfig } from '@/shared/lib/types/aggregate';
 
 export type DatasetSourceType = 'file' | 'postgres' | null;
 
@@ -48,6 +49,12 @@ export interface DatasetEntry {
   lastAccessedAt: number;
   pgStatus?: 'online' | 'offline' | 'checking' | 'unknown';
   engineStatus?: 'loading' | 'ready' | 'error';
+  /**
+   * Разметка файла-агрегата, если датасет импортирован как агрегат. Хранится,
+   * чтобы замена файла могла переиспользовать те же настройки чтения и не
+   * заставлять пользователя размечать заново.
+   */
+  aggregateConfig?: AggregateLayoutConfig;
 }
 
 /**

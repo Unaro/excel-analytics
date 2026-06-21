@@ -16,6 +16,38 @@ export interface AggregateNode {
   values: Record<string, number | null>;
 }
 
+/** Настройка трактовки пустоты (0 — НЕ пустота по умолчанию). */
+export interface EmptyConfig {
+  /** Доп. значения, считающиеся пустотой («—», «н/д», …). Регистр игнорируется. */
+  tokens?: string[];
+}
+
+/**
+ * Подтверждённая пользователем разметка файла-агрегата (сплющивание + узлы).
+ * Сериализуема — хранится на датасете (для замены файла) и проходит через
+ * экспорт/импорт конфигов.
+ */
+export interface AggregateLayoutConfig {
+  headerRows: number;
+  keyColumns: number[];
+  empty?: EmptyConfig;
+  totalKeywords?: string[];
+  /** Группы шапки, которые НЕ создавать (имена как в proposeGroups). */
+  excludeGroups?: string[];
+  /**
+   * Имя логического показателя (= шаблона) для колонки-метрики, по её составному
+   * имени (fullName). Колонки с ОДИНАКОВЫМ именем → общий шаблон. Нет записи →
+   * имя колонки (col.name).
+   */
+  metricTemplateNames?: Record<string, string>;
+  /**
+   * Импортировать ли колонки-метрики БЕЗ пользовательского шаблона (каждую как
+   * отдельный шаблон по имени колонки). false → только привязанные к шаблонам.
+   * По умолчанию true (ничего не теряем).
+   */
+  importUnassignedMetrics?: boolean;
+}
+
 /** Стабильный ключ узла из пути. Разделитель U+0001 — чтобы ['a','b'] и
  *  ['ab'] не схлопывались в один ключ. */
 export function nodePathKey(path: string[]): string {

@@ -24,6 +24,7 @@ import { useColumnConfigStore } from '@/entities/column-config';
 import { toast } from '@/shared/ui/toast';
 import { decryptConfig, encryptConfig } from '@/shared/lib/utils/crypto';
 import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';
+import type { ImportParseOptions } from '@/shared/lib/computation/lib/duckdb/worker';
 import { createComputationCache } from '@/shared/lib/storage';
 import {
   fetchPgTableData,
@@ -136,6 +137,52 @@ function createAggregateGroups(
   return created;
 }
 
+/** Артефакты сплющивания агрегата для импорта в DuckDB. */
+interface AggregateImport {
+  /** CSV листьев (UTF-8). */
+  importBuffer: ArrayBuffer;
+  /** Имя «как будто .csv» (для нативного парсера). */
+  importFileName: string;
+  /** Параметры парсинга: запятая-разделитель, точка-десятичная, типы колонок. */
+  parseOptions: ImportParseOptions;
+  /** Тип каждой колонки (ключи → categorical, метрики → numeric). */
+  columnTypes: Record<string, ColumnClassification>;
+  /** Имена ключевых колонок (→ уровни иерархии, в порядке каскада). */
+  keyNames: string[];
+  /** Колонки результата (→ группы показателей). */
+  columns: AggregateColumn[];
+  /** Узлы (введённые значения уровней/«Итого»). */
+  nodes: AggregateNode[];
+}
+
+/**
+ * Сплющивает файл-агрегат в листья и собирает всё нужное для импорта в DuckDB.
+ * Общий код для первичного импорта (`syncFromFile`) и замены файла
+ * (`replaceDatasetFile`) — чтобы замена шла по той же сохранённой разметке.
+ */
+function buildAggregateImport(
+  buffer: ArrayBuffer,
+  fileName: string,
+  config: AggregateLayoutConfig
+): AggregateImport {
+  const { matrix } = readAggregateMatrix(buffer, fileName, { all: true });
+  const flat = flattenLeaves(matrix, config);
+  const csv = toAggregateCsv(flat);
+  const columnTypes: Record<string, ColumnClassification> = {};
+  for (const col of flat.columns) {
+    columnTypes[col.fullName] = col.role === 'metric' ? 'numeric' : 'categorical';
+  }
+  return {
+    importBuffer: new TextEncoder().encode(csv).buffer as ArrayBuffer,
+    importFileName: `${fileName.replace(/\.[^.]+$/, '')}.csv`,
+    parseOptions: { delimiter: ',', decimalSeparator: '.', columnTypes, dateFormat: undefined },
+    columnTypes,
+    keyNames: flat.keyColumnNames,
+    columns: flat.columns,
+    nodes: extractNodes(matrix, config),
+  };
+}
+
 // ─────────────────────────────────────────────────────────────
 // syncFromFile
 // ─────────────────────────────────────────────────────────────
@@ -189,7 +236,7 @@ export async function syncFromFile(
     let aggregateColumns: AggregateColumn[] | null = null;
     let aggregateNodes: AggregateNode[] | null = null;
     let effectiveTypes: Record<string, ColumnClassification> | undefined = params?.columnTypes;
-    let parseOptions = params
+    let parseOptions: ImportParseOptions | undefined = params
       ? {
           delimiter: params.delimiter ?? ',',
           decimalSeparator: params.decimalSeparator,
@@ -199,21 +246,15 @@ export async function syncFromFile(
       : undefined;
 
     if (aggregate) {
-      const { matrix } = readAggregateMatrix(buffer, file.name, { all: true });
-      const flat = flattenLeaves(matrix, aggregate);
-      const csv = toAggregateCsv(flat);
-      importBuffer = new TextEncoder().encode(csv).buffer as ArrayBuffer;
-      importFileName = `${file.name.replace(/\.[^.]+$/, '')}.csv`;
-      const columnTypes: Record<string, ColumnClassification> = {};
-      for (const col of flat.columns) {
-        columnTypes[col.fullName] = col.role === 'metric' ? 'numeric' : 'categorical';
-      }
-      effectiveTypes = columnTypes;
-      parseOptions = { delimiter: ',', decimalSeparator: '.', columnTypes, dateFormat: undefined };
-      aggregateKeyNames = flat.keyColumnNames;
-      aggregateColumns = flat.columns;
-      aggregateNodes = extractNodes(matrix, aggregate);
-      logger.info(`[syncFromFile] Агрегат сплющен: ${flat.rows.length} листьев, ${flat.keyColumnNames.length} уровней, ${aggregateNodes.length} узлов`);
+      const agg = buildAggregateImport(buffer, file.name, aggregate);
+      importBuffer = agg.importBuffer;
+      importFileName = agg.importFileName;
+      effectiveTypes = agg.columnTypes;
+      parseOptions = agg.parseOptions;
+      aggregateKeyNames = agg.keyNames;
+      aggregateColumns = agg.columns;
+      aggregateNodes = agg.nodes;
+      logger.info(`[syncFromFile] Агрегат сплющен: ${agg.keyNames.length} уровней, ${agg.nodes.length} узлов`);
     }
 
     const { configs, totalRows, totalColumns, sheetNames } =
@@ -275,6 +316,9 @@ export async function syncFromFile(
         totalColumns,
         sourceType: 'file',
       },
+      // Разметку агрегата сохраняем на датасете — для замены файла по тем же
+      // настройкам (и для экспорта/импорта конфигов).
+      aggregateConfig: aggregate,
     });
 
     // Агрегат: ключевые колонки → уровни иерархии (каскад город→зона→объект).
@@ -516,14 +560,25 @@ export async function replaceDatasetFile(
       logger.warn('[replaceDatasetFile] Cache invalidation failed:', err);
     }
 
-    // 3. Импорт нового файла
+    // 3. Импорт нового файла.
+    // Агрегат: сплющиваем по СОХРАНЁННОЙ разметке (тот же файл побольше — без
+    // повторной настройки) → плоский CSV; иначе грузим файл как есть.
     const buffer = await newFile.arrayBuffer();
+    const agg = entry.aggregateConfig
+      ? buildAggregateImport(buffer, newFile.name, entry.aggregateConfig)
+      : null;
     const {
       configs: newAutoConfigs,
       totalRows,
       totalColumns,
       sheetNames,
-    } = await duckdbManager.importExcelBuffer(datasetId, newFile.name, buffer);
+    } = await duckdbManager.importExcelBuffer(
+      datasetId,
+      agg ? agg.importFileName : newFile.name,
+      agg ? agg.importBuffer : buffer,
+      undefined,
+      agg ? agg.parseOptions : undefined
+    );
 
     // 4. Экспорт Arrow buffer для персистентности
     try {
@@ -543,7 +598,22 @@ export async function replaceDatasetFile(
       newAutoConfigs
     );
 
-    configsStore.setDatasetConfigs(datasetId, mergedConfigs);
+    // Агрегат: навязываем типы из разметки (ключи → categorical, метрики →
+    // numeric), в т.ч. для новых колонок, которые авто-детект мог не угадать.
+    const finalConfigs = agg
+      ? mergedConfigs.map((c) => ({
+          ...c,
+          classification: agg.columnTypes[c.columnName] ?? c.classification,
+        }))
+      : mergedConfigs;
+
+    configsStore.setDatasetConfigs(datasetId, finalConfigs);
+
+    // Агрегат: пересобираем узлы (введённые значения уровней) из нового файла.
+    // Иерархия и группы сохранены (ID датасета и имена колонок не меняются).
+    if (agg) {
+      useAggregateNodesStore.getState().setNodes(datasetId, agg.nodes);
+    }
 
     // 6. Получаем PREVIEW и сохраняем в store
     let previewRows: DatasetRow[] = [];

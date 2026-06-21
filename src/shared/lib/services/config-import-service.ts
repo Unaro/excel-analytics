@@ -17,6 +17,7 @@ import {
 } from '@/shared/lib/validators';
 import { FormattingRule } from '../utils/formatting-rules';
 import type { Dashboard } from '@/shared/lib/types/dashboard';
+import type { AggregateLayoutConfig } from '@/shared/lib/types/aggregate';
 
 // ─────────────────────────────────────────────────────────────
 // Публичные типы
@@ -59,6 +60,8 @@ export interface ConfigImportResult {
       }
     >
   >;
+  /** Разметка агрегата из конфига (применяется к целевому датасету). */
+  aggregateConfig?: AggregateLayoutConfig;
   stats: {
     dashboardsImported: number;
     groupsImported: number;
@@ -363,6 +366,7 @@ export function processConfigImport(
     hierarchyLevels: data.hierarchyLevels || [],
     columnConfigs: data.columnConfigs || [],
     importedGroupMetricConfigs: data.groupMetricConfigs,
+    aggregateConfig: data.aggregateConfig,
     stats: {
       dashboardsImported: importedDashboards.length,
       groupsImported: importedGroups.length,

@@ -257,6 +257,18 @@ export const DatasetConfigExportSchema = z.object({
       customTypeId: z.string().optional(),
     })),
     metricTemplates: z.array(MetricTemplateSchema),
+    // Разметка агрегата датасета (для замены файла по тем же настройкам).
+    aggregateConfig: z
+      .object({
+        headerRows: z.number().int(),
+        keyColumns: z.array(z.number().int()),
+        empty: z.object({ tokens: z.array(z.string()).optional() }).optional(),
+        totalKeywords: z.array(z.string()).optional(),
+        excludeGroups: z.array(z.string()).optional(),
+        metricTemplateNames: z.record(z.string(), z.string()).optional(),
+        importUnassignedMetrics: z.boolean().optional(),
+      })
+      .optional(),
     groupMetricConfigs: z.record(
       z.string(),
       z.record(z.string(), z.object({

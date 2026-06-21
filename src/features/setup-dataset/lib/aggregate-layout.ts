@@ -11,7 +11,11 @@
 // План: docs/architecture/aggregate-files.md
 // ─────────────────────────────────────────────────────────────
 
-import type { AggregateNode } from '@/shared/lib/types/aggregate';
+import type { AggregateNode, EmptyConfig, AggregateLayoutConfig } from '@/shared/lib/types/aggregate';
+
+// Контракты разметки живут в shared (нужны и entity-стору датасета для замены
+// файла, и экспорту/импорту конфигов). Здесь — ре-экспорт как public API фичи.
+export type { EmptyConfig, AggregateLayoutConfig };
 
 /** Роль колонки в агрегате. */
 export type ColumnRole = 'key' | 'metric' | 'attribute';
@@ -39,11 +43,6 @@ export interface ClassifiedRow {
   label: string;
 }
 
-/** Настройка трактовки пустоты (0 — НЕ пустота по умолчанию). */
-export interface EmptyConfig {
-  /** Доп. значения, считающиеся пустотой («—», «н/д», …). Регистр игнорируется. */
-  tokens?: string[];
-}
 
 const DEFAULT_TOTAL_KEYWORDS = ['итого', 'всего', 'total'];
 // Число с десятичной запятой/точкой и пробелами-тысячами (как в превью).
@@ -293,28 +292,8 @@ export function proposeGroups(columns: AggregateColumn[]): ProposedGroup[] {
 // Сплющивание в листья (фаза 1) — плоская таблица для текущего движка.
 // ─────────────────────────────────────────────────────────────
 
-/** Подтверждённая пользователем разметка для сплющивания. */
-export interface AggregateLayoutConfig {
-  headerRows: number;
-  keyColumns: number[];
-  empty?: EmptyConfig;
-  totalKeywords?: string[];
-  /** Группы шапки, которые НЕ создавать (имена как в proposeGroups). */
-  excludeGroups?: string[];
-  /**
-   * Имя логического показателя (= шаблона) для колонки-метрики, по её
-   * составному имени (fullName). Колонки с ОДИНАКОВЫМ именем → общий шаблон.
-   * Нет записи → берётся имя колонки (col.name). Решение пользователя на
-   * шаге «Структура».
-   */
-  metricTemplateNames?: Record<string, string>;
-  /**
-   * Импортировать ли колонки-метрики БЕЗ пользовательского шаблона (каждую как
-   * отдельный шаблон по имени колонки). false → в группы попадут только колонки,
-   * привязанные к шаблонам. По умолчанию true (ничего не теряем).
-   */
-  importUnassignedMetrics?: boolean;
-}
+// AggregateLayoutConfig / EmptyConfig определены в shared/lib/types/aggregate
+// и ре-экспортированы выше (нужны entity-стору датасета и экспорту конфигов).
 
 export interface FlattenResult {
   /** Колонки результата с ролями/именами. */
