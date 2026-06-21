@@ -221,6 +221,14 @@ export function useComputation({
     };
   }, []);
 
+  // Контракт IComputeEngine.dispose: освобождаем ресурсы движка при смене
+  // движка/датасета и при размонтировании (№16). Сейчас обе реализации no-op,
+  // но вызов фиксирует контракт, чтобы будущая реализация не утекла.
+  useEffect(() => {
+    if (!activeDatasetId) return;
+    return () => engine.dispose(activeDatasetId);
+  }, [engine, activeDatasetId]);
+
   return {
     result,
     isComputing,

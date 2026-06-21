@@ -828,52 +828,68 @@ self.onmessage = async (e: MessageEvent) => {
           // ═══════════════════════════════════════════════════════
           const BATCH_SIZE = 25_000;
           const totalBatches = Math.ceil(flatRows.length / BATCH_SIZE);
+          // Имя последней созданной temp-таблицы — для отката (№16): при ошибке
+          // батча сбрасываем и temp, и частично заполненную целевую таблицу,
+          // иначе остаётся «полуимпорт», который COUNT(*) не ловит как ошибку.
+          let pendingTempTable: string | null = null;
 
-          for (let i = 0; i < flatRows.length; i += BATCH_SIZE) {
-            const chunk = flatRows.slice(i, i + BATCH_SIZE);
-            const isFirstBatch = i === 0;
-            const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
+          try {
+            for (let i = 0; i < flatRows.length; i += BATCH_SIZE) {
+              const chunk = flatRows.slice(i, i + BATCH_SIZE);
+              const isFirstBatch = i === 0;
+              const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
 
-            const arrowTable = tableFromJSON(chunk);
-            
-            if (isFirstBatch) {
-              // Первый батч — создаём таблицу
-              await conn.insertArrowTable(arrowTable, {
-                name: tableName,
-                create: true,
-              });
-            } else {
-              const tempTableName = `${tableName}_batch_${batchIndex}`;
-              await conn.insertArrowTable(arrowTable, {
-                name: tempTableName,
-                create: true,
-              });
-              
-              // Явный INSERT INTO — гарантированно добавляет данные
-              await conn.query(
-                `INSERT INTO ${tableName} SELECT * FROM ${tempTableName}`
-              );
-              
-              // Удаляем временную таблицу
-              await conn.query(`DROP TABLE IF EXISTS ${tempTableName}`);
+              const arrowTable = tableFromJSON(chunk);
+
+              if (isFirstBatch) {
+                // Первый батч — создаём таблицу
+                await conn.insertArrowTable(arrowTable, {
+                  name: tableName,
+                  create: true,
+                });
+              } else {
+                const tempTableName = `${tableName}_batch_${batchIndex}`;
+                pendingTempTable = tempTableName;
+                await conn.insertArrowTable(arrowTable, {
+                  name: tempTableName,
+                  create: true,
+                });
+
+                // Явный INSERT INTO — гарантированно добавляет данные
+                await conn.query(
+                  `INSERT INTO ${tableName} SELECT * FROM ${tempTableName}`
+                );
+
+                // Удаляем временную таблицу
+                await conn.query(`DROP TABLE IF EXISTS ${tempTableName}`);
+                pendingTempTable = null;
+              }
+
+              // Отдаём управление event loop между батчами
+              await yieldToEventLoop();
+
+              // Прогресс-репорт в UI
+              if (batchIndex % 5 === 0 || batchIndex === totalBatches) {
+                self.postMessage({
+                  id,
+                  type: 'PROGRESS',
+                  progress: {
+                    phase: 'import',
+                    current: i + chunk.length,
+                    total: flatRows.length,
+                    percent: Math.round(((i + chunk.length) / flatRows.length) * 100),
+                  },
+                });
+              }
             }
-
-            // Отдаём управление event loop между батчами
-            await yieldToEventLoop();
-
-            // Прогресс-репорт в UI
-            if (batchIndex % 5 === 0 || batchIndex === totalBatches) {
-              self.postMessage({
-                id,
-                type: 'PROGRESS',
-                progress: {
-                  phase: 'import',
-                  current: i + chunk.length,
-                  total: flatRows.length,
-                  percent: Math.round(((i + chunk.length) / flatRows.length) * 100),
-                },
-              });
+          } catch (batchErr) {
+            // Откат: не оставляем частично заполненную таблицу под видом готовой.
+            if (pendingTempTable) {
+              await conn.query(`DROP TABLE IF EXISTS ${pendingTempTable}`).catch(() => {});
             }
+            await conn.query(`DROP TABLE IF EXISTS ${tableName}`).catch(() => {});
+            invalidateTableCaches(tableName);
+            throw batchErr;
           }
 
           const countResult = await conn.query(

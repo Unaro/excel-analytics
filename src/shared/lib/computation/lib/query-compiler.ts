@@ -353,14 +353,19 @@ export function compileQuery(
   // ───────────────────────────────────────────────────────────
   // SELECT expressions (base CTE)
   // ───────────────────────────────────────────────────────────
+  // Индексы id→объект: линейный .find() во вложенном цикле давал
+  // O(групп × метрик × шаблонов); на 100+ метрик/шаблонов заметно (№15).
+  const groupById = new Map(groups.map((g) => [g.id, g]));
+  const templateById = new Map(metricTemplates.map((t) => [t.id, t]));
+
   for (const cfg of dashboardGroupsConfig) {
     if (!cfg.enabled) continue;
-    const groupDef = groups.find((g) => g.id === cfg.groupId);
+    const groupDef = groupById.get(cfg.groupId);
     if (!groupDef) continue;
 
     for (const metric of groupDef.metrics) {
       if (!metric.enabled) continue;
-      const tpl = metricTemplates.find((t) => t.id === metric.templateId);
+      const tpl = templateById.get(metric.templateId);
       if (!tpl) continue;
 
       const finalAlias = `${cfg.groupId}__${metric.id}`;
