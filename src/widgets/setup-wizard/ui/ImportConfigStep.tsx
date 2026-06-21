@@ -5,8 +5,9 @@ import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
-import type { FilePreview, ImportParams, DecimalSeparator } from '@/features/setup-dataset';
+import type { FilePreview, ImportParams, DecimalSeparator, AggregateMatrix } from '@/features/setup-dataset';
 import type { ColumnClassification } from '@/shared/lib/types';
+import { AggregateStructurePanel } from './AggregateStructurePanel';
 
 interface ImportConfigStepProps {
   fileName: string;
@@ -19,6 +20,10 @@ interface ImportConfigStepProps {
   onColumnTypeChange: (columnName: string, type: ColumnClassification) => void;
   onImport: () => void;
   onCancel: () => void;
+  /** Режим файла-агрегата (иерархия по уровням) — фаза 0: предпросмотр структуры. */
+  isAggregate: boolean;
+  onAggregateToggle: (on: boolean) => void;
+  aggregateMatrix: AggregateMatrix | null;
 }
 
 const NEWLINE_LABEL: Record<string, string> = {
@@ -66,6 +71,9 @@ export function ImportConfigStep({
   onColumnTypeChange,
   onImport,
   onCancel,
+  isAggregate,
+  onAggregateToggle,
+  aggregateMatrix,
 }: ImportConfigStepProps) {
   const showCsvControls = !!preview?.isCsv && !!importParams;
 
@@ -96,6 +104,27 @@ export function ImportConfigStep({
           </div>
         )}
       </div>
+
+      {/* ─── Тумблер «файл-агрегат» (иерархия по уровням) ─── */}
+      <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={isAggregate}
+          onChange={(e) => onAggregateToggle(e.target.checked)}
+          className="mt-0.5"
+        />
+        <div>
+          <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
+            Это файл-агрегат (иерархия по уровням)
+          </div>
+          <div className="text-[11px] text-slate-400">
+            Шапка с группами, строки-уровни (город → зона → объект), предпосчитанные
+            итоги. Покажем предпросмотр структуры.
+          </div>
+        </div>
+      </label>
+
+      {isAggregate && <AggregateStructurePanel matrix={aggregateMatrix} />}
 
       {/* ─── Параметры разбора (CSV) ─── */}
       {showCsvControls && importParams && (

@@ -8,10 +8,12 @@ import {
   isCsvFileName,
   guessColumnTypes,
   detectDateFormat,
+  readAggregateMatrix,
   CSV_PREFIX_BYTES,
   type FilePreview,
   type ImportParams,
   type DecimalSeparator,
+  type AggregateMatrix,
 } from '@/features/setup-dataset';
 import type { ColumnClassification } from '@/shared/lib/types';
 import { PgStep, SetupStep, SourceType } from './types';
@@ -50,6 +52,10 @@ export function useSetupWizard() {
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [importParams, setImportParams] = useState<ImportParams | null>(null);
+  // Режим файла-агрегата (иерархия по уровням) + сырая матрица для разметки.
+  // Фаза 0: только предпросмотр структуры, на импорт пока не влияет.
+  const [isAggregate, setIsAggregate] = useState(false);
+  const [aggregateMatrix, setAggregateMatrix] = useState<AggregateMatrix | null>(null);
   // Префикс CSV-текста для синхронного перепарсинга при смене разделителя
   // (без повторного чтения файла). Для xlsx — null.
   const csvTextRef = useRef<string | null>(null);
@@ -95,6 +101,8 @@ export function useSetupWizard() {
       }
       setPreview(pv);
       setImportParams(initialParams(pv));
+      // Сырая матрица для разметки агрегата (тот же буфер, без перечтения).
+      setAggregateMatrix(readAggregateMatrix(buffer, file.name));
     } catch (err) {
       logger.error('[SetupWizard] Не удалось построить предпросмотр:', err);
       setPreview(null);
@@ -150,6 +158,8 @@ export function useSetupWizard() {
     setPreview(null);
     setImportParams(null);
     setPreviewLoading(false);
+    setIsAggregate(false);
+    setAggregateMatrix(null);
     csvTextRef.current = null;
   }, []);
 
@@ -187,6 +197,9 @@ export function useSetupWizard() {
     preview,
     previewLoading,
     importParams: importParamsFinal,
+    isAggregate,
+    setIsAggregate,
+    aggregateMatrix,
     handleFileSelected,
     setDelimiter,
     setDecimalSeparator,

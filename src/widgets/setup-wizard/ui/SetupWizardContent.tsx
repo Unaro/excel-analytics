@@ -142,6 +142,9 @@ export function SetupWizardContent() {
               wizard.resetSelectedFile();
               wizard.setStep('upload');
             }}
+            isAggregate={wizard.isAggregate}
+            onAggregateToggle={wizard.setIsAggregate}
+            aggregateMatrix={wizard.aggregateMatrix}
           />
         )}
         {wizard.step === 'columns' && (
