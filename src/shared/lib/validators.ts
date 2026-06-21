@@ -141,6 +141,12 @@ export const IndicatorGroupSchema = z.object({
   description: z.string().optional(),
   fieldMappings: z.array(FieldBindingSchema),
   metrics: z.array(GroupMetricSchema),
+  /**
+   * Поисковый запрос «Контекст данных» из конструктора группы — фильтр
+   * колонок при привязке. Сохраняется, чтобы при редактировании группы
+   * пользователю не пришлось вводить его заново.
+   */
+  columnContext: z.string().optional(),
   dependencyGraph: z.object({
     nodes: z.array(z.string()),
     edges: z.array(z.object({

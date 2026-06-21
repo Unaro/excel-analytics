@@ -61,7 +61,9 @@ export function useGroupBuilder(existingGroupId?: string) {
       const group = getGroup(existingGroupId);
       if (group) {
         setName((prev) => (prev !== group.name ? group.name : prev));
-        
+        // Восстанавливаем «Контекст данных», чтобы не вводить заново.
+        setColumnSearchQuery(group.columnContext ?? '');
+
       const restoredMetrics: FormMetricState[] = group.metrics.map((m, index) => {
         const template = templates.find(t => t.id === m.templateId);
         const requiredVars = template?.formula
@@ -272,6 +274,7 @@ export function useGroupBuilder(existingGroupId?: string) {
       name,
       fieldMappings: allFieldMappings,
       metrics: finalMetrics,
+      columnContext: columnSearchQuery.trim() || undefined,
       order: 0,
     };
     
@@ -282,7 +285,7 @@ export function useGroupBuilder(existingGroupId?: string) {
       if (!activeDatasetId) throw new Error("Не выбран датасет");
       return addGroup(groupData, activeDatasetId);
     }
-  }, [name, selectedMetrics, addGroup, updateGroup, existingGroupId, activeDatasetId]);
+  }, [name, selectedMetrics, columnSearchQuery, addGroup, updateGroup, existingGroupId, activeDatasetId]);
 
   return {
     name, setName,
