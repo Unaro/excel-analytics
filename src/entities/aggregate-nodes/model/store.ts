@@ -7,8 +7,18 @@
 // «введённое vs вычисленное» для UI. План: docs/architecture/aggregate-files.md
 // ─────────────────────────────────────────────────────────────
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage, type StateStorage } from 'zustand/middleware';
+import { get as idbGet, set as idbSet, del as idbDel } from 'idb-keyval';
 import { type AggregateNode, nodePathKey } from '@/shared/lib/types/aggregate';
+
+// Узлов агрегата может быть много (большие файлы) — localStorage (~5 МБ) их не
+// вмещает (QuotaExceededError). Персистим в IndexedDB, как Arrow-буферы и
+// dataset-стор.
+const idbStorage: StateStorage = {
+  getItem: async (name) => (await idbGet(name)) ?? null,
+  setItem: async (name, value) => await idbSet(name, value),
+  removeItem: async (name) => await idbDel(name),
+};
 
 interface AggregateNodesState {
   /** nodesByDataset[datasetId] = узлы агрегата. */
@@ -48,6 +58,10 @@ export const useAggregateNodesStore = create<AggregateNodesState>()(
           return { nodesByDataset: next };
         }),
     }),
-    { name: 'aggregate-nodes-storage', version: 1 }
+    {
+      name: 'aggregate-nodes-storage',
+      version: 1,
+      storage: createJSONStorage(() => idbStorage),
+    }
   )
 );
