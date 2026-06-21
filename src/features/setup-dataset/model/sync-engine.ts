@@ -58,10 +58,11 @@ import {
 
 /**
  * Создаёт группы показателей из колонок-метрик агрегата: по одной группе на
- * верхний заголовок шапки (proposeGroups). Для КАЖДОЙ колонки заводится свой
- * шаблон `SUM(колонка)` с именем колонки — иначе на дашборде все метрики
- * схлопываются в одну (общий шаблон = одна идентичность: нельзя добавить
- * вторую колонку и переименовать). Снятые в панели группы пропускаются.
+ * верхний заголовок шапки (напр. типы учреждений: ДОО, Школы, …). Шаблоны
+ * — ОБЩИЕ по логическому показателю: один шаблон `SUM(value)` на имя метрики
+ * (Потребность, Мощность, …), переиспользуется во всех группах. Так 15 групп ×
+ * 9 метрик дают 9 шаблонов, а не 135, и на дашборде это 9 колонок × 15 строк.
+ * Снятые в панели группы пропускаются.
  */
 function createAggregateGroups(
   datasetId: string,
@@ -81,29 +82,40 @@ function createAggregateGroups(
   const templateStore = useMetricTemplateStore.getState();
   const groupStore = useIndicatorGroupStore.getState();
 
+  // Общий шаблон на ЛОГИЧЕСКИЙ показатель (имя метрики). Переиспользуем
+  // существующий с тем же именем+формулой (в т.ч. между импортами).
+  const templateIdByName = new Map<string, string>();
+  const templateFor = (name: string): string => {
+    const cached = templateIdByName.get(name);
+    if (cached) return cached;
+    const existing = templateStore.templates.find(
+      t => t.name === name && t.formula === 'SUM(value)'
+    );
+    const id = existing
+      ? existing.id
+      : templateStore.addTemplate({
+          name,
+          formula: 'SUM(value)',
+          dependencies: [{ type: 'field', alias: 'value' }],
+          displayFormat: 'number',
+          decimalPlaces: 2,
+        });
+    templateIdByName.set(name, id);
+    return id;
+  };
+
   let created = 0;
   for (const [groupName, cols] of byGroup) {
     if (exclude.has(groupName)) continue;
-    const metrics = cols.map((col, i) => {
-      // Свой шаблон на колонку: имя = составное имя колонки (уникально и понятно
-      // в списке шаблонов/на дашборде), формула SUM(value), value → колонка.
-      const templateId = templateStore.addTemplate({
-        name: col.fullName,
-        formula: 'SUM(value)',
-        dependencies: [{ type: 'field', alias: 'value' }],
-        displayFormat: 'number',
-        decimalPlaces: 2,
-      });
-      return {
-        id: nanoid(),
-        templateId,
-        fieldBindings: [{ id: nanoid(), fieldAlias: 'value', columnName: col.fullName }],
-        metricBindings: [],
-        enabled: true,
-        order: i,
-        customName: col.name || col.fullName,
-      };
-    });
+    const metrics = cols.map((col, i) => ({
+      id: nanoid(),
+      // Имя метрики (лист шапки) = логический показатель → общий шаблон.
+      templateId: templateFor(col.name || col.fullName),
+      fieldBindings: [{ id: nanoid(), fieldAlias: 'value', columnName: col.fullName }],
+      metricBindings: [],
+      enabled: true,
+      order: i,
+    }));
     groupStore.addGroup({ name: groupName, fieldMappings: [], metrics, order: created }, datasetId);
     created++;
   }
