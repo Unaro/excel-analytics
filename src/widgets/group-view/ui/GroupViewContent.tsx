@@ -17,6 +17,8 @@ import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
+import { useAggregateNodesStore } from '@/entities/aggregate-nodes';
+import { nodePathKey } from '@/shared/lib/types/aggregate';
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -126,6 +128,59 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     (metricId: string, style: MetricChartStyle) => updateChartStyle(groupId, metricId, style),
     [updateChartStyle, groupId]
   );
+
+  // ── Введённые значения узлов агрегата (overlay «введённое vs вычисленное») ──
+  // Узлы хранятся по datasetId; путь узла = значения ключей currentPath + метка
+  // строки разбивки. Колонка метрики берётся из fieldBinding шаблона SUM.
+  const datasetId = group?.datasetId;
+  const aggregateNodes = useAggregateNodesStore(s =>
+    datasetId ? s.nodesByDataset[datasetId] : undefined
+  );
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, Record<string, number | null>>();
+    for (const n of aggregateNodes ?? []) map.set(nodePathKey(n.path), n.values);
+    return map;
+  }, [aggregateNodes]);
+  // metricId → имя колонки метрики (для lookup введённого значения).
+  // VirtualMetricValue.sourceMetricId = id метрики группы.
+  const columnByMetricId = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const m of group?.metrics ?? []) {
+      const col = m.fieldBindings[0]?.columnName;
+      if (col) map[m.id] = col;
+    }
+    return map;
+  }, [group]);
+  const pathValues = useMemo(() => path.map(f => f.value), [path]);
+  // Введённое значение узла для строки разбивки: rawLabel → vmId → число|null.
+  const enteredByLabel = useMemo(() => {
+    if (nodeMap.size === 0) return undefined;
+    const out = new Map<string, Record<string, number | null>>();
+    for (const item of breakdown ?? []) {
+      if (item.dateLabel !== undefined) continue;
+      const values = nodeMap.get(nodePathKey([...pathValues, item.label]));
+      if (!values) continue;
+      const byVm: Record<string, number | null> = {};
+      for (const vm of summaryVirtualMetrics) {
+        const col = vm.sourceMetricId ? columnByMetricId[vm.sourceMetricId] : undefined;
+        if (col && col in values) byVm[vm.virtualMetricId] = values[col];
+      }
+      if (Object.keys(byVm).length) out.set(item.label, byVm);
+    }
+    return out.size ? out : undefined;
+  }, [nodeMap, breakdown, pathValues, summaryVirtualMetrics, columnByMetricId]);
+  // Введённое значение текущего узла (строка «Итого»).
+  const enteredSummary = useMemo(() => {
+    if (nodeMap.size === 0 || pathValues.length === 0) return undefined;
+    const values = nodeMap.get(nodePathKey(pathValues));
+    if (!values) return undefined;
+    const byVm: Record<string, number | null> = {};
+    for (const vm of summaryVirtualMetrics) {
+      const col = vm.sourceMetricId ? columnByMetricId[vm.sourceMetricId] : undefined;
+      if (col && col in values) byVm[vm.virtualMetricId] = values[col];
+    }
+    return Object.keys(byVm).length ? byVm : undefined;
+  }, [nodeMap, pathValues, summaryVirtualMetrics, columnByMetricId]);
 
   if (!group) {
     return <GroupNotFound />;
@@ -250,6 +305,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           resolveLabel={resolveLabel}
           chartHiddenLabels={chartHiddenLabels}
           onToggleChartLabel={chartTypes.length > 0 ? toggleChartLabel : undefined}
+          enteredByLabel={enteredByLabel}
+          enteredSummary={enteredSummary}
         />
       )}
     </div>

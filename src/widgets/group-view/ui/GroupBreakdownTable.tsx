@@ -11,8 +11,27 @@ import { VirtualMetric } from '@/shared/lib/validators';
 import { GroupMetricConfigPopover } from '@/features/configure-group-metric';
 import { GroupMetricCell } from '@/entities/group-metric-config';
 import { SortIcon } from '@/shared/ui/sort-icon';
+import { formatRu } from '@/shared/lib/utils/format';
 import { sortBreakdownItems } from '../lib/sort-breakdown';
 import type { SortConfig } from '../model/types';
+
+/** Введённое значение узла агрегата + расхождение Δ с вычисленным (фаза 2). */
+function EnteredDelta({ entered, computed }: { entered: number | null; computed: number | null }) {
+  if (entered == null) return null;
+  const delta = typeof computed === 'number' ? entered - computed : null;
+  const mismatch = delta !== null && Math.abs(delta) > 1e-9;
+  return (
+    <div className="text-[10px] leading-tight mt-0.5" title="Введённое значение из файла-агрегата">
+      <span className="text-slate-400">введено: </span>
+      <span className="font-mono text-slate-600 dark:text-slate-300">{formatRu(entered)}</span>
+      {mismatch && (
+        <span className={cn('ml-1 font-mono', delta! > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400')}>
+          Δ{delta! > 0 ? '+' : ''}{formatRu(delta!)}
+        </span>
+      )}
+    </div>
+  );
+}
 
 interface GroupBreakdownTableProps {
   breakdown: BreakdownItem[];
@@ -45,6 +64,13 @@ interface GroupBreakdownTableProps {
    */
   chartHiddenLabels?: Set<string>;
   onToggleChartLabel?: (label: string) => void;
+  /**
+   * Введённые значения узлов файла-агрегата (фаза 2): rawLabel → vmId → число.
+   * Показываются под вычисленным значением с расхождением Δ.
+   */
+  enteredByLabel?: Map<string, Record<string, number | null>>;
+  /** Введённые значения для строки «Итого» (текущий узел). */
+  enteredSummary?: Record<string, number | null>;
 }
 
 export const GroupBreakdownTable = memo(function GroupBreakdownTable({
@@ -64,6 +90,8 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
   resolveLabel,
   chartHiddenLabels,
   onToggleChartLabel,
+  enteredByLabel,
+  enteredSummary,
 }: GroupBreakdownTableProps) {
   const showVisibilityToggle = !!onToggleChartLabel;
   const [searchQuery, setSearchQuery] = useState('');
@@ -273,6 +301,10 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                       ) : (
                         <span className="text-slate-300 dark:text-slate-600 select-none">−</span>
                       )}
+                      <EnteredDelta
+                        entered={enteredByLabel?.get(item.label)?.[vm.virtualMetricId] ?? null}
+                        computed={val?.value ?? null}
+                      />
                     </td>
                   );
                 })}
@@ -308,6 +340,10 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                           {vm.formattedValue}
                         </span>
                       )}
+                      <EnteredDelta
+                        entered={enteredSummary?.[vm.virtualMetricId] ?? null}
+                        computed={vm.value}
+                      />
                     </td>
                   );
                 })}
