@@ -68,7 +68,8 @@ function createAggregateGroups(
   datasetId: string,
   columns: AggregateColumn[],
   excludeGroups?: string[],
-  metricTemplateNames?: Record<string, string>
+  metricTemplateNames?: Record<string, string>,
+  importUnassigned: boolean = true
 ): number {
   const byGroup = new Map<string, AggregateColumn[]>();
   for (const col of columns) {
@@ -108,17 +109,27 @@ function createAggregateGroups(
   let created = 0;
   for (const [groupName, cols] of byGroup) {
     if (exclude.has(groupName)) continue;
-    const metrics = cols.map((col, i) => ({
-      id: nanoid(),
-      // Логический показатель (= имя шаблона) задаётся пользователем; по
-      // умолчанию — имя колонки. Одинаковое имя у разных колонок → общий шаблон.
-      templateId: templateFor(metricTemplateNames?.[col.fullName] || col.name || col.fullName),
-      // Привязка — к УНИКАЛЬНОМУ внутреннему имени колонки (с префиксом группы).
-      fieldBindings: [{ id: nanoid(), fieldAlias: 'value', columnName: col.fullName }],
-      metricBindings: [],
-      enabled: true,
-      order: i,
-    }));
+    const metrics = cols
+      // Колонки без пользовательского шаблона импортируем, только если разрешено.
+      .filter(col => importUnassigned || !!metricTemplateNames?.[col.fullName])
+      .map((col, i) => {
+        // Логический показатель (= имя шаблона): пользовательский или имя колонки.
+        const templateName = metricTemplateNames?.[col.fullName] || col.name || col.fullName;
+        // Имя метрики = имя самой колонки (читаемо); шаблон лишь даёт формулу.
+        // Если совпадает с именем шаблона — не дублируем (иначе «X(X)»).
+        const display = col.name || col.fullName;
+        return {
+          id: nanoid(),
+          templateId: templateFor(templateName),
+          customName: display && display !== templateName ? display : undefined,
+          // Привязка — к УНИКАЛЬНОМУ внутреннему имени колонки (с префиксом группы).
+          fieldBindings: [{ id: nanoid(), fieldAlias: 'value', columnName: col.fullName }],
+          metricBindings: [],
+          enabled: true,
+          order: i,
+        };
+      });
+    if (metrics.length === 0) continue; // все колонки без шаблона, а импорт выключен
     groupStore.addGroup({ name: groupName, fieldMappings: [], metrics, order: created }, datasetId);
     created++;
   }
@@ -280,7 +291,8 @@ export async function syncFromFile(
         datasetId,
         aggregateColumns,
         aggregate?.excludeGroups,
-        aggregate?.metricTemplateNames
+        aggregate?.metricTemplateNames,
+        aggregate?.importUnassignedMetrics ?? true
       );
       logger.info(`[syncFromFile] Создано групп показателей: ${n}`);
     }

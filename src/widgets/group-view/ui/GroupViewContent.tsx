@@ -182,6 +182,27 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     return Object.keys(byVm).length ? byVm : undefined;
   }, [nodeMap, pathValues, summaryVirtualMetrics, columnByMetricId]);
 
+  // Чарты: если вычисленное по листьям пусто (прочерк), берём введённое значение
+  // узла. Иначе там, где данные есть только на уровне агрегата, столбцы = 0 и
+  // аналитики нет. Реальное вычисленное значение (в т.ч. 0) не перетираем.
+  const chartBreakdownWithEntered = useMemo(() => {
+    if (!enteredByLabel) return visibleChartBreakdown;
+    return visibleChartBreakdown.map(item => {
+      const entered = enteredByLabel.get(item.label);
+      if (!entered) return item;
+      let changed = false;
+      const vms = item.virtualMetrics.map(vm => {
+        const e = entered[vm.virtualMetricId];
+        if (vm.value == null && e != null) {
+          changed = true;
+          return { ...vm, value: e };
+        }
+        return vm;
+      });
+      return changed ? { ...item, virtualMetrics: vms } : item;
+    });
+  }, [visibleChartBreakdown, enteredByLabel]);
+
   if (!group) {
     return <GroupNotFound />;
   }
@@ -274,7 +295,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           Чарты — НАД таблицей. */}
       {!isComputing && !isTwoDimensional && visibleChartBreakdown.length > 0 && (
         <GroupChartsPanel
-          breakdown={visibleChartBreakdown}
+          breakdown={chartBreakdownWithEntered}
           virtualMetrics={summaryVirtualMetrics}
           metricConfigs={virtualMetrics}
           activeMetricIds={activeMetricIds}

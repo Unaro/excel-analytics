@@ -308,6 +308,12 @@ export interface AggregateLayoutConfig {
    * шаге «Структура».
    */
   metricTemplateNames?: Record<string, string>;
+  /**
+   * Импортировать ли колонки-метрики БЕЗ пользовательского шаблона (каждую как
+   * отдельный шаблон по имени колонки). false → в группы попадут только колонки,
+   * привязанные к шаблонам. По умолчанию true (ничего не теряем).
+   */
+  importUnassignedMetrics?: boolean;
 }
 
 export interface FlattenResult {

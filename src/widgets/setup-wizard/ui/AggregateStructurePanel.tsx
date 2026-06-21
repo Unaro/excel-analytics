@@ -159,6 +159,8 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
   const [templates, setTemplates] = useState<DraftTemplate[]>([]);
   const [newTemplateName, setNewTemplateName] = useState('');
   const [searchByTemplate, setSearchByTemplate] = useState<Record<string, string>>({});
+  // Импортировать ли колонки, не привязанные к шаблонам (по умолчанию — да).
+  const [importUnassigned, setImportUnassigned] = useState(true);
 
   const assigned = useMemo(() => {
     const s = new Set<string>();
@@ -213,8 +215,9 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       empty: emptyCfg,
       excludeGroups: Array.from(excludedGroups),
       metricTemplateNames,
+      importUnassignedMetrics: importUnassigned,
     });
-  }, [headerRows, keyColumns, emptyCfg, excludedGroups, metricTemplateNames, onLayoutChange]);
+  }, [headerRows, keyColumns, emptyCfg, excludedGroups, metricTemplateNames, importUnassigned, onLayoutChange]);
 
   const toggleKey = (index: number) =>
     setKeyColumns(prev =>
@@ -431,8 +434,23 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
         <p className="text-[11px] text-slate-400">
           Создайте шаблон логического показателя (Потребность, Мощность…) и
           привяжите к нему колонки поиском. Колонка принадлежит одному шаблону.
-          Непривязанные колонки станут отдельными шаблонами по своему имени.
         </p>
+
+        <label className="flex items-start gap-2 text-[12px] text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2">
+          <input
+            type="checkbox"
+            checked={importUnassigned}
+            onChange={e => setImportUnassigned(e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            Импортировать колонки без шаблона ({unassignedColumns.length}) — каждая
+            станет отдельным показателем по своему имени.
+            <span className="block text-[11px] text-slate-400">
+              Снимите галочку, чтобы импортировать только привязанные к шаблонам величины.
+            </span>
+          </span>
+        </label>
 
         <div className="flex gap-2">
           <Input
