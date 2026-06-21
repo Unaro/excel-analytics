@@ -17,33 +17,8 @@ import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
-import { useAggregateNodesStore } from '@/entities/aggregate-nodes';
+import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/entities/aggregate-nodes';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
-import type { VirtualMetricValue } from '@/shared/lib/types/computation';
-
-/**
- * Подставляет введённые значения узлов агрегата ВМЕСТО вычисленных по листьям:
- * где у узла есть введённое значение (не null), оно перекрывает сумму по листьям
- * («официальная» цифра из файла). formattedValue → '—', чтобы MetricCell
- * переформатировал из value — так форматирование, окрашивание и сортировка
- * работают на введённых числах. Метрики без введённого значения не трогаем.
- */
-function mergeEnteredVms(
-  vms: VirtualMetricValue[],
-  entered: Record<string, number | null> | undefined
-): VirtualMetricValue[] {
-  if (!entered) return vms;
-  let changed = false;
-  const out = vms.map(vm => {
-    const e = entered[vm.virtualMetricId];
-    if (e != null) {
-      changed = true;
-      return { ...vm, value: e, formattedValue: '—' };
-    }
-    return vm;
-  });
-  return changed ? out : vms;
-}
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -173,11 +148,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
       if (item.dateLabel !== undefined) continue;
       const values = nodeMap.get(nodePathKey([...pathValues, item.label]));
       if (!values) continue;
-      const byVm: Record<string, number | null> = {};
-      for (const vm of summaryVirtualMetrics) {
-        const col = vm.sourceMetricId ? columnByMetricId[vm.sourceMetricId] : undefined;
-        if (col && col in values) byVm[vm.virtualMetricId] = values[col];
-      }
+      const byVm = enteredVmValues(values, summaryVirtualMetrics, columnByMetricId);
       if (Object.keys(byVm).length) out.set(item.label, byVm);
     }
     return out.size ? out : undefined;
@@ -187,11 +158,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     if (nodeMap.size === 0 || pathValues.length === 0) return undefined;
     const values = nodeMap.get(nodePathKey(pathValues));
     if (!values) return undefined;
-    const byVm: Record<string, number | null> = {};
-    for (const vm of summaryVirtualMetrics) {
-      const col = vm.sourceMetricId ? columnByMetricId[vm.sourceMetricId] : undefined;
-      if (col && col in values) byVm[vm.virtualMetricId] = values[col];
-    }
+    const byVm = enteredVmValues(values, summaryVirtualMetrics, columnByMetricId);
     return Object.keys(byVm).length ? byVm : undefined;
   }, [nodeMap, pathValues, summaryVirtualMetrics, columnByMetricId]);
 
