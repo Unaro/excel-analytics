@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
-import type { FilePreview, ImportParams, DecimalSeparator, AggregateMatrix } from '@/features/setup-dataset';
+import type { FilePreview, ImportParams, DecimalSeparator, AggregateMatrix, AggregateLayoutConfig } from '@/features/setup-dataset';
 import type { ColumnClassification } from '@/shared/lib/types';
 import { AggregateStructurePanel } from './AggregateStructurePanel';
 
@@ -20,10 +20,11 @@ interface ImportConfigStepProps {
   onColumnTypeChange: (columnName: string, type: ColumnClassification) => void;
   onImport: () => void;
   onCancel: () => void;
-  /** Режим файла-агрегата (иерархия по уровням) — фаза 0: предпросмотр структуры. */
+  /** Режим файла-агрегата (иерархия по уровням). */
   isAggregate: boolean;
   onAggregateToggle: (on: boolean) => void;
   aggregateMatrix: AggregateMatrix | null;
+  onAggregateLayoutChange: (config: AggregateLayoutConfig) => void;
 }
 
 const NEWLINE_LABEL: Record<string, string> = {
@@ -74,6 +75,7 @@ export function ImportConfigStep({
   isAggregate,
   onAggregateToggle,
   aggregateMatrix,
+  onAggregateLayoutChange,
 }: ImportConfigStepProps) {
   const showCsvControls = !!preview?.isCsv && !!importParams;
 
@@ -124,7 +126,9 @@ export function ImportConfigStep({
         </div>
       </label>
 
-      {isAggregate && <AggregateStructurePanel matrix={aggregateMatrix} />}
+      {isAggregate && (
+        <AggregateStructurePanel matrix={aggregateMatrix} onLayoutChange={onAggregateLayoutChange} />
+      )}
 
       {/* ─── Параметры разбора (CSV) ─── */}
       {showCsvControls && importParams && (

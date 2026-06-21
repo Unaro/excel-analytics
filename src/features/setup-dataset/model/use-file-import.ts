@@ -4,9 +4,10 @@ import { useState, useCallback, useRef } from 'react';
 import { syncFromFile } from './sync-engine';
 import { toast } from '@/shared/ui/toast';
 import type { ImportParams } from '../lib/file-preview';
+import type { AggregateLayoutConfig } from '../lib/aggregate-layout';
 
 export interface UseFileImportReturn {
-  importFile: (file: File, params?: ImportParams) => Promise<boolean>;
+  importFile: (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig) => Promise<boolean>;
   isUploading: boolean;
   error: string | null;
   progress: number;
@@ -20,7 +21,7 @@ export function useFileImport(): UseFileImportReturn {
 
   const uploadInProgressRef = useRef<boolean>(false);
 
-const handleFileUpload = useCallback(async (file: File, params?: ImportParams): Promise<boolean> => {
+const handleFileUpload = useCallback(async (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig): Promise<boolean> => {
     if (isUploading) return false;
 
     setIsUploading(true);
@@ -30,7 +31,7 @@ const handleFileUpload = useCallback(async (file: File, params?: ImportParams): 
     return new Promise<boolean>((resolve) => {
       setTimeout(async () => {
         try {
-          const res = await syncFromFile(file, params);
+          const res = await syncFromFile(file, params, aggregate);
           if (res.success) {
             toast.success(`Датасет "${file.name}" загружен`, { id: toastId });
             resolve(true);

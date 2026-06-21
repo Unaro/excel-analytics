@@ -52,7 +52,9 @@ export function SetupWizardContent() {
   const { importFile, isUploading } = useFileImport();
   const handleConfirmImport = async () => {
     if (!wizard.selectedFile) return;
-    const ok = await importFile(wizard.selectedFile, wizard.importParams ?? undefined);
+    // Агрегат: передаём подтверждённую разметку → сплющивание в листья.
+    const aggregate = wizard.isAggregate ? wizard.aggregateConfig ?? undefined : undefined;
+    const ok = await importFile(wizard.selectedFile, wizard.importParams ?? undefined, aggregate);
     // Успех → сбрасываем выбранный файл; авто-навигация уведёт на «Колонки».
     if (ok) wizard.resetSelectedFile();
   };
@@ -145,6 +147,7 @@ export function SetupWizardContent() {
             isAggregate={wizard.isAggregate}
             onAggregateToggle={wizard.setIsAggregate}
             aggregateMatrix={wizard.aggregateMatrix}
+            onAggregateLayoutChange={wizard.setAggregateConfig}
           />
         )}
         {wizard.step === 'columns' && (

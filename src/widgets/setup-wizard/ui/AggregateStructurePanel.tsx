@@ -12,6 +12,7 @@ import {
   buildHierarchyPreview,
   proposeGroups,
   type AggregateMatrix,
+  type AggregateLayoutConfig,
   type EmptyConfig,
   type HierarchyPreviewNode,
   type RowKind,
@@ -19,6 +20,8 @@ import {
 
 interface AggregateStructurePanelProps {
   matrix: AggregateMatrix | null;
+  /** Сообщает подтверждённую разметку наверх (для импорта фазы 1). */
+  onLayoutChange?: (config: AggregateLayoutConfig) => void;
 }
 
 const KIND_BADGE: Record<RowKind, { label: string; cls: string }> = {
@@ -47,7 +50,7 @@ function TreeNodes({ nodes, depth = 0 }: { nodes: HierarchyPreviewNode[]; depth?
  * группы, дерево) и даёт её подправить. На импорт пока НЕ влияет — это
  * валидация детекта на реальных файлах. План: docs/architecture/aggregate-files.md
  */
-export function AggregateStructurePanel({ matrix }: AggregateStructurePanelProps) {
+export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStructurePanelProps) {
   const rawMatrix = useMemo(() => matrix?.matrix ?? [], [matrix]);
 
   const [headerRows, setHeaderRows] = useState(1);
@@ -68,6 +71,11 @@ export function AggregateStructurePanel({ matrix }: AggregateStructurePanelProps
     const tokens = emptyTokensText.split(',').map(t => t.trim()).filter(Boolean);
     return tokens.length ? { tokens } : {};
   }, [emptyTokensText]);
+
+  // Сообщаем разметку наверх — для импорта (фаза 1).
+  useEffect(() => {
+    onLayoutChange?.({ headerRows, keyColumns, empty: emptyCfg });
+  }, [headerRows, keyColumns, emptyCfg, onLayoutChange]);
 
   const { columns, classified, groups, tree } = useMemo(() => {
     const headerMatrix = rawMatrix.slice(0, headerRows);

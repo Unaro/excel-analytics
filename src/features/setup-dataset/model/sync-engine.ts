@@ -39,8 +39,12 @@ import { del, set } from 'idb-keyval';
 // ─────────────────────────────────────────────────────────────
 import { mergeColumnConfigs } from '@/shared/lib/services';
 import { generateColumnConfigsFromPgSchema } from '@/entities/dataset';
+import { useHierarchyStore } from '@/entities/hierarchy';
 import { DatasetRow } from '@/shared/lib/types';
+import type { ColumnClassification } from '@/shared/lib/types';
 import type { ImportParams } from '../lib/file-preview';
+import { readAggregateMatrix } from '../lib/file-preview';
+import { flattenLeaves, toAggregateCsv, type AggregateLayoutConfig } from '../lib/aggregate-layout';
 
 // ─────────────────────────────────────────────────────────────
 // syncFromFile
@@ -55,7 +59,11 @@ import type { ImportParams } from '../lib/file-preview';
  *   3. Запрашиваем PREVIEW (500 строк) для UI
  *   4. Сохраняем метаданные и configs
  */
-export async function syncFromFile(file: File, params?: ImportParams) {
+export async function syncFromFile(
+  file: File,
+  params?: ImportParams,
+  aggregate?: AggregateLayoutConfig
+) {
   const { setSyncing, addDataset, setDatasetRows, switchDataset } =
     useDatasetStore.getState();
   const setConfigs = useColumnConfigStore.getState();
@@ -82,7 +90,14 @@ export async function syncFromFile(file: File, params?: ImportParams) {
 
     // 1. Импортируем весь файл в DuckDB.
     // Параметры разбора (шаг «Импорт») → быстрый нативный путь для CSV.
-    const parseOptions = params
+    // Агрегат: читаем весь файл, сплющиваем в листья → плоский CSV (нативный
+    // путь), ключи → categorical (VARCHAR, коды), метрики → numeric, уровни
+    // иерархии создаём по ключевым колонкам. Предпосчитанные узлы — фаза 2.
+    let importBuffer: ArrayBuffer = buffer;
+    let importFileName = file.name;
+    let aggregateKeyNames: string[] | null = null;
+    let effectiveTypes: Record<string, ColumnClassification> | undefined = params?.columnTypes;
+    let parseOptions = params
       ? {
           delimiter: params.delimiter ?? ',',
           decimalSeparator: params.decimalSeparator,
@@ -90,21 +105,38 @@ export async function syncFromFile(file: File, params?: ImportParams) {
           dateFormat: params.dateFormat,
         }
       : undefined;
+
+    if (aggregate) {
+      const { matrix } = readAggregateMatrix(buffer, file.name, { all: true });
+      const flat = flattenLeaves(matrix, aggregate);
+      const csv = toAggregateCsv(flat);
+      importBuffer = new TextEncoder().encode(csv).buffer as ArrayBuffer;
+      importFileName = `${file.name.replace(/\.[^.]+$/, '')}.csv`;
+      const columnTypes: Record<string, ColumnClassification> = {};
+      for (const col of flat.columns) {
+        columnTypes[col.fullName] = col.role === 'metric' ? 'numeric' : 'categorical';
+      }
+      effectiveTypes = columnTypes;
+      parseOptions = { delimiter: ',', decimalSeparator: '.', columnTypes, dateFormat: undefined };
+      aggregateKeyNames = flat.keyColumnNames;
+      logger.info(`[syncFromFile] Агрегат сплющен: ${flat.rows.length} листьев, ${flat.keyColumnNames.length} уровней`);
+    }
+
     const { configs, totalRows, totalColumns, sheetNames } =
       await duckdbManager.importExcelBuffer(
         datasetId,
-        file.name,
-        buffer,
+        importFileName,
+        importBuffer,
         onProgress,
         parseOptions
       );
 
     // Применяем выбранные пользователем типы колонок (классификация —
     // единый источник на стороне UI; влияет на метрики/ось/иерархию).
-    const finalConfigs = params?.columnTypes
+    const finalConfigs = effectiveTypes
       ? configs.map((c) => ({
           ...c,
-          classification: params.columnTypes[c.columnName] ?? c.classification,
+          classification: effectiveTypes[c.columnName] ?? c.classification,
         }))
       : configs;
 
@@ -150,6 +182,14 @@ export async function syncFromFile(file: File, params?: ImportParams) {
         sourceType: 'file',
       },
     });
+
+    // Агрегат: ключевые колонки → уровни иерархии (каскад город→зона→объект).
+    if (aggregateKeyNames?.length) {
+      const hierarchy = useHierarchyStore.getState();
+      for (const name of aggregateKeyNames) {
+        hierarchy.addLevel(datasetId, { columnName: name, displayName: name });
+      }
+    }
 
     setDatasetRows(datasetId, previewRows);
     switchDataset(datasetId);
