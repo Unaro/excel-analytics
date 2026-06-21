@@ -277,11 +277,14 @@ export function readAggregateMatrix(
     };
   }
 
-  const workbook = XLSX.read(buffer, { type: 'array', raw: true, cellDates: true, sheetRows: maxRows + 2 });
+  // raw:false → берём ОТОБРАЖАЕМЫЙ текст ячейки (`.w`), а не сырое значение.
+  // Иначе коды-времена вроде `8:01:06` SheetJS превращает в Date
+  // (Sat Dec 30 1899 08:01:06). cellText:true (по умолчанию) генерит `.w`.
+  const workbook = XLSX.read(buffer, { type: 'array', cellDates: false, sheetRows: maxRows + 2 });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) return { matrix: [], truncated: false };
   const sheet = workbook.Sheets[sheetName];
-  const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: true });
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: false });
   const matrix = raw.slice(0, maxRows + 2).map((r) =>
     (r as unknown[]).map((v) => (v === null || v === undefined ? '' : String(v)))
   );
