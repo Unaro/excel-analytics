@@ -9,6 +9,8 @@ import {
   classifyRows,
   buildHierarchyPreview,
   proposeGroups,
+  flattenLeaves,
+  toAggregateCsv,
 } from './aggregate-layout';
 
 // Каскад ключей: Регион(0) → Город(1) → Зона(2, код) → Объект(3, GUID),
@@ -142,6 +144,49 @@ describe('buildHierarchyPreview: дерево из каскада', () => {
     const zone = city.children[0];
     expect(zone.label).toBe('8:01:06');
     expect(zone.children.map(n => n.label)).toEqual(['{guid1}', '{guid2}']);
+  });
+});
+
+describe('flattenLeaves: только листья + протаскивание предков', () => {
+  it('берёт листья, отбрасывает узлы/итого, тянет предков', () => {
+    const res = flattenLeaves(ROWS, { headerRows: 0, keyColumns: KEYS });
+    // только 2 листа (guid1, guid2); узлы города/зоны и «Итого» исключены
+    expect(res.rows).toHaveLength(2);
+    // у листа предки протащены (Регион/Город/Зона заполнены)
+    expect(res.rows[0].slice(0, 4)).toEqual(['Тюменская обл', 'Тюмень', '8:01:06', '{guid1}']);
+    expect(res.rows[1].slice(0, 4)).toEqual(['Тюменская обл', 'Тюмень', '8:01:06', '{guid2}']);
+  });
+
+  it('carry-forward, когда лист не повторяет предков (outline)', () => {
+    const rows = [
+      ['Обл', '', '', '', '', ''],          // узел level 0
+      ['', 'Гор', '', '', '', ''],           // узел level 1 (предок не повторён)
+      ['', '', '8:01', '{g1}', '1,5', '0'],  // лист level 3 (только свой уровень + код зоны)
+    ];
+    // keyColumns 0..3; лист имеет зону и guid, но не Обл/Гор → берём из carry
+    const res = flattenLeaves(rows, { headerRows: 0, keyColumns: [0, 1, 2, 3] });
+    expect(res.rows).toHaveLength(1);
+    expect(res.rows[0].slice(0, 4)).toEqual(['Обл', 'Гор', '8:01', '{g1}']);
+  });
+});
+
+describe('toAggregateCsv: канонизация метрик, экранирование', () => {
+  it('метрики → точка-десятичная, пробелы-тысячи убраны', () => {
+    const header = [['Регион', 'Площадь', 'Численность']];
+    const rows = [['Обл', '12,5', '1 639 132']];
+    const res = flattenLeaves([...header, ...rows], { headerRows: 1, keyColumns: [0] });
+    const csv = toAggregateCsv(res);
+    const lines = csv.split('\n');
+    expect(lines[0]).toBe('Регион,Площадь,Численность');
+    expect(lines[1]).toBe('Обл,12.5,1639132');
+  });
+  it('экранирует запятые/кавычки в текстовых полях', () => {
+    const res = flattenLeaves(
+      [['Имя', 'Площадь'], ['А, "Б"', '1,2']],
+      { headerRows: 1, keyColumns: [0] }
+    );
+    const csv = toAggregateCsv(res);
+    expect(csv.split('\n')[1]).toBe('"А, ""Б""",1.2');
   });
 });
 

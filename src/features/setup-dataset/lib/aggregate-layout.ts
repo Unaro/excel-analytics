@@ -286,3 +286,111 @@ export function proposeGroups(columns: AggregateColumn[]): ProposedGroup[] {
   }
   return Array.from(byGroup.entries()).map(([groupName, metrics]) => ({ groupName, metrics }));
 }
+
+// ─────────────────────────────────────────────────────────────
+// Сплющивание в листья (фаза 1) — плоская таблица для текущего движка.
+// ─────────────────────────────────────────────────────────────
+
+/** Подтверждённая пользователем разметка для сплющивания. */
+export interface AggregateLayoutConfig {
+  headerRows: number;
+  keyColumns: number[];
+  empty?: EmptyConfig;
+  totalKeywords?: string[];
+}
+
+export interface FlattenResult {
+  /** Колонки результата с ролями/именами. */
+  columns: AggregateColumn[];
+  /** Составные имена колонок (заголовок плоской таблицы). */
+  headers: string[];
+  /** Только листовые строки; метки предков протащены (carry-forward). */
+  rows: string[][];
+  /** Имена ключевых колонок в порядке каскада (→ уровни иерархии). */
+  keyColumnNames: string[];
+  /** Имена колонок-метрик. */
+  metricColumnNames: string[];
+}
+
+/**
+ * Сплющивает агрегат в плоскую таблицу ЛИСТЬЕВ (фаза 1).
+ *
+ * Берёт только листовые строки (самый глубокий заполненный ключ), протаскивая
+ * метки предков сверху вниз (carry-forward) — работает и когда листы повторяют
+ * предков, и когда заполнен только свой уровень (outline). Узлы и «Итого»
+ * отбрасываются → двойного счёта нет. Метрики/атрибуты берутся из самой
+ * листовой строки. Предпосчитанные значения узлов в фазе 1 НЕ сохраняются.
+ */
+export function flattenLeaves(
+  matrix: string[][],
+  config: AggregateLayoutConfig
+): FlattenResult {
+  const { headerRows, keyColumns, empty, totalKeywords } = config;
+  const headerMatrix = matrix.slice(0, headerRows);
+  const dataRows = matrix.slice(headerRows);
+  const columns = buildColumns(headerMatrix, keyColumns, dataRows, empty);
+  const classified = classifyRows(dataRows, keyColumns, { empty, totalKeywords });
+
+  const keyOrdinalByIndex = new Map<number, number>();
+  keyColumns.forEach((colIdx, ord) => keyOrdinalByIndex.set(colIdx, ord));
+
+  const currentKeys: string[] = [];
+  const rows: string[][] = [];
+
+  for (const row of classified) {
+    if (row.kind === 'total' || row.level < 0) continue;
+    // Обновляем путь: каждый заполненный ключ строки + сброс глубже её уровня.
+    for (let i = 0; i < keyColumns.length; i++) {
+      const v = row.cells[keyColumns[i]] ?? '';
+      if (!isEmptyCell(v, empty)) currentKeys[i] = String(v).trim();
+    }
+    currentKeys.length = row.level + 1;
+
+    if (row.kind !== 'leaf') continue;
+
+    rows.push(
+      columns.map(col => {
+        const ord = keyOrdinalByIndex.get(col.index);
+        if (ord !== undefined) return currentKeys[ord] ?? '';
+        return row.cells[col.index] ?? '';
+      })
+    );
+  }
+
+  return {
+    columns,
+    headers: columns.map(c => c.fullName),
+    rows,
+    keyColumnNames: columns.filter(c => c.role === 'key').map(c => c.fullName),
+    metricColumnNames: columns.filter(c => c.role === 'metric').map(c => c.fullName),
+  };
+}
+
+/** Приводит число к каноничному виду (точка-десятичная, без разрядов).
+ *  RU-ориентировано: пробелы — тысячи, запятая — десятичная. */
+function canonicalNumber(s: string): string {
+  return s.replace(/\s/g, '').replace(',', '.');
+}
+
+/** Экранирует поле CSV (кавычки/запятая/перевод строки). */
+function csvField(s: string): string {
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/**
+ * Собирает CSV из результата сплющивания. Метрики канонизируются к точке-
+ * десятичной (для нативного read_csv_auto с decimal_separator='.'); ключи и
+ * атрибуты — как есть (текст/коды). Разделитель — запятая.
+ */
+export function toAggregateCsv(result: FlattenResult): string {
+  // result.rows выровнены с result.columns по позиции.
+  const isMetric = result.columns.map(c => c.role === 'metric');
+  const lines: string[] = [result.headers.map(csvField).join(',')];
+  for (const row of result.rows) {
+    const out = row.map((raw, pos) =>
+      csvField(isMetric[pos] ? canonicalNumber(raw ?? '') : (raw ?? ''))
+    );
+    lines.push(out.join(','));
+  }
+  return lines.join('\n');
+}

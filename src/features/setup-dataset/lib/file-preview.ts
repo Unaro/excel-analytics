@@ -261,34 +261,42 @@ export interface AggregateMatrix {
 export function readAggregateMatrix(
   buffer: ArrayBuffer,
   fileName: string,
-  opts: { maxRows?: number; delimiter?: string } = {}
+  opts: { maxRows?: number; delimiter?: string; all?: boolean } = {}
 ): AggregateMatrix {
+  // all=true — читаем ВЕСЬ файл (импорт фазы 1), иначе только превью.
   const maxRows = opts.maxRows ?? DEFAULT_PREVIEW_ROWS;
 
   if (isCsvFileName(fileName)) {
-    const prefix = buffer.byteLength > CSV_PREFIX_BYTES ? buffer.slice(0, CSV_PREFIX_BYTES) : buffer;
+    const prefix = !opts.all && buffer.byteLength > CSV_PREFIX_BYTES
+      ? buffer.slice(0, CSV_PREFIX_BYTES)
+      : buffer;
     const text = new TextDecoder('utf-8').decode(prefix);
     const headerLine = text.slice(0, Math.max(0, text.search(/[\r\n]/)) || text.length);
     const delimiter = opts.delimiter ?? detectDelimiter(headerLine);
-    const parsed = parseCsvPreview(text, delimiter, maxRows);
+    const parsed = parseCsvPreview(text, delimiter, opts.all ? Number.POSITIVE_INFINITY : maxRows);
     return {
-      matrix: parsed.slice(0, maxRows + 1),
-      truncated: parsed.length > maxRows + 1 || buffer.byteLength > CSV_PREFIX_BYTES,
+      matrix: opts.all ? parsed : parsed.slice(0, maxRows + 1),
+      truncated: !opts.all && (parsed.length > maxRows + 1 || buffer.byteLength > CSV_PREFIX_BYTES),
     };
   }
 
   // raw:false → берём ОТОБРАЖАЕМЫЙ текст ячейки (`.w`), а не сырое значение.
   // Иначе коды-времена вроде `8:01:06` SheetJS превращает в Date
   // (Sat Dec 30 1899 08:01:06). cellText:true (по умолчанию) генерит `.w`.
-  const workbook = XLSX.read(buffer, { type: 'array', cellDates: false, sheetRows: maxRows + 2 });
+  const workbook = XLSX.read(buffer, {
+    type: 'array',
+    cellDates: false,
+    ...(opts.all ? {} : { sheetRows: maxRows + 2 }),
+  });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) return { matrix: [], truncated: false };
   const sheet = workbook.Sheets[sheetName];
   const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: false });
-  const matrix = raw.slice(0, maxRows + 2).map((r) =>
+  const sliced = opts.all ? raw : raw.slice(0, maxRows + 2);
+  const matrix = sliced.map((r) =>
     (r as unknown[]).map((v) => (v === null || v === undefined ? '' : String(v)))
   );
-  return { matrix, truncated: raw.length > maxRows + 2 };
+  return { matrix, truncated: !opts.all && raw.length > maxRows + 2 };
 }
 
 // ─────────────────────────────────────────────────────────────

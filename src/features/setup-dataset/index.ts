@@ -37,6 +37,8 @@ export {
   classifyRows,
   buildHierarchyPreview,
   proposeGroups,
+  flattenLeaves,
+  toAggregateCsv,
 } from './lib/aggregate-layout';
 export { readAggregateMatrix } from './lib/file-preview';
 export type { AggregateMatrix } from './lib/file-preview';
@@ -48,4 +50,6 @@ export type {
   EmptyConfig,
   HierarchyPreviewNode,
   ProposedGroup,
+  AggregateLayoutConfig,
+  FlattenResult,
 } from './lib/aggregate-layout';
