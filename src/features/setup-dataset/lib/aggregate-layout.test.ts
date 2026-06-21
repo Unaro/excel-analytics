@@ -3,6 +3,7 @@ import {
   isEmptyCell,
   isMetricColumn,
   detectKeyColumns,
+  detectHeaderRows,
   buildColumns,
   classifyRow,
   classifyRows,
@@ -59,6 +60,26 @@ describe('detectKeyColumns: каскад до первой метрики', () =
   });
   it('минимум одна колонка-ключ', () => {
     expect(detectKeyColumns([['10', '20']], 2)).toEqual([0]);
+  });
+});
+
+describe('detectHeaderRows: одно- vs двухстрочная шапка', () => {
+  it('разреженная групповая строка над плотной → 2', () => {
+    const matrix = [
+      ['Расположение', '', '', 'Дошкольные', ''],          // группы (разреженно)
+      ['Регион', 'Город', 'Зона', 'Потребность', 'Мощность'], // имена (плотно)
+      ['Обл', 'Гор', '8:01', '10', '20'],
+      ['Обл', 'Гор', '8:02', '11', '21'],
+    ];
+    expect(detectHeaderRows(matrix)).toBe(2);
+  });
+  it('плотная первая строка → 1', () => {
+    const matrix = [
+      ['Регион', 'Город', 'Зона', 'Потребность', 'Мощность'],
+      ['Обл', 'Гор', '8:01', '10', '20'],
+      ['Обл', 'Гор', '8:02', '11', '21'],
+    ];
+    expect(detectHeaderRows(matrix)).toBe(1);
   });
 });
 

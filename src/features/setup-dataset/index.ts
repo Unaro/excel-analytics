@@ -31,12 +31,15 @@ export {
   isEmptyCell,
   isMetricColumn,
   detectKeyColumns,
+  detectHeaderRows,
   buildColumns,
   classifyRow,
   classifyRows,
   buildHierarchyPreview,
   proposeGroups,
 } from './lib/aggregate-layout';
+export { readAggregateMatrix } from './lib/file-preview';
+export type { AggregateMatrix } from './lib/file-preview';
 export type {
   ColumnRole,
   RowKind,

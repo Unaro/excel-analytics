@@ -243,6 +243,51 @@ export function buildFilePreview(
   };
 }
 
+/** Сырая матрица превью (без разделения заголовка) для разметки агрегата. */
+export interface AggregateMatrix {
+  /** Все строки (включая возможные строки шапки), значения как строки. */
+  matrix: string[][];
+  /** true — данные обрезаны лимитом превью. */
+  truncated: boolean;
+}
+
+/**
+ * Читает первые строки файла как СЫРУЮ матрицу, без предположения о шапке —
+ * для детекта структуры файла-агрегата (мега-босс, фаза 0). CSV парсится по
+ * разделителю, xlsx — через `sheet_to_json(header:1)` (объединённые ячейки
+ * шапки приходят значением в левой ячейке, остальные пустые → forward-fill
+ * в `buildColumns`).
+ */
+export function readAggregateMatrix(
+  buffer: ArrayBuffer,
+  fileName: string,
+  opts: { maxRows?: number; delimiter?: string } = {}
+): AggregateMatrix {
+  const maxRows = opts.maxRows ?? DEFAULT_PREVIEW_ROWS;
+
+  if (isCsvFileName(fileName)) {
+    const prefix = buffer.byteLength > CSV_PREFIX_BYTES ? buffer.slice(0, CSV_PREFIX_BYTES) : buffer;
+    const text = new TextDecoder('utf-8').decode(prefix);
+    const headerLine = text.slice(0, Math.max(0, text.search(/[\r\n]/)) || text.length);
+    const delimiter = opts.delimiter ?? detectDelimiter(headerLine);
+    const parsed = parseCsvPreview(text, delimiter, maxRows);
+    return {
+      matrix: parsed.slice(0, maxRows + 1),
+      truncated: parsed.length > maxRows + 1 || buffer.byteLength > CSV_PREFIX_BYTES,
+    };
+  }
+
+  const workbook = XLSX.read(buffer, { type: 'array', raw: true, cellDates: true, sheetRows: maxRows + 2 });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) return { matrix: [], truncated: false };
+  const sheet = workbook.Sheets[sheetName];
+  const raw = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: null, raw: true });
+  const matrix = raw.slice(0, maxRows + 2).map((r) =>
+    (r as unknown[]).map((v) => (v === null || v === undefined ? '' : String(v)))
+  );
+  return { matrix, truncated: raw.length > maxRows + 2 };
+}
+
 // ─────────────────────────────────────────────────────────────
 // Автоугадывание типа колонки по сэмплу предпросмотра
 // ─────────────────────────────────────────────────────────────

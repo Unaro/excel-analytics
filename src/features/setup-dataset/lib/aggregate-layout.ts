@@ -85,6 +85,26 @@ export function isMetricColumn(values: string[], cfg?: EmptyConfig): boolean {
   return metricScore(values, cfg) > 0.6;
 }
 
+/** Число непустых ячеек в строке. */
+function filledCount(row: string[], cfg?: EmptyConfig): number {
+  return row.reduce((n, c) => (isEmptyCell(c, cfg) ? n : n + 1), 0);
+}
+
+/**
+ * Сколько верхних строк матрицы — шапка. Эвристика: групповая строка
+ * (multi-row, объединённые ячейки) заметно разреженнее строки имён под ней.
+ * Возвращает 2, если первая строка существенно «пустее» второй, иначе 1.
+ * Пользователь правит на шаге «Структура».
+ */
+export function detectHeaderRows(matrix: string[][], cfg?: EmptyConfig): number {
+  if (matrix.length < 3) return 1;
+  const f0 = filledCount(matrix[0], cfg);
+  const f1 = filledCount(matrix[1], cfg);
+  // row1 должна быть «плотной» (имена колонок), row0 — разреженной (группы).
+  if (f1 >= 3 && f0 > 0 && f0 <= f1 * 0.6) return 2;
+  return 1;
+}
+
 /**
  * Предлагает каскад ключевых колонок: ведущий ряд колонок-меток до первой
  * чисто-числовой метрики. Кодовые колонки (8, 8:01:06) остаются ключами.
