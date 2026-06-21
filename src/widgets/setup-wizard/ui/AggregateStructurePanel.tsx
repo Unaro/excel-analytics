@@ -13,6 +13,7 @@ import {
   proposeGroups,
   type AggregateMatrix,
   type AggregateLayoutConfig,
+  type AggregateColumn,
   type EmptyConfig,
   type HierarchyPreviewNode,
   type RowKind,
@@ -81,15 +82,9 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       return next;
     });
 
-  // Сообщаем разметку наверх — для импорта (фаза 1).
-  useEffect(() => {
-    onLayoutChange?.({
-      headerRows,
-      keyColumns,
-      empty: emptyCfg,
-      excludeGroups: Array.from(excludedGroups),
-    });
-  }, [headerRows, keyColumns, emptyCfg, excludedGroups, onLayoutChange]);
+  // Имя логического показателя (= шаблона) на колонку-метрику: правки
+  // пользователя поверх дефолта (имя колонки). Ключ — fullName (стабилен).
+  const [metricNameOverrides, setMetricNameOverrides] = useState<Record<string, string>>({});
 
   const { columns, classified, groups, tree } = useMemo(() => {
     const headerMatrix = rawMatrix.slice(0, headerRows);
@@ -103,6 +98,44 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       tree: buildHierarchyPreview(rows, keyColumns, { empty: emptyCfg, maxNodes: 60 }),
     };
   }, [rawMatrix, headerRows, keyColumns, emptyCfg]);
+
+  // Колонки-метрики по группам + эффективное имя показателя (override ?? имя).
+  const metricsByGroup = useMemo(() => {
+    const m = new Map<string, AggregateColumn[]>();
+    for (const c of columns) {
+      if (c.role !== 'metric') continue;
+      const key = c.groupName || '(без группы)';
+      if (!m.has(key)) m.set(key, []);
+      m.get(key)!.push(c);
+    }
+    return m;
+  }, [columns]);
+  const indicatorName = (col: AggregateColumn) =>
+    (metricNameOverrides[col.fullName] ?? col.name) || col.fullName;
+  // fullName → имя показателя (шаблона) для импорта.
+  const metricTemplateNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const c of columns) {
+      if (c.role === 'metric') map[c.fullName] = (metricNameOverrides[c.fullName] ?? c.name) || c.fullName;
+    }
+    return map;
+  }, [columns, metricNameOverrides]);
+  // Сколько РАЗНЫХ шаблонов получится (одинаковые имена сливаются).
+  const distinctTemplates = useMemo(
+    () => new Set(Object.values(metricTemplateNames)).size,
+    [metricTemplateNames]
+  );
+
+  // Сообщаем разметку наверх — для импорта.
+  useEffect(() => {
+    onLayoutChange?.({
+      headerRows,
+      keyColumns,
+      empty: emptyCfg,
+      excludeGroups: Array.from(excludedGroups),
+      metricTemplateNames,
+    });
+  }, [headerRows, keyColumns, emptyCfg, excludedGroups, metricTemplateNames, onLayoutChange]);
 
   const toggleKey = (index: number) =>
     setKeyColumns(prev =>
@@ -210,33 +243,60 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Группы к созданию */}
+        {/* Группы и показатели (шаблоны) */}
         <div className="space-y-2">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Группы показателей ({groups.length})
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Группы показателей ({groups.length})
+            </div>
+            <span className="text-[11px] text-slate-400" title="Одинаковые имена показателей сливаются в один шаблон">
+              шаблонов: {distinctTemplates}
+            </span>
           </div>
-          <div className="space-y-1.5">
-            {groups.map(g => {
-              const name = g.groupName || '(без группы)';
+          <p className="text-[11px] text-slate-400">
+            Имя показателя = шаблон. Одинаковое имя у колонок (в т.ч. в разных
+            группах) → общий шаблон. По умолчанию — имя колонки.
+          </p>
+          <div className="space-y-2 max-h-[360px] overflow-auto pr-1">
+            {Array.from(metricsByGroup.entries()).map(([name, cols]) => {
               const included = !excludedGroups.has(name);
               return (
-                <label
+                <div
                   key={name}
-                  className="flex items-start gap-2 p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 cursor-pointer"
+                  className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2"
                 >
-                  <input
-                    type="checkbox"
-                    checked={included}
-                    onChange={() => toggleGroup(name)}
-                    className="mt-0.5"
-                  />
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-slate-800 dark:text-slate-100">{name}</div>
-                    <div className="text-[11px] text-slate-400 truncate" title={g.metrics.join(', ')}>
-                      {g.metrics.length} метрик: {g.metrics.join(', ')}
+                  <label className="flex items-center gap-2 cursor-pointer mb-1.5">
+                    <input
+                      type="checkbox"
+                      checked={included}
+                      onChange={() => toggleGroup(name)}
+                    />
+                    <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{name}</span>
+                    <span className="text-[11px] text-slate-400">· {cols.length} метрик</span>
+                  </label>
+                  {included && (
+                    <div className="space-y-1 pl-6">
+                      {cols.map(col => (
+                        <div key={col.fullName} className="flex items-center gap-2">
+                          <span
+                            className="text-[11px] text-slate-400 w-28 shrink-0 truncate"
+                            title={col.fullName}
+                          >
+                            {col.name || `кол. ${col.index + 1}`}
+                          </span>
+                          <input
+                            value={indicatorName(col)}
+                            onChange={e =>
+                              setMetricNameOverrides(prev => ({ ...prev, [col.fullName]: e.target.value }))
+                            }
+                            placeholder="показатель (шаблон)"
+                            className="flex-1 h-7 px-2 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                </label>
+                  )}
+                </div>
               );
             })}
           </div>

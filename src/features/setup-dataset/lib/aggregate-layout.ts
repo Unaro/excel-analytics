@@ -301,6 +301,13 @@ export interface AggregateLayoutConfig {
   totalKeywords?: string[];
   /** Группы шапки, которые НЕ создавать (имена как в proposeGroups). */
   excludeGroups?: string[];
+  /**
+   * Имя логического показателя (= шаблона) для колонки-метрики, по её
+   * составному имени (fullName). Колонки с ОДИНАКОВЫМ именем → общий шаблон.
+   * Нет записи → берётся имя колонки (col.name). Решение пользователя на
+   * шаге «Структура».
+   */
+  metricTemplateNames?: Record<string, string>;
 }
 
 export interface FlattenResult {

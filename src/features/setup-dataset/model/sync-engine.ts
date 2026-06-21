@@ -67,7 +67,8 @@ import {
 function createAggregateGroups(
   datasetId: string,
   columns: AggregateColumn[],
-  excludeGroups?: string[]
+  excludeGroups?: string[],
+  metricTemplateNames?: Record<string, string>
 ): number {
   const byGroup = new Map<string, AggregateColumn[]>();
   for (const col of columns) {
@@ -109,8 +110,10 @@ function createAggregateGroups(
     if (exclude.has(groupName)) continue;
     const metrics = cols.map((col, i) => ({
       id: nanoid(),
-      // Имя метрики (лист шапки) = логический показатель → общий шаблон.
-      templateId: templateFor(col.name || col.fullName),
+      // Логический показатель (= имя шаблона) задаётся пользователем; по
+      // умолчанию — имя колонки. Одинаковое имя у разных колонок → общий шаблон.
+      templateId: templateFor(metricTemplateNames?.[col.fullName] || col.name || col.fullName),
+      // Привязка — к УНИКАЛЬНОМУ внутреннему имени колонки (с префиксом группы).
       fieldBindings: [{ id: nanoid(), fieldAlias: 'value', columnName: col.fullName }],
       metricBindings: [],
       enabled: true,
@@ -273,7 +276,12 @@ export async function syncFromFile(
 
     // Агрегат: метрики шапки → группы показателей (SUM по колонке).
     if (aggregateColumns) {
-      const n = createAggregateGroups(datasetId, aggregateColumns, aggregate?.excludeGroups);
+      const n = createAggregateGroups(
+        datasetId,
+        aggregateColumns,
+        aggregate?.excludeGroups,
+        aggregate?.metricTemplateNames
+      );
       logger.info(`[syncFromFile] Создано групп показателей: ${n}`);
     }
 
