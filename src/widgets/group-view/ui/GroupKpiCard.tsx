@@ -1,9 +1,11 @@
 'use client';
 import { memo } from 'react';
-import { Calculator, Check } from 'lucide-react';
+import { Calculator, Check, BarChart3, TrendingUp, Spline, Activity, Minus, MoreHorizontal } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { cn } from '@/shared/lib/utils';
+import { formatRu } from '@/shared/lib/utils/format';
 import { VirtualMetricValue } from '@/entities/metric';
+import type { MetricChartStyle } from '@/shared/lib/types/chart';
 
 interface GroupKpiCardProps {
   metric: VirtualMetricValue;
@@ -12,6 +14,31 @@ interface GroupKpiCardProps {
   totalActive: number;
   recordCount: number;
   onToggle: (id: string) => void;
+  /** Текущий стиль метрики на чарте (undefined → столбец по умолчанию). */
+  chartStyle?: MetricChartStyle;
+  /** Сменить стиль чарта. Нет коллбэка → контрол скрыт. */
+  onChartStyleChange?: (style: MetricChartStyle) => void;
+}
+
+/** Маленькая кнопка-переключатель стиля внутри карточки. */
+function StyleToggle({
+  active, title, onClick, children,
+}: { active: boolean; title: string; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className={cn(
+        'p-1 rounded transition-colors',
+        active
+          ? 'bg-indigo-600 text-white'
+          : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+      )}
+    >
+      {children}
+    </button>
+  );
 }
 
 /**
@@ -25,7 +52,19 @@ export const GroupKpiCard = memo(function GroupKpiCard({
   totalActive,
   recordCount,
   onToggle,
+  chartStyle,
+  onChartStyleChange,
 }: GroupKpiCardProps) {
+  const kind = chartStyle?.kind ?? 'bar';
+  const curve = chartStyle?.curve ?? 'smooth';
+  const dash = chartStyle?.dash ?? 'solid';
+  // Переключение на line подставляет дефолты кривой/штриха, чтобы они «помнились».
+  const setKind = (k: 'bar' | 'line') =>
+    onChartStyleChange?.(k === 'line' ? { kind: 'line', curve, dash } : { ...chartStyle, kind: 'bar' });
+  const setCurve = (c: 'smooth' | 'linear') =>
+    onChartStyleChange?.({ kind: 'line', curve: c, dash });
+  const setDash = (d: 'solid' | 'dashed') =>
+    onChartStyleChange?.({ kind: 'line', curve, dash: d });
   // Цвета для активных метрик (чередуются)
   const ACTIVE_COLORS = [
     'border-indigo-400 bg-indigo-50/50 dark:border-indigo-600 dark:bg-indigo-950/30',
@@ -74,10 +113,42 @@ export const GroupKpiCard = memo(function GroupKpiCard({
         </div>
         {recordCount > 0 && (
           <div className="text-[10px] text-slate-400 mt-1">
-            {recordCount.toLocaleString('ru-RU')} записей
+            {formatRu(recordCount)} записей
           </div>
         )}
       </div>
+
+      {onChartStyleChange && (
+        <div className="mt-3 pt-2 border-t border-slate-200/70 dark:border-slate-800 flex flex-wrap items-center gap-1">
+          {/* Тип: столбец / линия */}
+          <StyleToggle active={kind === 'bar'} title="Столбец" onClick={() => setKind('bar')}>
+            <BarChart3 size={13} />
+          </StyleToggle>
+          <StyleToggle active={kind === 'line'} title="Линия" onClick={() => setKind('line')}>
+            <TrendingUp size={13} />
+          </StyleToggle>
+
+          {/* Для линии — стиль кривой и штрих */}
+          {kind === 'line' && (
+            <>
+              <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+              <StyleToggle active={curve === 'smooth'} title="Гладкая кривая" onClick={() => setCurve('smooth')}>
+                <Spline size={13} />
+              </StyleToggle>
+              <StyleToggle active={curve === 'linear'} title="Ломаная (прямые)" onClick={() => setCurve('linear')}>
+                <Activity size={13} />
+              </StyleToggle>
+              <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
+              <StyleToggle active={dash === 'solid'} title="Сплошная" onClick={() => setDash('solid')}>
+                <Minus size={13} />
+              </StyleToggle>
+              <StyleToggle active={dash === 'dashed'} title="Пунктир" onClick={() => setDash('dashed')}>
+                <MoreHorizontal size={13} />
+              </StyleToggle>
+            </>
+          )}
+        </div>
+      )}
     </Card>
   );
 });

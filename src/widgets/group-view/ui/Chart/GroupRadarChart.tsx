@@ -5,9 +5,11 @@ import {
   Radar, Legend, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
-import { getColorForValue } from '@/shared/lib/utils/metric-colors';
+import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
+import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
+import { formatRu } from '@/shared/lib/utils/format';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -17,6 +19,8 @@ interface GroupRadarChartProps {
   metricNames: Record<string, string>;
   title: string;
   metricConfigs?: VirtualMetric[];
+  /** Код → имя (словарь): для подписей оси/тултипа. Позиция — по сырому name. */
+  resolveLabel?: (label: string) => string;
 }
 
 export const GroupRadarChart = memo(function GroupRadarChart({
@@ -25,11 +29,34 @@ export const GroupRadarChart = memo(function GroupRadarChart({
   metricNames,
   title,
   metricConfigs,
+  resolveLabel,
 }: GroupRadarChartProps) {
+  const displayLabel = (v: unknown) =>
+    resolveLabel ? resolveLabel(String(v)) : String(v);
   const groupedThresholds = useMemo(
     () => groupThresholdsByValue(metricConfigs || [], metricKeys),
     [metricConfigs, metricKeys]
   );
+
+  // Авто-домен по значениям метрик И порогов вместе. Важно: пороговые
+  // полигоны рисуются на той же радиальной оси, и recharts по умолчанию
+  // (allowDataOverflow=false) расширяет ось под ВСЕ серии. Если считать домен
+  // только по метрикам, порог вне диапазона раздувает ось → метрика <1
+  // схлопывается к центру, а сам порог уходит за край и не виден. Включаем
+  // пороги в расчёт — ось охватывает и то, и другое.
+  const radarDomain = useMemo(() => {
+    const vals: number[] = [];
+    for (const row of data) {
+      for (const key of metricKeys) {
+        const v = row[key];
+        if (typeof v === 'number') vals.push(v);
+      }
+    }
+    for (const group of groupedThresholds) {
+      if (Number.isFinite(group.y)) vals.push(group.y);
+    }
+    return autoRadarDomain(vals);
+  }, [data, metricKeys, groupedThresholds]);
 
   if (data.length === 0) return null;
 
@@ -42,15 +69,21 @@ export const GroupRadarChart = memo(function GroupRadarChart({
             <PolarGrid stroke="#94a3b8" strokeOpacity={0.3} />
             <PolarAngleAxis
               dataKey="name"
+              tickFormatter={displayLabel}
               tick={{ fontSize: 11, fill: '#94a3b8' }}
             />
-            <PolarRadiusAxis tick={{ fontSize: 10, fill: '#94a3b8' }} />
+            {/* tick={false}: подписи радиальной оси скрыты намеренно.
+                recharts строит тики через renderTicks только при truthy tick;
+                на «мелком» float-домене niceTicks плодит тики с одинаковой
+                координатой → дубль ключей `tick-<radius>`. Зум задаёт domain
+                (масштаб полигона), а точные значения видны в тултипе. */}
+            <PolarRadiusAxis domain={radarDomain} tick={false} axisLine={false} />
             {groupedThresholds.map((group, gi) => {
               const thresholdKey = `__threshold_${gi}`;
               return (
                 <Radar
                   key={`threshold-${gi}`}
-                  name={`Порог: ${group.y.toLocaleString('ru-RU')}`}
+                  name={`Порог: ${formatRu(group.y)}`}
                   dataKey={thresholdKey}
                   stroke={group.primaryColor}
                   strokeWidth={group.isOverlap ? 2.5 : 2}
@@ -81,6 +114,7 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                     const { cx = 0, cy = 0, payload } = props;
                     const rawValue = payload?.[key];
                     const numericValue = typeof rawValue === 'number' ? rawValue : null;
+                    // payload уже в масштабе отображения — формат НЕ передаём.
                     const conditionalColor = getColorForValue(numericValue, rules);
                     const isHighlighted = !!conditionalColor;
                     return (
@@ -110,19 +144,22 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                 if (filtered.length === 0) return null;
                 return (
                   <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
-                    <div className="font-bold text-slate-900 dark:text-white mb-2">{label}</div>
-                    {filtered.map((entry, i) => (
-                      <div key={i} className="flex justify-between gap-3">
-                        <span style={{ color: entry.color ?? '#6366f1' }}>
-                          {metricNames[String(entry.dataKey)]}
-                        </span>
-                        <span className="font-mono font-bold">
-                          {typeof entry.value === 'number'
-                            ? entry.value.toLocaleString('ru-RU')
-                            : String(entry.value ?? '—')}
-                        </span>
-                      </div>
-                    ))}
+                    <div className="font-bold text-slate-900 dark:text-white mb-2">{displayLabel(label)}</div>
+                    {filtered.map((entry, i) => {
+                      const vm = metricConfigs?.find(v => v.id === entry.dataKey);
+                      return (
+                        <div key={i} className="flex justify-between gap-3">
+                          <span style={{ color: entry.color ?? '#6366f1' }}>
+                            {metricNames[String(entry.dataKey)]}
+                          </span>
+                          <span className="font-mono font-bold">
+                            {typeof entry.value === 'number'
+                              ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
+                              : String(entry.value ?? '—')}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               }}

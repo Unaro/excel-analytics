@@ -2,6 +2,7 @@ import { logger } from '@/shared/lib/logger';
 import type { DatasetRow, ColumnConfig } from '@/shared/lib/types/dataset';
 import type { ClientComputeParams } from '../types';
 import type { DashboardComputationResult } from '@/shared/lib/types/computation';
+import type { ImportParseOptions } from './worker';
 
 export interface ImportExcelResult {
   configs: ColumnConfig[];
@@ -62,6 +63,19 @@ interface WorkerEventMap {
     payload: { targetId: number };
     response: void;
   };
+  GET_COLUMN_PAIRS: {
+    payload: { datasetId: string; keyColumn: string; valueColumn: string };
+    response: Array<[string, string]>;
+  };
+  CONFIGURE_ENGINE: {
+    payload: EngineConfigPayload;
+    response: void;
+  };
+}
+
+/** Настройки движка DuckDB (память), пробрасываемые в воркер. */
+export interface EngineConfigPayload {
+  memoryLimitMB: number | null;
 }
 
 interface WorkerResponseMessage {
@@ -91,6 +105,11 @@ export class DuckDBWorkerManager {
 
   private _status: DuckDBEngineStatus = 'no-data';
   private _statusListeners = new Set<(status: DuckDBEngineStatus) => void>();
+
+  // Последние применённые настройки движка. Воркер теряет PRAGMA при
+  // перезапуске (terminate/recreate), поэтому менеджер переотправляет их
+  // при каждом создании воркера в getWorker().
+  private engineConfig: EngineConfigPayload | null = null;
 
   subscribe(listener: (status: DuckDBEngineStatus) => void): () => void {
     this._statusListeners.add(listener);
@@ -132,8 +151,38 @@ export class DuckDBWorkerManager {
       if (this._status === 'disconnected') {
         this.setStatus('loading');
       }
+
+      // Свежий воркер не помнит PRAGMA — переотправляем настройки движка
+      // первым сообщением (postMessage упорядочен, значит initDB применит
+      // их до любой полезной нагрузки). Ответ игнорируется: id не в callbacks.
+      if (this.engineConfig) {
+        this.worker.postMessage({
+          type: 'CONFIGURE_ENGINE',
+          payload: this.engineConfig,
+          id: ++this.messageCounter,
+        });
+      }
     }
     return this.worker;
+  }
+
+  /**
+   * Применяет настройки движка (память ↔ время) к воркеру.
+   *
+   * Сохраняет их для переотправки после перезапуска воркера и шлёт
+   * CONFIGURE_ENGINE текущему. Вызывается из app-слоя при изменении
+   * глобальных настроек (`selectEngineConfig`).
+   */
+  async setEngineConfig(config: EngineConfigPayload): Promise<void> {
+    this.engineConfig = config;
+    // Не поднимаем воркер ради конфигурации: если его ещё нет, настройки
+    // уедут при первом getWorker(). Поднимаем только живой.
+    if (!this.worker) return;
+    try {
+      await this.dispatch('CONFIGURE_ENGINE', config, [], 5000);
+    } catch (err) {
+      logger.warn('[DuckDBManager] setEngineConfig failed:', err);
+    }
   }
 
   private handleWorkerDisconnect(reason: string) {
@@ -296,8 +345,13 @@ export class DuckDBWorkerManager {
 
   async computeDashboard(
     params: ClientComputeParams,
-    arrowBuffer?: Uint8Array,
-    signal?: AbortSignal 
+    // Ленивый загрузчик Arrow-буфера: нужен ТОЛЬКО для пути восстановления
+    // (таблица пропала). Раньше движок читал буфер (сотни МБ) из IndexedDB
+    // на КАЖДЫЙ COMPUTE — это блокировало главный поток на ~секунду и было
+    // главной причиной лага фильтра. Теперь читаем его лениво и лишь когда
+    // восстановление реально потребовалось.
+    loadArrowBuffer?: () => Promise<Uint8Array | undefined>,
+    signal?: AbortSignal
   ): Promise<DashboardComputationResult> {
     if (signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
@@ -313,6 +367,10 @@ export class DuckDBWorkerManager {
       const message = err instanceof Error ? err.message : String(err);
       const isTableMissing =
         message.includes('Catalog Error') && message.includes('does not exist');
+
+      const arrowBuffer = isTableMissing && loadArrowBuffer
+        ? await loadArrowBuffer()
+        : undefined;
 
       if (isTableMissing && arrowBuffer) {
         try {
@@ -373,7 +431,8 @@ export class DuckDBWorkerManager {
       current: number;
       total: number;
       percent: number;
-    }) => void
+    }) => void,
+    parseOptions?: ImportParseOptions
   ): Promise<ImportExcelResult> {
     const worker = this.getWorker();
     const id = ++this.messageCounter;
@@ -425,7 +484,7 @@ export class DuckDBWorkerManager {
       worker.addEventListener('message', handler);
 
       worker.postMessage(
-        { type: 'IMPORT_EXCEL', payload: { datasetId, fileName, buffer }, id },
+        { type: 'IMPORT_EXCEL', payload: { datasetId, fileName, buffer, parseOptions }, id },
         [buffer]
       );
     });
@@ -433,6 +492,24 @@ export class DuckDBWorkerManager {
   
   async dropTable(datasetId: string): Promise<void> {
     return this.dispatch('DROP_TABLE', { datasetId });
+  }
+
+  /**
+   * Выгружает пары «ключ → значение» двух колонок таблицы — для построения
+   * словаря справочника (entities/reference-type). Таймаут увеличен:
+   * справочники бывают на сотни тысяч строк.
+   */
+  async getColumnPairs(
+    datasetId: string,
+    keyColumn: string,
+    valueColumn: string
+  ): Promise<Array<[string, string]>> {
+    return this.dispatch(
+      'GET_COLUMN_PAIRS',
+      { datasetId, keyColumn, valueColumn },
+      [],
+      120_000
+    );
   }
 
   /**

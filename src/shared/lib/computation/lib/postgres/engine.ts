@@ -1,10 +1,9 @@
 import type {
   ClientComputeParams,
   IComputeEngine,
-  MetricAggregationMeta,
 } from '../types';
 import { compileQuery, BREAKDOWN_LIMIT } from '../query-compiler';
-import { getActiveFilter, formatValue, computeTotalRecordCount } from '../utils';
+import { getActiveFilter, buildGroupVirtualMetrics, computeTotalRecordCount } from '../utils';
 import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
 import { decryptConfig } from '@/shared/lib/utils/crypto';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
@@ -16,26 +15,6 @@ import type {
 import { computePgMetrics } from '@/shared/api/server-actions';
 import { aggregateProcessedRows } from '../aggregation';
 import { qualifiedTableName } from '../sql-utils';
-
-function buildAggregateMetadataMap(
-  params: ClientComputeParams
-): Map<string, MetricAggregationMeta> {
-  const metadata = new Map<string, MetricAggregationMeta>();
-  for (const cfg of params.dashboardGroupsConfig) {
-    if (!cfg.enabled) continue;
-    const groupDef = params.groups.find(g => g.id === cfg.groupId);
-    if (!groupDef) continue;
-    for (const metric of groupDef.metrics) {
-      if (!metric.enabled) continue;
-      const tpl = params.metricTemplates.find(t => t.id === metric.templateId);
-      if (tpl?.type === 'aggregate' && tpl.aggregateFunction) {
-        const alias = `${cfg.groupId}__${metric.id}`;
-        metadata.set(alias, { aggregateFunction: tpl.aggregateFunction });
-      }
-    }
-  }
-  return metadata;
-}
 
 /**
  * PostgreSQL Compute Engine.
@@ -111,27 +90,7 @@ export class PgEngine implements IComputeEngine {
       .map(cfg => {
         const groupDef = params.groups.find(g => g.id === cfg.groupId);
         const buildVirtualMetrics = (processed: Record<string, number | null>): VirtualMetricValue[] =>
-          virtualMetrics.map(vm => {
-            const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
-            if (!binding) {
-              return {
-                virtualMetricId: vm.id,
-                virtualMetricName: vm.name,
-                value: null,
-                formattedValue: '—',
-                sourceMetricId: '',
-              };
-            }
-            const alias = `${cfg.groupId}__${binding.metricId}`;
-            const numericValue = typeof processed[alias] === 'number' ? processed[alias] : null;
-            return {
-              virtualMetricId: vm.id,
-              virtualMetricName: vm.name,
-              value: numericValue,
-              formattedValue: formatValue(numericValue, vm.displayFormat, vm.decimalPlaces, vm.unit),
-              sourceMetricId: binding.metricId,
-            };
-          });
+          buildGroupVirtualMetrics(virtualMetrics, cfg, processed);
 
         const breakdown = hasGrouping
           ? processedRows

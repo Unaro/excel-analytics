@@ -2,12 +2,17 @@
 import { useCallback, memo } from 'react';
 import { GroupKpiCard } from './GroupKpiCard';
 import { VirtualMetricValue } from '@/entities/metric';
+import type { MetricChartStyle } from '@/shared/lib/types/chart';
 
 interface GroupKpiGridProps {
   metrics: VirtualMetricValue[];
   activeMetricIds: string[];
   recordCount: number;
   onToggleMetric: (id: string) => void;
+  /** Стиль чарта по sourceMetricId (столбец/линия). */
+  chartStyleByMetricId?: Record<string, MetricChartStyle | undefined>;
+  /** Сменить стиль чарта метрики (ключ — sourceMetricId). */
+  onChartStyleChange?: (metricId: string, style: MetricChartStyle) => void;
 }
 
 /**
@@ -19,6 +24,8 @@ export const GroupKpiGrid = memo(function GroupKpiGrid({
   activeMetricIds,
   recordCount,
   onToggleMetric,
+  chartStyleByMetricId,
+  onChartStyleChange,
 }: GroupKpiGridProps) {
   const handleToggle = useCallback((id: string) => {
     onToggleMetric(id);
@@ -31,6 +38,7 @@ export const GroupKpiGrid = memo(function GroupKpiGrid({
       {metrics.map((metric) => {
         const isActive = activeMetricIds.includes(metric.virtualMetricId);
         const activeIndex = isActive ? activeMetricIds.indexOf(metric.virtualMetricId) : -1;
+        const styleKey = metric.sourceMetricId || metric.virtualMetricId;
 
         return (
           <GroupKpiCard
@@ -41,6 +49,12 @@ export const GroupKpiGrid = memo(function GroupKpiGrid({
             totalActive={activeMetricIds.length}
             recordCount={recordCount}
             onToggle={handleToggle}
+            chartStyle={chartStyleByMetricId?.[styleKey]}
+            onChartStyleChange={
+              onChartStyleChange
+                ? (style) => onChartStyleChange(styleKey, style)
+                : undefined
+            }
           />
         );
       })}

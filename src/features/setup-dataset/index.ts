@@ -11,3 +11,49 @@ export {
   refreshPgDataset,
 } from './model/sync-engine';
 export { removeDatasetCompletely } from './model/remove-dataset';
+export {
+  buildFilePreview,
+  buildCsvPreviewFromText,
+  isCsvFileName,
+  detectLineEnding,
+  guessColumnTypes,
+  guessColumnType,
+  detectDateFormat,
+  CSV_PREFIX_BYTES,
+} from './lib/file-preview';
+export type {
+  FilePreview,
+  FilePreviewOptions,
+  ImportParams,
+  DecimalSeparator,
+} from './lib/file-preview';
+export {
+  isEmptyCell,
+  isMetricColumn,
+  detectKeyColumns,
+  detectHeaderRows,
+  buildColumns,
+  classifyRow,
+  classifyRows,
+  buildHierarchyPreview,
+  proposeGroups,
+  flattenLeaves,
+  toAggregateCsv,
+  extractNodes,
+  parseMetricValue,
+  nodePathKey,
+} from './lib/aggregate-layout';
+export { readAggregateMatrix } from './lib/file-preview';
+export type { AggregateMatrix } from './lib/file-preview';
+export type {
+  ColumnRole,
+  RowKind,
+  AggregateColumn,
+  ClassifiedRow,
+  EmptyConfig,
+  HierarchyPreviewNode,
+  ProposedGroup,
+  AggregateLayoutConfig,
+  FlattenResult,
+  AggregateNode,
+} from './lib/aggregate-layout';

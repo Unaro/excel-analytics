@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { useDatasetManager } from '@/features/setup-dataset';
 import { useDatasetReplace } from '@/features/setup-dataset';
+import { useFileImport } from '@/features/setup-dataset';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
 
@@ -12,6 +13,7 @@ import { useSetupWizardActions } from '../model/use-setup-wizard-actions';
 import { SetupStepper } from './SetupStepper';
 import { DatasetManager } from './DatasetManager';
 import { UploadStep } from './UploadStep';
+import { ImportConfigStep } from './ImportConfigStep';
 import { ColumnSetupStep } from './ColumnSetupStep';
 import { useSetupWizard } from '../model/use-setup-wizard';
 
@@ -46,6 +48,17 @@ export function SetupWizardContent() {
       onSuccess: () => wizard.setStep('columns'),
     });
 
+  // Импорт выбранного файла (запускается со шага «Импорт», не при выборе).
+  const { importFile, isUploading } = useFileImport();
+  const handleConfirmImport = async () => {
+    if (!wizard.selectedFile) return;
+    // Агрегат: передаём подтверждённую разметку → сплющивание в листья.
+    const aggregate = wizard.isAggregate ? wizard.aggregateConfig ?? undefined : undefined;
+    const ok = await importFile(wizard.selectedFile, wizard.importParams ?? undefined, aggregate);
+    // Успех → сбрасываем выбранный файл; авто-навигация уведёт на «Колонки».
+    if (ok) wizard.resetSelectedFile();
+  };
+
   const {
     handleImportConfig,
     handlePgConnected,
@@ -75,7 +88,10 @@ export function SetupWizardContent() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => wizard.setStep('manager')}
+            onClick={() => {
+              wizard.resetSelectedFile();
+              wizard.setStep('manager');
+            }}
             className="gap-2"
           >
             <ArrowLeft size={14} /> К списку датасетов
@@ -108,9 +124,30 @@ export function SetupWizardContent() {
             pgStep={wizard.pgStep}
             pgConfig={wizard.pgConfig as PgConnectionConfig | null}
             onSourceTypeChange={wizard.setSourceType}
-            onFileSuccess={() => wizard.setStep('columns')}
+            onFileSelected={wizard.handleFileSelected}
             onPgConnected={handlePgConnected}
             onPgSyncComplete={handlePgSyncComplete}
+          />
+        )}
+        {wizard.step === 'import' && wizard.selectedFile && (
+          <ImportConfigStep
+            fileName={wizard.selectedFile.name}
+            preview={wizard.preview}
+            previewLoading={wizard.previewLoading}
+            isImporting={isUploading || wizard.isSyncing}
+            importParams={wizard.importParams}
+            onDelimiterChange={wizard.setDelimiter}
+            onDecimalChange={wizard.setDecimalSeparator}
+            onColumnTypeChange={wizard.setColumnType}
+            onImport={handleConfirmImport}
+            onCancel={() => {
+              wizard.resetSelectedFile();
+              wizard.setStep('upload');
+            }}
+            isAggregate={wizard.isAggregate}
+            onAggregateToggle={wizard.setIsAggregate}
+            aggregateMatrix={wizard.aggregateMatrix}
+            onAggregateLayoutChange={wizard.setAggregateConfig}
           />
         )}
         {wizard.step === 'columns' && (

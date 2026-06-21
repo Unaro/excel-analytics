@@ -20,6 +20,30 @@ export const METRIC_COLOR_HEX: Record<MetricColor, string> = {
 };
 
 /**
+ * Приводит сырое значение к масштабу, в котором оно ОТОБРАЖАЕТСЯ.
+ *
+ * Условное форматирование и пороговые линии сравнивают значение в том же
+ * виде, что видит пользователь: для формата `percent` (доля → %) значение
+ * умножается на 100, поэтому порог `>50` срабатывает на «56.87%».
+ * Для `percent_raw` (готовый процент) и остальных форматов масштаб
+ * совпадает с сырым значением.
+ */
+export function toDisplayScale(value: number, format?: string): number {
+  return format === 'percent' ? value * 100 : value;
+}
+
+/**
+ * Форматирует УЖЕ масштабированное (display) значение для подписи на чарте.
+ * `percent`/`percent_raw` → «N%» (значение уже в процентах после toDisplayScale),
+ * остальные форматы → число ru-RU с опциональной единицей измерения.
+ */
+export function formatDisplayValue(displayValue: number, format?: string, unit?: string): string {
+  const num = displayValue.toLocaleString('ru-RU');
+  if (format === 'percent' || format === 'percent_raw') return `${num}%`;
+  return unit ? `${num} ${unit}` : num;
+}
+
+/**
  * Проверяет значение против оператора правила условного форматирования.
  * `between` — включающий диапазон [threshold, threshold2].
  */
@@ -53,11 +77,15 @@ export function checkRule(value: number, operator: ConditionOperator, threshold:
  */
 export function getColorForValue(
   value: number | null | undefined,
-  rules: FormattingRule[] | undefined
+  rules: FormattingRule[] | undefined,
+  format?: string
 ): string | null {
   if (value == null || !rules || rules.length === 0) return null;
+  // Сравнение в масштабе отображения: порог задаётся так, как видит
+  // пользователь (для percent — в процентах, а не в доле).
+  const scaled = toDisplayScale(value, format);
   for (const rule of rules) {
-    if (checkRule(value, rule.operator, rule.value, rule.value2)) {
+    if (checkRule(scaled, rule.operator, rule.value, rule.value2)) {
       return METRIC_COLOR_HEX[rule.color] || null;
     }
   }

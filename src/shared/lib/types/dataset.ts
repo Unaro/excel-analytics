@@ -30,6 +30,13 @@ export interface ColumnConfig {
   alias: string;
   displayName: string;
   description?: string;
+  /**
+   * Пользовательский тип со справочником (entities/reference-type):
+   * значения колонки — коды (ОКТМО/ОКАТО…), в UI вместо кода
+   * показывается наименование из словаря. На группировку и фильтры
+   * не влияет — только на отображение.
+   */
+  customTypeId?: string;
 }
 
 /**

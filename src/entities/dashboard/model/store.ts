@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware';
 import { createMigration } from '@/shared/lib/storage/migration';
 import { nanoid } from 'nanoid';
 import type { Dashboard, DashboardWidget, KPIWidget } from './types';
-import type { HierarchyFilterValue, IndicatorGroupInDashboard, VirtualMetric } from '@/shared/lib/validators';
+import type { HierarchyFilterValue, IndicatorGroupInDashboard, DashboardColumn } from '@/shared/lib/validators';
 
 interface DashboardState {
   dashboards: Dashboard[];
@@ -18,8 +18,8 @@ interface DashboardState {
   setActiveDashboard: (id: string | null) => void;
   
   // Действия с виртуальными метриками
-  addVirtualMetric: (dashboardId: string, metric: Omit<VirtualMetric, 'id'>) => void;
-  updateVirtualMetric: (dashboardId: string, metricId: string, updates: Partial<VirtualMetric>) => void;
+  addVirtualMetric: (dashboardId: string, metric: Omit<DashboardColumn, 'id'>) => void;
+  updateVirtualMetric: (dashboardId: string, metricId: string, updates: Partial<DashboardColumn>) => void;
   deleteVirtualMetric: (dashboardId: string, metricId: string) => void;
   reorderVirtualMetrics: (dashboardId: string, metricIds: string[]) => void;
   
@@ -185,7 +185,7 @@ export const useDashboardStore = create<DashboardState>()(
             const reordered = metricIds.map((id, index) => {
               const metric = dashboard.virtualMetrics.find((m) => m.id === id);
               return metric ? { ...metric, order: index } : null;
-            }).filter((m): m is VirtualMetric => m !== null);
+            }).filter((m): m is DashboardColumn => m !== null);
             
             return {
               ...dashboard,

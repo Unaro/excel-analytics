@@ -47,7 +47,7 @@ describe('compileQuery: aggregate-метрики', () => {
 
   it('AVG добавляет служебные __agg_sum__/__agg_count__ для переагрегации', () => {
     const params = makeParams({
-      metricTemplates: [makeAggregateTemplate({ aggregateFunction: 'AVG' })],
+      metricTemplates: [makeAggregateTemplate({ formula: 'AVG(value)' })],
     });
     const { sql } = compileQuery(params, 'duckdb');
 
@@ -57,7 +57,7 @@ describe('compileQuery: aggregate-метрики', () => {
 
   it('COUNT не кастует колонку к числу', () => {
     const params = makeParams({
-      metricTemplates: [makeAggregateTemplate({ aggregateFunction: 'COUNT' })],
+      metricTemplates: [makeAggregateTemplate({ formula: 'COUNT(value)' })],
     });
     const { sql } = compileQuery(params, 'duckdb');
 
@@ -65,7 +65,7 @@ describe('compileQuery: aggregate-метрики', () => {
   });
 
   it('MEDIAN: MEDIAN() в DuckDB, PERCENTILE_CONT в PostgreSQL', () => {
-    const tpl = [makeAggregateTemplate({ aggregateFunction: 'MEDIAN' })];
+    const tpl = [makeAggregateTemplate({ formula: 'MEDIAN(value)' })];
 
     expect(
       compileQuery(makeParams({ metricTemplates: tpl }), 'duckdb').sql
@@ -302,14 +302,25 @@ describe('compileQuery: calculated-метрики и CTE', () => {
     expect(sql).toContain('__calc_g1__mc AS (');
     expect(sql).toContain('SELECT * FROM __calc_g1__mc');
     expect(calculatedInSqlAliases.has('g1__mc')).toBe(true);
-    expect(formulas.get('base_g1__mc')?.formula).toBe('a / b');
+    // Голые колонки авто-оборачиваются в дефолтный SUM, формула
+    // переписывается на пред-агрегированные псевдо-переменные col__SUM.
+    expect(formulas.get('base_g1__mc')?.formula.replace(/\s/g, ''))
+      .toBe('col_a__SUM/col_b__SUM');
   });
 
-  it('зависимости полей агрегируются как SUM с префиксом _fb', () => {
+  it('голые колонки агрегируются дефолтным SUM (псевдо-переменные col__SUM)', () => {
     const { sql } = compileQuery(calcParams('a + b'), 'duckdb');
 
-    expect(sql).toContain('AS "_fbg1_mc_a"');
-    expect(sql).toContain('AS "_fbg1_mc_b"');
+    expect(sql).toContain('AS "_fbg1_mc_col_a__SUM"');
+    expect(sql).toContain('AS "_fbg1_mc_col_b__SUM"');
+  });
+
+  it('явные агрегаты в формуле → разные SQL-агрегаты (MAX/SUM/MIN)', () => {
+    const { sql } = compileQuery(calcParams('(MAX(a)/SUM(a)) - MIN(b)'), 'duckdb');
+
+    expect(sql).toContain('MAX(TRY_CAST("col_a" AS DOUBLE)) AS "_fbg1_mc_col_a__MAX"');
+    expect(sql).toContain('SUM(TRY_CAST("col_a" AS DOUBLE)) AS "_fbg1_mc_col_a__SUM"');
+    expect(sql).toContain('MIN(TRY_CAST("col_b" AS DOUBLE)) AS "_fbg1_mc_col_b__MIN"');
   });
 
   it('деление компилируется с NULLIF-защитой от деления на ноль', () => {

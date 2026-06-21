@@ -45,7 +45,10 @@ export function useDatasetManager({
     setPendingDeleteId(null);
 
     if (id === activeId) {
-      const remainingIds = Object.keys(datasets).filter(k => k !== id);
+      // Справочники активным датасетом быть не могут
+      const remainingIds = Object.values(datasets)
+        .filter(ds => ds.id !== id && ds.role !== 'reference')
+        .map(ds => ds.id);
       if (remainingIds.length > 0) {
         switchDataset(remainingIds[0]);
         onNavigateToColumns();

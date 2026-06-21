@@ -3,8 +3,7 @@
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Select, SelectOption } from '@/shared/ui/select';
-import { useMetricTemplateStore } from '@/entities/metric';
-import { cn } from '@/shared/lib/utils';
+import { resolveColumnMetricId } from '@/shared/lib/utils/dashboard-columns';
 import { MappingRowProps } from '../model/types';
 
 export function MappingRow({
@@ -15,7 +14,6 @@ export function MappingRow({
   onRemove,
 }: MappingRowProps) {
   const fullGroup = allGroups.find(g => g.id === groupConfig.groupId);
-  const templates = useMetricTemplateStore(s => s.templates);
 
   if (!fullGroup) {
     return (
@@ -49,29 +47,39 @@ export function MappingRow({
         {fullGroup.name}
       </td>
       {virtualMetrics.map(vm => {
-        const binding = groupConfig.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
+        // Кандидаты — метрики группы с тем же шаблоном, что у колонки.
+        const candidates = fullGroup.metrics.filter(
+          m => m.enabled && m.templateId === vm.templateId
+        );
+        const override = groupConfig.virtualMetricBindings?.find(
+          b => b.virtualMetricId === vm.id
+        )?.metricId;
+        const resolved = resolveColumnMetricId(fullGroup, vm.templateId, override);
+
         return (
           <td key={vm.id} className="px-4 py-2">
-            <Select
-              className={cn(
-                "w-full h-8 rounded border px-2 text-xs focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900",
-                binding
-                  ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-300"
-                  : "border-gray-200 text-slate-400 dark:border-slate-800"
-              )}
-              value={binding?.metricId || ''}
-              onChange={(e) => onUpdateBinding(groupConfig.groupId, vm.id, e.target.value)}
-            >
-              <SelectOption value="">—</SelectOption>
-              {fullGroup.metrics.map(metric => {
-                const tpl = templates.find(t => t.id === metric.templateId);
-                return (
+            {candidates.length === 0 ? (
+              // В группе нет метрики этого шаблона
+              <span className="text-xs text-slate-300 dark:text-slate-600 select-none">—</span>
+            ) : candidates.length === 1 ? (
+              // Единственный кандидат — привязан автоматически, выбора нет
+              <span className="text-xs text-emerald-600 dark:text-emerald-400 truncate block" title="Привязано автоматически">
+                {candidates[0].customName || 'авто'}
+              </span>
+            ) : (
+              // Несколько метрик одного шаблона — ручной выбор (override)
+              <Select
+                className="w-full h-8 rounded border px-2 text-xs focus:ring-2 focus:ring-indigo-500 dark:bg-slate-900 border-indigo-300 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-300"
+                value={resolved || ''}
+                onChange={(e) => onUpdateBinding(groupConfig.groupId, vm.id, e.target.value)}
+              >
+                {candidates.map(metric => (
                   <SelectOption key={metric.id} value={metric.id}>
-                    {`${metric?.customName || ''}(${tpl?.name || 'Metric'})`}
+                    {metric.customName || metric.id.slice(0, 6)}
                   </SelectOption>
-                );
-              })}
-            </Select>
+                ))}
+              </Select>
+            )}
           </td>
         );
       })}

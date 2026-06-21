@@ -1,12 +1,14 @@
 'use client';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import {
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   Radar, Legend, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { getColorForValue } from '@/shared/lib/utils/metric-colors';
+import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import type { ChartComponentProps } from '../model/types';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
+import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
+import { formatRu } from '@/shared/lib/utils/format';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -15,18 +17,30 @@ export const RadarChartView = memo(function RadarChartView({
 }: ChartComponentProps) {
   const { groupedThresholds } = useThresholdGrouping(virtualMetrics, activeMetricIds);
 
+  // Авто-домен по значениям метрик: малые величины (доли < 1) не схлопываются.
+  const radarDomain = useMemo(() => {
+    const vals: number[] = [];
+    for (const row of data) {
+      for (const key of activeMetricIds) {
+        const v = (row as Record<string, unknown>)[key];
+        if (typeof v === 'number') vals.push(v);
+      }
+    }
+    return autoRadarDomain(vals);
+  }, [data, activeMetricIds]);
+
   return (
     <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={300}>
       <RadarChart cx="50%" cy="50%" outerRadius="75%" data={data}>
         <PolarGrid stroke={axisColor} strokeOpacity={0.2} />
         <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: axisColor }} />
-        <PolarRadiusAxis angle={30} domain={[0, 'auto']} tick={false} axisLine={false} />
+        <PolarRadiusAxis angle={30} domain={radarDomain} tick={false} axisLine={false} />
         {groupedThresholds.map((group, gi) => {
           const thresholdKey = `__threshold_${gi}`;
           return (
             <Radar
               key={`threshold-${gi}`}
-              name={`Порог: ${group.y.toLocaleString('ru-RU')}`}
+              name={`Порог: ${formatRu(group.y)}`}
               dataKey={thresholdKey}
               stroke={group.primaryColor}
               strokeWidth={group.isOverlap ? 2.5 : 2}
@@ -57,6 +71,7 @@ export const RadarChartView = memo(function RadarChartView({
                 const { cx = 0, cy = 0, payload } = props;
                 const rawValue = payload?.[metricId];
                 const numericValue = typeof rawValue === 'number' ? rawValue : null;
+                // payload уже в масштабе отображения — формат НЕ передаём.
                 const conditionalColor = getColorForValue(numericValue, rules);
                 const isHighlighted = !!conditionalColor;
                 return (
@@ -85,7 +100,9 @@ export const RadarChartView = memo(function RadarChartView({
             return (
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-lg shadow-xl text-sm">
                 <p className="font-bold text-slate-900 dark:text-white mb-2">{label}</p>
-                {filtered.map((entry, i) => (
+                {filtered.map((entry, i) => {
+                  const vm = virtualMetrics.find(v => v.id === entry.dataKey);
+                  return (
                   <div key={i} className="flex items-center gap-2">
                     <div
                       className="w-2 h-2 rounded-full"
@@ -96,11 +113,12 @@ export const RadarChartView = memo(function RadarChartView({
                     </span>
                     <span className="font-mono font-medium text-slate-900 dark:text-slate-200 ml-auto">
                       {typeof entry.value === 'number'
-                        ? entry.value.toLocaleString('ru-RU')
+                        ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
                         : String(entry.value ?? '—')}
                     </span>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             );
           }}

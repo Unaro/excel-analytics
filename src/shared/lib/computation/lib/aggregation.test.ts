@@ -187,3 +187,45 @@ describe('интеграция postProcessAggregates → aggregateProcessedRows'
     expect(summary['g1__m1']).toBe(18);
   });
 });
+
+describe('field-dependency AVG в формуле: взвешенное «Итого»', () => {
+  it('AVG переагрегируется через __agg_sum__/__agg_count__, а не среднее средних', () => {
+    const formulas: CompiledQuery['formulas'] = new Map([
+      ['base_g1__mc', {
+        groupId: 'g1', metricId: 'mc', templateId: 'tpl', formula: 'col_a__AVG',
+        fieldDependencies: [{ alias: 'col_a__AVG', columnName: 'col_a', aggregateFn: 'AVG' }],
+        metricDependencies: [],
+      }],
+    ]);
+
+    const dep = '_fbg1_mc_col_a__AVG';
+    const rows = [
+      // группа A: avg=10, sum=40, count=4
+      { _record_count: 4, [dep]: 10, [`__agg_sum__${dep}`]: 40, [`__agg_count__${dep}`]: 4 },
+      // группа B: avg=50, sum=50, count=1
+      { _record_count: 1, [dep]: 50, [`__agg_sum__${dep}`]: 50, [`__agg_count__${dep}`]: 1 },
+    ];
+
+    const result = aggregateProcessedRows(rows, meta({}), formulas);
+    // Взвешенно: (40+50)/(4+1) = 18, а не среднее средних 30
+    expect(result[dep]).toBe(18);
+  });
+
+  it('MAX-зависимость переагрегируется как максимум максимумов', () => {
+    const formulas: CompiledQuery['formulas'] = new Map([
+      ['base_g1__mx', {
+        groupId: 'g1', metricId: 'mx', templateId: 'tpl', formula: 'col_a__MAX',
+        fieldDependencies: [{ alias: 'col_a__MAX', columnName: 'col_a', aggregateFn: 'MAX' }],
+        metricDependencies: [],
+      }],
+    ]);
+    const dep = '_fbg1_mx_col_a__MAX';
+    const rows = [
+      { _record_count: 3, [dep]: 12 },
+      { _record_count: 5, [dep]: 47 },
+      { _record_count: 1, [dep]: 30 },
+    ];
+    const result = aggregateProcessedRows(rows, meta({}), formulas);
+    expect(result[dep]).toBe(47);
+  });
+});

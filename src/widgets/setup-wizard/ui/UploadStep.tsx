@@ -12,20 +12,20 @@ interface UploadStepProps {
   pgStep: PgStep;
   pgConfig: PgConnectionConfig | null;
   onSourceTypeChange: (type: SourceType) => void;
-  onFileSuccess: () => void;
+  onFileSelected: (file: File) => void;
   onPgConnected: (config: PgConnectionConfig) => void;
   onPgSyncComplete: () => void;
 }
 
 export function UploadStep({
   sourceType, pgStep, pgConfig,
-  onSourceTypeChange, onFileSuccess, onPgConnected, onPgSyncComplete,
+  onSourceTypeChange, onFileSelected, onPgConnected, onPgSyncComplete,
 }: UploadStepProps) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <SourceTypeSelector value={sourceType} onChange={onSourceTypeChange} />
       {sourceType === 'file' ? (
-        <FileUploader onSuccess={onFileSuccess} />
+        <FileUploader onFileSelected={onFileSelected} />
       ) : pgStep === 'connection' ? (
         <PostgresConnectionForm onConnected={onPgConnected} />
       ) : (

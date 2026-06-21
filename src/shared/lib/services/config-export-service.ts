@@ -18,6 +18,7 @@ import type {
 } from '@/shared/lib/validators';
 import type { GroupMetricConfig } from '@/shared/lib/types/group-metric-config';
 import type { HierarchyLevel } from '@/shared/lib/types/hierarchy';
+import type { AggregateLayoutConfig } from '@/shared/lib/types/aggregate';
 
 // ─────────────────────────────────────────────────────────────
 // Публичные типы
@@ -35,6 +36,8 @@ export interface ConfigExportContext {
   columnConfigs: ColumnConfig[];
   metricTemplates: MetricTemplate[];
   groupMetricConfigs: Record<string, Record<string, GroupMetricConfig>>;
+  /** Разметка агрегата датасета (если импортирован как агрегат). */
+  aggregateConfig?: AggregateLayoutConfig;
 }
 
 /**
@@ -52,6 +55,7 @@ export interface ConfigExportPayload {
     columnConfigs: ColumnConfig[];
     metricTemplates: MetricTemplate[];
     groupMetricConfigs?: Record<string, Record<string, GroupMetricConfig>>;
+    aggregateConfig?: AggregateLayoutConfig;
   };
 }
 
@@ -174,6 +178,7 @@ export function buildConfigExportPayload(
         Object.keys(groupMetricConfigs).length > 0
           ? groupMetricConfigs
           : undefined,
+      aggregateConfig: context.aggregateConfig,
     },
   };
 

@@ -1,12 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, Save, Trash2, LayoutGrid, Columns, GripVertical } from 'lucide-react';
+import { Save, Trash2, LayoutGrid, Columns, GripVertical } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
+import { Select, SelectOption } from '@/shared/ui/select';
 import { Card } from '@/shared/ui/card';
 import { cn } from '@/shared/lib/utils';
-import type { VirtualMetric } from '@/shared/lib/validators';
+import type { DashboardColumn } from '@/shared/lib/validators';
 import { DragDropList, RenderItemProps } from '@/shared/ui/drag-drop-list';
 import { GroupAdder } from './GroupAdder';
 import { MappingRow } from './MappingRow';
@@ -21,17 +21,17 @@ interface DashboardBuilderUIProps {
 export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUIProps) {
   const {
     name, setName, description, setDescription,
-    virtualMetrics, addVirtualMetric, removeVirtualMetric, reorderVirtualMetrics,
-    updateVirtualMetricUnit,
+    virtualMetrics, addColumn, removeVirtualMetric, reorderVirtualMetrics,
     dashboardGroups, addGroupToDashboard, removeGroupFromDashboard, updateBinding,
-    availableGroups, allGroups,
+    availableGroups, availableTemplates, templates, allGroups,
   } = builder;
 
-  const [newVmName, setNewVmName] = useState('');
+  const templateName = (templateId?: string) =>
+    templates.find(t => t.id === templateId)?.name ?? 'Шаблон удалён';
 
   const renderVirtualMetric = ({
     item: vm, isDragging, listeners, attributes,
-  }: RenderItemProps<VirtualMetric>) => (
+  }: RenderItemProps<DashboardColumn>) => (
     <div
       {...attributes}
       {...listeners}
@@ -51,15 +51,8 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
         )}>
           <GripVertical size={14} />
         </div>
-        <span className="font-medium text-sm truncate">{vm.name}</span>
+        <span className="font-medium text-sm truncate">{templateName(vm.templateId)}</span>
       </div>
-      <Input
-        placeholder="ед. (чел.)"
-        value={vm.unit ?? ''}
-        maxLength={10}
-        onChange={(e) => updateVirtualMetricUnit(vm.id, e.target.value)}
-        className="h-7 w-20 text-xs bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 shrink-0 mr-1"
-      />
       <Button
         variant="ghost"
         size="icon"
@@ -71,7 +64,7 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
         onMouseDown={(e) => e.stopPropagation()}
         onTouchStart={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); removeVirtualMetric(vm.id); }}
-        aria-label={`Удалить колонку "${vm.name}"`}
+        aria-label={`Удалить колонку «${templateName(vm.templateId)}»`}
       >
         <Trash2 size={14} />
       </Button>
@@ -109,24 +102,29 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
               <Columns size={18} className="text-indigo-500" />
               <h2>Колонки таблицы</h2>
             </div>
-            <div className="flex gap-2">
-              <Input
-                value={newVmName}
-                onChange={e => setNewVmName(e.target.value)}
-                placeholder="Новая колонка"
-                onKeyDown={e => { if (e.key === 'Enter' && newVmName) { addVirtualMetric(newVmName); setNewVmName(''); } }}
-              />
-              <Button size="icon" onClick={() => { if (newVmName) { addVirtualMetric(newVmName); setNewVmName(''); } }}>
-                <Plus size={18} />
-              </Button>
-            </div>
+            {/* Колонка = шаблон метрики. Формат и единица берутся из шаблона;
+                группы привязываются к колонкам автоматически по шаблону. */}
+            <Select
+              value=""
+              onChange={e => { if (e.target.value) addColumn(e.target.value); }}
+              disabled={availableTemplates.length === 0}
+            >
+              <SelectOption value="">
+                {availableTemplates.length === 0
+                  ? (dashboardGroups.length === 0 ? 'Сначала добавьте группы →' : 'Все шаблоны уже добавлены')
+                  : '+ Добавить колонку (шаблон)'}
+              </SelectOption>
+              {availableTemplates.map(t => (
+                <SelectOption key={t.id} value={t.id}>{t.name}</SelectOption>
+              ))}
+            </Select>
             {virtualMetrics.length === 0 ? (
               <div className="text-xs text-slate-400 text-center py-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
                 Нет колонок
               </div>
             ) : (
               <>
-                <DragDropList<VirtualMetric>
+                <DragDropList<DashboardColumn>
                   items={virtualMetrics}
                   onReorder={reorderVirtualMetrics}
                   renderItem={renderVirtualMetric}
@@ -164,7 +162,7 @@ export function DashboardBuilderUI({ builder, mode, onSave }: DashboardBuilderUI
                     </th>
                     {virtualMetrics.map(vm => (
                       <th key={vm.id} className="px-4 py-3 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase min-w-55">
-                        {vm.name}
+                        {templateName(vm.templateId)}
                       </th>
                     ))}
                     <th className="w-10"></th>

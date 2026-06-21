@@ -18,24 +18,61 @@ export const HierarchyFilterValueSchema = z.object({
   value2: z.string().optional(),
 });
 
-/** Виртуальная метрика дашборда (колонка таблицы показателей). */
+/** Условное форматирование (пороги окрашивания) — задаётся на дашборде. */
+export const ColorConfigSchema = z.object({
+  rules: z.array(z.object({
+    id: z.string().min(1),
+    operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'between']),
+    value: z.number(),
+    value2: z.number().optional(),
+    color: z.enum(['emerald', 'rose', 'amber', 'blue', 'indigo', 'slate']),
+  })),
+});
+
+/**
+ * Виртуальная метрика — транзитный носитель для движка и таблиц:
+ * имя, формат, decimals и единица заполнены (строит buildVirtualMetric,
+ * kpi-compiler, dashboard-columns.buildEffectiveColumn). НЕ хранится
+ * на дашборде — хранимая колонка описана DashboardColumnSchema.
+ */
 export const VirtualMetricSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
   unit: z.string().max(10).optional(),
-  displayFormat: z.enum(['number', 'decimal', 'percent', 'currency', 'scientific']),
+  displayFormat: z.enum(['number', 'decimal', 'percent', 'percent_raw', 'currency', 'scientific']),
   decimalPlaces: z.number().int().min(0).max(10),
   order: z.number().int(),
   sourceMetricId: z.string().optional(),
-  colorConfig: z.object({
-    rules: z.array(z.object({
-      id: z.string().min(1),
-      operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'between']),
-      value: z.number(),
-      value2: z.number().optional(),
-      color: z.enum(['emerald', 'rose', 'amber', 'blue', 'indigo', 'slate']),
-    })),
+  colorConfig: ColorConfigSchema.optional(),
+  // Стиль на чарте «Столбцы» (столбец/линия + стиль линии). Прокидывается из
+  // group-metric-config в UI-слое, движком вычислений не используется.
+  chartStyle: z.object({
+    kind: z.enum(['bar', 'line']),
+    curve: z.enum(['smooth', 'linear']).optional(),
+    dash: z.enum(['solid', 'dashed']).optional(),
   }).optional(),
+});
+
+/**
+ * Хранимая колонка дашборда = ссылка на шаблон метрики.
+ *
+ * Формат, имя и единица ВЫВОДЯТСЯ из шаблона (единый источник правды),
+ * на колонке хранятся только templateId, пороги окрашивания и порядок.
+ * Привязка к метрике каждой группы — автоматическая по шаблону
+ * (см. dashboard-columns.ts). Поля формата опциональны: остаются у
+ * старых колонок до ленивой миграции, новыми колонками не пишутся.
+ */
+export const DashboardColumnSchema = z.object({
+  id: z.string().min(1),
+  templateId: z.string().optional(),
+  order: z.number().int(),
+  colorConfig: ColorConfigSchema.optional(),
+  // legacy (до перехода на колонку-шаблон) — терпим при чтении:
+  name: z.string().max(100).optional(),
+  unit: z.string().max(10).optional(),
+  displayFormat: z.enum(['number', 'decimal', 'percent', 'percent_raw', 'currency', 'scientific']).optional(),
+  decimalPlaces: z.number().int().min(0).max(10).optional(),
+  sourceMetricId: z.string().optional(),
 });
 
 /** Привязка алиаса формулы к колонке датасета. */
@@ -63,29 +100,42 @@ export const GroupMetricSchema = z.object({
   enabled: z.boolean(),
   order: z.number().int(),
   customName: z.string().optional(),
-  customDisplayFormat: z.enum(['number', 'decimal', 'percent', 'currency', 'scientific']).optional(),
-  customDecimalPlaces: z.number().int().optional(),
+  /**
+   * Опциональный override единицы измерения поверх шаблонной (template.unit).
+   * Формат и знаки после запятой берутся строго из шаблона — отдельный
+   * формат на метрике не нужен (для другого формата заведите свой шаблон).
+   */
   unit: z.string().optional(),
 });
 
-/** Шаблон метрики: aggregate (функция+поле) или calculated (формула). */
+/**
+ * Шаблон метрики — всегда формула (агрегаты задаются функциями: SUM(a)).
+ * Прежний тип `aggregate` упразднён: «сумма поля» = формула `SUM(field)`.
+ */
 export const MetricTemplateSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(100),
   description: z.string().optional(),
-  type: z.enum(['aggregate', 'calculated']),
-  aggregateFunction: z.enum(['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'COUNT_DISTINCT', 'MEDIAN', 'PERCENTILE']).optional(),
-  aggregateField: z.string().optional(),
-  formula: z.string().optional(),
+  formula: z.string().min(1),
   dependencies: z.array(z.object({
     type: z.enum(['field', 'metric']),
     alias: z.string().min(1),
     description: z.string().optional(),
   })),
-  displayFormat: z.enum(['number', 'decimal', 'percent', 'currency', 'scientific']),
+  displayFormat: z.enum(['number', 'decimal', 'percent', 'percent_raw', 'currency', 'scientific']),
   decimalPlaces: z.number().int().min(0).max(10),
-  prefix: z.string().optional(),
-  suffix: z.string().optional(),
+  /**
+   * Единица измерения — источник правды формата метрики. Наследуется
+   * всеми группами и колонками дашборда; на метрике группы может быть
+   * переопределена (GroupMetric.unit).
+   */
+  unit: z.string().optional(),
+  /**
+   * Условное форматирование — единый источник правды на шаблоне. Любая
+   * колонка дашборда / метрика группы с этим templateId наследует правила;
+   * редактирование в дашборде и в /groups/[id] меняет одни и те же правила.
+   */
+  colorConfig: ColorConfigSchema.optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -98,6 +148,12 @@ export const IndicatorGroupSchema = z.object({
   description: z.string().optional(),
   fieldMappings: z.array(FieldBindingSchema),
   metrics: z.array(GroupMetricSchema),
+  /**
+   * Поисковый запрос «Контекст данных» из конструктора группы — фильтр
+   * колонок при привязке. Сохраняется, чтобы при редактировании группы
+   * пользователю не пришлось вводить его заново.
+   */
+  columnContext: z.string().optional(),
   dependencyGraph: z.object({
     nodes: z.array(z.string()),
     edges: z.array(z.object({
@@ -161,6 +217,7 @@ export type ComputeParams = z.infer<typeof ComputeParamsSchema>;
 export type ExcelRow = z.infer<typeof ExcelRowSchema>;
 export type HierarchyFilterValue = z.infer<typeof HierarchyFilterValueSchema>;
 export type VirtualMetric = z.infer<typeof VirtualMetricSchema>;
+export type DashboardColumn = z.infer<typeof DashboardColumnSchema>;
 export type IndicatorGroup = z.infer<typeof IndicatorGroupSchema>;
 export type MetricTemplate = z.infer<typeof MetricTemplateSchema>;
 export type GroupMetric = z.infer<typeof GroupMetricSchema>;
@@ -195,8 +252,23 @@ export const DatasetConfigExportSchema = z.object({
       alias: z.string(),
       displayName: z.string(),
       description: z.string().optional(),
+      // Пользовательский тип со справочником: переносится как ссылка,
+      // сам справочник в экспорт-пакет не входит
+      customTypeId: z.string().optional(),
     })),
     metricTemplates: z.array(MetricTemplateSchema),
+    // Разметка агрегата датасета (для замены файла по тем же настройкам).
+    aggregateConfig: z
+      .object({
+        headerRows: z.number().int(),
+        keyColumns: z.array(z.number().int()),
+        empty: z.object({ tokens: z.array(z.string()).optional() }).optional(),
+        totalKeywords: z.array(z.string()).optional(),
+        excludeGroups: z.array(z.string()).optional(),
+        metricTemplateNames: z.record(z.string(), z.string()).optional(),
+        importUnassignedMetrics: z.boolean().optional(),
+      })
+      .optional(),
     groupMetricConfigs: z.record(
       z.string(),
       z.record(z.string(), z.object({

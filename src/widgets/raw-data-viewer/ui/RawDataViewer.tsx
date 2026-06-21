@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { DataTableViewer } from '@/widgets/data-table-viewer';
+import { formatRu } from '@/shared/lib/utils/format';
 import { Info, Loader2, AlertCircle } from 'lucide-react';
 
 export function RawDataViewer() {
@@ -46,7 +47,7 @@ export function RawDataViewer() {
         <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
           <Info size={16} className="text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
           <div className="text-xs text-blue-700 dark:text-blue-300">
-            <span className="font-semibold">Показаны первые {rows.length.toLocaleString('ru-RU')} строк из {totalRows.toLocaleString('ru-RU')}.</span>
+            <span className="font-semibold">Показаны первые {formatRu(rows.length)} строк из {formatRu(totalRows)}.</span>
             <span className="block mt-0.5 opacity-80">
               Все данные загружены в DuckDB и используются для вычислений дашбордов. Это только предпросмотр.
             </span>

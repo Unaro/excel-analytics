@@ -5,16 +5,20 @@ import { useCallback, useMemo } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { Settings, Plus } from 'lucide-react';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
+import { useMetricTemplateStore } from '@/entities/metric';
 import { cn } from '@/shared/lib/utils';
 import { nanoid } from 'nanoid';
 import { DragDropList } from '@/shared/ui/drag-drop-list';
 import { RuleCard } from '@/shared/ui/rule-card/ui/RuleCard';
 import { FormattingRule } from '@/shared/lib/utils/formatting-rules';
+import type { ColorConfig } from '@/shared/lib/types/dashboard';
 
 interface GroupMetricConfigPopoverProps {
   groupId: string;
   metricId: string;
   metricName?: string;
+  /** Шаблон метрики — единый источник CF. Запись идёт в шаблон, а не в группу. */
+  templateId?: string;
 }
 
 /**
@@ -33,20 +37,36 @@ export function GroupMetricConfigPopover({
   groupId,
   metricId,
   metricName,
+  templateId,
 }: GroupMetricConfigPopoverProps) {
   // ─── СЕЛЕКТОРЫ ИЗ STORE ───
-  const config = useGroupMetricConfigStore((state) =>
-    state.configsByGroup[groupId]?.[metricId]
+  // CF — единый источник на шаблоне; групповой стор остаётся фолбэком для
+  // немигрированных метрик (правила «переедут» на шаблон при первой правке).
+  const groupColorConfig = useGroupMetricConfigStore(
+    (state) => state.configsByGroup[groupId]?.[metricId]?.colorConfig
   );
-  const updateColorConfigAction = useGroupMetricConfigStore(
-    (s) => s.updateColorConfig
+  const templateColorConfig = useMetricTemplateStore(
+    (s) => (templateId ? s.templates.find((t) => t.id === templateId)?.colorConfig : undefined)
+  );
+  const updateGroupColorConfig = useGroupMetricConfigStore((s) => s.updateColorConfig);
+  const setTemplateColorConfig = useMetricTemplateStore((s) => s.setTemplateColorConfig);
+
+  const currentColorConfig = useMemo(
+    () => templateColorConfig ?? groupColorConfig,
+    [templateColorConfig, groupColorConfig]
+  );
+  const rules = useMemo(() => currentColorConfig?.rules || [], [currentColorConfig?.rules]);
+
+  // Запись: в шаблон (единый источник), иначе — в группу (фолбэк без шаблона).
+  const commit = useCallback(
+    (colorConfig: ColorConfig) => {
+      if (templateId) setTemplateColorConfig(templateId, colorConfig);
+      else updateGroupColorConfig(groupId, metricId, colorConfig);
+    },
+    [templateId, setTemplateColorConfig, updateGroupColorConfig, groupId, metricId]
   );
 
-  // ─── Мемоизированные значения (чтобы RuleCard не ре-рендился зря) ───
-  const rules = useMemo(() => config?.colorConfig?.rules || [], [config?.colorConfig?.rules]);
-  const currentColorConfig = useMemo(() => config?.colorConfig, [config?.colorConfig]);
-
-  // ─── ОБРАБОТЧИКИ (аналогичны MetricConfigPopover) ───
+  // ─── ОБРАБОТЧИКИ ───
   const addRule = useCallback(() => {
     const newRule: FormattingRule = {
       id: nanoid(),
@@ -54,44 +74,28 @@ export function GroupMetricConfigPopover({
       value: 0,
       color: 'emerald',
     };
-    updateColorConfigAction(groupId, metricId, {
-      ...(currentColorConfig || {}),
-      rules: [...(currentColorConfig?.rules || []), newRule],
-    });
-  }, [groupId, metricId, updateColorConfigAction, currentColorConfig]);
+    commit({ rules: [...(currentColorConfig?.rules || []), newRule] });
+  }, [commit, currentColorConfig]);
 
   const removeRule = useCallback((ruleId: string) => {
-    updateColorConfigAction(groupId, metricId, {
-      ...(currentColorConfig || {}),
-      rules: (currentColorConfig?.rules || []).filter((r) => r.id !== ruleId),
-    });
-  }, [groupId, metricId, updateColorConfigAction, currentColorConfig]);
+    commit({ rules: (currentColorConfig?.rules || []).filter((r) => r.id !== ruleId) });
+  }, [commit, currentColorConfig]);
 
   const duplicateRule = useCallback((rule: FormattingRule) => {
-    updateColorConfigAction(groupId, metricId, {
-      ...(currentColorConfig || {}),
-      rules: [
-        ...(currentColorConfig?.rules || []),
-        { ...rule, id: nanoid() },
-      ],
-    });
-  }, [groupId, metricId, updateColorConfigAction, currentColorConfig]);
+    commit({ rules: [...(currentColorConfig?.rules || []), { ...rule, id: nanoid() }] });
+  }, [commit, currentColorConfig]);
 
   const updateRule = useCallback((ruleId: string, updates: Partial<FormattingRule>) => {
-    updateColorConfigAction(groupId, metricId, {
-      ...(currentColorConfig || {}),
+    commit({
       rules: (currentColorConfig?.rules || []).map((r) =>
         r.id === ruleId ? { ...r, ...updates } : r
       ),
     });
-  }, [groupId, metricId, updateColorConfigAction, currentColorConfig]);
+  }, [commit, currentColorConfig]);
 
   const reorderRules = useCallback((newOrder: FormattingRule[]) => {
-    updateColorConfigAction(groupId, metricId, {
-      ...(currentColorConfig || {}),
-      rules: newOrder,
-    });
-  }, [groupId, metricId, updateColorConfigAction, currentColorConfig]);
+    commit({ rules: newOrder });
+  }, [commit]);
 
   // ─── RENDER ───
   return (

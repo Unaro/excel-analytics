@@ -73,8 +73,6 @@ export function generateConfigHash(params: {
     })),
     t: sortedTemplates.map(t => ({
       id: t.id,
-      type: t.type,
-      fn: t.aggregateFunction,
       f: t.formula,
     })),
     dg: sortedDashGroups.map(dg => ({

@@ -12,11 +12,12 @@ import {
   type IndicatorGroup,
   type IndicatorGroupInDashboard,
   type MetricTemplate,
-  type VirtualMetric,
+  type DashboardColumn,
   type VirtualMetricBindingInDashboard,
 } from '@/shared/lib/validators';
 import { FormattingRule } from '../utils/formatting-rules';
 import type { Dashboard } from '@/shared/lib/types/dashboard';
+import type { AggregateLayoutConfig } from '@/shared/lib/types/aggregate';
 
 // ─────────────────────────────────────────────────────────────
 // Публичные типы
@@ -46,6 +47,7 @@ export interface ConfigImportResult {
     alias: string;
     displayName: string;
     description?: string;
+    customTypeId?: string;
   }>;
   importedGroupMetricConfigs?: Record<
     string,
@@ -58,6 +60,8 @@ export interface ConfigImportResult {
       }
     >
   >;
+  /** Разметка агрегата из конфига (применяется к целевому датасету). */
+  aggregateConfig?: AggregateLayoutConfig;
   stats: {
     dashboardsImported: number;
     groupsImported: number;
@@ -87,6 +91,36 @@ function safeParseJson(text: string): unknown {
   } catch {
     throw new ConfigImportError('Файл не является валидным JSON');
   }
+}
+
+/**
+ * Нормализует конфиги, экспортированные до упразднения типа `aggregate`:
+ * старый шаблон {type:'aggregate', aggregateFunction, aggregateField} без поля
+ * `formula` превращается в формулу `FN(field)` — иначе строгая
+ * MetricTemplateSchema (formula обязательна) отклонит весь импорт.
+ * Зеркалит миграцию v2→v3 в template-store.
+ */
+function migrateLegacyConfig(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null) return raw;
+  const root = raw as Record<string, unknown>;
+  const data = root.data;
+  if (typeof data !== 'object' || data === null) return raw;
+  const templates = (data as Record<string, unknown>).metricTemplates;
+  if (!Array.isArray(templates)) return raw;
+
+  const migrated = templates.map((t) => {
+    if (typeof t !== 'object' || t === null) return t;
+    const tpl = t as Record<string, unknown>;
+    if (tpl.formula != null) return t; // уже формульный — не трогаем
+    const { type, aggregateFunction, aggregateField, ...rest } = tpl;
+    if (type === 'aggregate' && aggregateFunction && aggregateField) {
+      const fn = aggregateFunction === 'PERCENTILE' ? 'MEDIAN' : aggregateFunction;
+      return { ...rest, formula: `${fn}(${aggregateField})` };
+    }
+    return t;
+  });
+
+  return { ...root, data: { ...(data as Record<string, unknown>), metricTemplates: migrated } };
 }
 
 function validateConfigStructure(raw: unknown) {
@@ -136,7 +170,7 @@ function rebuildDashboard(
   groupMap: Map<string, IndicatorGroup>,
   consumedVmIds: Set<string>
 ): RebuiltDashboard {
-  const originalVms = (rawDashboard.virtualMetrics as VirtualMetric[]) || [];
+  const originalVms = (rawDashboard.virtualMetrics as DashboardColumn[]) || [];
   const dashboardGroupConfigs =
     (rawDashboard.indicatorGroups as IndicatorGroupInDashboard[]) || [];
 
@@ -177,7 +211,7 @@ function rebuildDashboard(
   // ШАГ 2: Перестраиваем virtualMetrics с сохранением порядка
   //         и colorConfig из исходного JSON
   // ═══════════════════════════════════════════════════════════
-  const rebuiltVirtualMetrics: VirtualMetric[] = originalVms.map((originalVm) => {
+  const rebuiltVirtualMetrics: DashboardColumn[] = originalVms.map((originalVm) => {
     const newId = vmIdMapping.get(originalVm.id)!;
     return {
       ...originalVm,
@@ -263,7 +297,7 @@ export function processConfigImport(
   } = context;
 
   // 1. Парсинг и валидация
-  const raw = safeParseJson(fileContent);
+  const raw = migrateLegacyConfig(safeParseJson(fileContent));
   const config = validateConfigStructure(raw);
   const { data } = config;
 
@@ -332,6 +366,7 @@ export function processConfigImport(
     hierarchyLevels: data.hierarchyLevels || [],
     columnConfigs: data.columnConfigs || [],
     importedGroupMetricConfigs: data.groupMetricConfigs,
+    aggregateConfig: data.aggregateConfig,
     stats: {
       dashboardsImported: importedDashboards.length,
       groupsImported: importedGroups.length,

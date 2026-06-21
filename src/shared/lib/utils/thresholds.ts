@@ -2,8 +2,15 @@ import { VirtualMetric } from '@/shared/lib/validators';
 import { FormattingRule } from './formatting-rules';
 
 export interface GroupedThreshold {
-  /** Значение Y для ReferenceLine (среднее по группе) */
+  /**
+   * Позиция ReferenceLine на оси. Чарты строятся в МАСШТАБЕ ОТОБРАЖЕНИЯ
+   * (бары прогоняются через toDisplayScale: percent доля → проценты), поэтому
+   * порог — это значение как его ввёл пользователь (= labelValue). Это чинит
+   * сведение метрик с разными форматами (percent 0.7 и percent_raw 70 → обе 70).
+   */
   y: number;
+  /** Значение для ПОДПИСИ (масштаб отображения — как ввёл пользователь). */
+  labelValue: number;
   /** Все правила, попадающие в эту группу */
   rules: Array<{
     metricName: string;
@@ -39,7 +46,10 @@ export function groupThresholdsByValue(
   tolerancePercent: number = 0.5
 ): GroupedThreshold[] {
   interface ThresholdPoint {
+    /** Позиция на оси (масштаб построения). */
     y: number;
+    /** Значение для подписи (масштаб отображения). */
+    labelValue: number;
     metricName: string;
     metricId: string;
     rule: FormattingRule;
@@ -51,12 +61,22 @@ export function groupThresholdsByValue(
     const vm = virtualMetrics.find(v => v.id === metricId);
     if (!vm?.colorConfig?.rules) continue;
 
+    // Чарты в масштабе отображения: порог = значение пользователя как есть
+    // (y совпадает с labelValue). Раньше для percent делили на 100 под сырые
+    // бары — теперь бары сами приводятся к display-масштабу.
+    const pushPoint = (v: number, rule: FormattingRule) =>
+      points.push({
+        y: v,
+        labelValue: v,
+        metricName: vm.name,
+        metricId,
+        rule,
+      });
+
     for (const rule of vm.colorConfig.rules) {
+      pushPoint(rule.value, rule);
       if (rule.operator === 'between' && rule.value2 != null) {
-        points.push({ y: rule.value, metricName: vm.name, metricId, rule });
-        points.push({ y: rule.value2, metricName: vm.name, metricId, rule });
-      } else {
-        points.push({ y: rule.value, metricName: vm.name, metricId, rule });
+        pushPoint(rule.value2, rule);
       }
     }
   }
@@ -68,7 +88,11 @@ export function groupThresholdsByValue(
   const minY = points[0].y;
   const maxY = points[points.length - 1].y;
   const range = Math.abs(maxY - minY);
-  const absoluteTolerance = Math.max(range * (tolerancePercent / 100), 1);
+  // Допуск склейки — ТОЛЬКО относительный (доля от размаха). Прежний
+  // floor Math.max(..., 1) был в масштабе построения: после перевода
+  // percent в доли (0..1) единица схлопывала любые проценты в одну линию
+  // (100% и 50% → 0.75). При range === 0 склеиваются лишь точно равные.
+  const absoluteTolerance = range * (tolerancePercent / 100);
 
   const groups: GroupedThreshold[] = [];
   let currentGroup: ThresholdPoint[] = [points[0]];
@@ -91,11 +115,13 @@ export function groupThresholdsByValue(
 
 function buildGroup(points: Array<{
   y: number;
+  labelValue: number;
   metricName: string;
   metricId: string;
   rule: FormattingRule;
 }>): GroupedThreshold {
   const avgY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+  const avgLabel = points.reduce((sum, p) => sum + p.labelValue, 0) / points.length;
 
   const uniqueRules = new Map<string, GroupedThreshold['rules'][0]>();
   for (const p of points) {
@@ -114,6 +140,7 @@ function buildGroup(points: Array<{
 
   return {
     y: avgY,
+    labelValue: avgLabel,
     rules,
     primaryColor,
     isOverlap: rules.length > 1,

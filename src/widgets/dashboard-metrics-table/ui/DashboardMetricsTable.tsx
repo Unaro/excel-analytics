@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { Layers, Filter, Loader2 } from 'lucide-react';
 import { MetricCell } from '@/entities/metric';
 import { MetricConfigPopover } from '@/features/configure-table-metric';
-import { useDashboardStore } from '@/entities/dashboard';
 import { cn } from '@/shared/lib/utils';
 import { GroupComputationResult } from '@/entities/metric';
 import { VirtualMetric } from '@/shared/lib/validators';
@@ -13,6 +12,11 @@ import { VirtualMetric } from '@/shared/lib/validators';
 export interface DashboardMetricsTableProps {
   dashboardId: string;
   groups: GroupComputationResult[];
+  /**
+   * Эффективные колонки (формат/единица из шаблона). Обязателен: хранимые
+   * колонки дашборда формат больше не несут, его подставляет вычисление.
+   */
+  metrics: VirtualMetric[];
   loading: boolean;
   hiddenMetricIds: string[];
   onToggleMetricVisibility: (id: string) => void;
@@ -20,22 +24,16 @@ export interface DashboardMetricsTableProps {
   className?: string;
 }
 
-const EMPTY_METRICS: VirtualMetric[] = [];
-
 export function DashboardMetricsTable({
   dashboardId,
   groups,
+  metrics,
   loading,
   hiddenMetricIds,
   onToggleMetricVisibility,
   getGroupHref = (id) => `/groups/${id}`,
   className
 }: DashboardMetricsTableProps) {
-  const metrics = useDashboardStore(useMemo(() => (state) => {
-    const dashboard = state.dashboards.find(d => d.id === dashboardId);
-    return dashboard?.virtualMetrics || EMPTY_METRICS;
-  }, [dashboardId]));
-
   const visibleMetrics = useMemo(
     () => metrics.filter((m) => !hiddenMetricIds.includes(m.id)),
     [metrics, hiddenMetricIds]
@@ -112,7 +110,7 @@ export function DashboardMetricsTable({
 
                   return (
                     <td key={metricVal.virtualMetricId} className="px-6 py-4 whitespace-nowrap text-sm text-right border-l border-transparent hover:border-slate-100 dark:hover:border-slate-800">
-                      <MetricCell value={metricVal.value} formattedValue={metricVal.formattedValue} metric={metricConfig} />
+                      <MetricCell value={metricVal.value} formattedValue={metricVal.formattedValue} metric={metricConfig} fromNode={metricVal.fromNode} />
                     </td>
                   );
                 })}

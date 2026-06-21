@@ -234,9 +234,29 @@ export const useIndicatorGroupStore = create<IndicatorGroupState>()(
     }),
     {
       name: 'indicator-group-storage',
-      version: 2,
-      // v1 → v2: структура groups совместима — переносим как есть.
-      migrate: createMigration({ 2: (state) => state }),
+      version: 3,
+      migrate: createMigration({
+        // v1 → v2: структура groups совместима — переносим как есть.
+        2: (state) => state,
+        // v2 → v3: убираем мёртвые customDisplayFormat/customDecimalPlaces
+        // у метрик групп (формат теперь строго из шаблона).
+        3: (state) => ({
+          ...state,
+          groups: ((state.groups as Array<Record<string, unknown>> | undefined) ?? []).map(
+            (g) => ({
+              ...g,
+              metrics: ((g.metrics as Array<Record<string, unknown>> | undefined) ?? []).map(
+                (m) => {
+                  const { customDisplayFormat, customDecimalPlaces, ...rest } = m;
+                  void customDisplayFormat;
+                  void customDecimalPlaces;
+                  return rest;
+                }
+              ),
+            })
+          ),
+        }),
+      }),
     }
   )
 );

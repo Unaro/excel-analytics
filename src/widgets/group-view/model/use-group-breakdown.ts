@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
+import { useAppSettingsStore, selectFormulaOptions } from '@/entities/app-settings';
+import { useColumnDictionary } from '@/entities/reference-type';
 import { useHierarchyStore, type HierarchyLevel } from '@/entities/hierarchy';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useMetricTemplateStore, type IndicatorGroup } from '@/entities/metric';
@@ -50,13 +52,18 @@ export interface GroupBreakdownResult {
   setDateGranularity: (g: DateGranularity | null) => void;
   /** true — двумерный режим: следующий уровень иерархии × время. */
   isTwoDimensional: boolean;
+  /**
+   * Код → наименование по справочнику колонки текущего уровня
+   * (только отображение; в фильтры и ключи уходят коды).
+   */
+  resolveLabel: (label: string) => string;
 }
 
 export function useGroupBreakdown(
   groupId: string,
-  initialPath: HierarchyFilterValue[] = []
+  currentPath: HierarchyFilterValue[], // Переименовали из initialPath, теперь это path из URL
+  setPath: (p: HierarchyFilterValue[]) => void // Добавили сеттер
 ): GroupBreakdownResult {
-  const [currentPath, setCurrentPath] = useState<HierarchyFilterValue[]>(initialPath);
   const [dateGranularity, setDateGranularity] = useState<DateGranularity | null>(null);
 
   const {
@@ -68,7 +75,7 @@ export function useGroupBreakdown(
     isSyncing,
   } = useDatasetInfo();
 
-  const group = useIndicatorGroupStore(s => s.getGroup(groupId));
+  const group = useIndicatorGroupStore(useShallow(s => s.getGroup(groupId)));
   const templates = useMetricTemplateStore(useShallow(s => s.templates)) ?? EMPTY_TEMPLATES;
 
   // Авто-переключение на датасет группы — как на странице дашборда
@@ -95,7 +102,7 @@ export function useGroupBreakdown(
 
   const groupMetricConfigs = useGroupMetricConfigStore(s => s.configsByGroup[groupId]);
 
-  const nextLevel = useMemo<HierarchyLevel | null>(
+  const nextLevel = useMemo<HierarchyLevel | null>(                                   
     () => levels[currentPath.length] ?? null,
     [levels, currentPath.length]
   );
@@ -111,12 +118,21 @@ export function useGroupBreakdown(
   const virtualMetricsForUI = useMemo<VirtualMetric[]>(() => {
     if (!group) return [];
     return virtualMetrics.map(vm => {
-      const colorConfig = vm.sourceMetricId
-        ? groupMetricConfigs?.[vm.sourceMetricId]?.colorConfig
+      // CF — единый источник на шаблоне; групповой стор остаётся фолбэком
+      // для немигрированных метрик (правила «переедут» при редактировании).
+      const m = vm.sourceMetricId
+        ? group.metrics.find(gm => gm.id === vm.sourceMetricId)
         : undefined;
-      return { ...vm, colorConfig };
+      const tpl = m ? templates.find(t => t.id === m.templateId) : undefined;
+      const colorConfig = tpl?.colorConfig
+        ?? (vm.sourceMetricId ? groupMetricConfigs?.[vm.sourceMetricId]?.colorConfig : undefined);
+      // Стиль чарта (столбец/линия) — только из группового стора (per-group).
+      const chartStyle = vm.sourceMetricId
+        ? groupMetricConfigs?.[vm.sourceMetricId]?.chartStyle
+        : undefined;
+      return { ...vm, colorConfig, chartStyle };
     });
-  }, [virtualMetrics, groupMetricConfigs]);
+  }, [virtualMetrics, groupMetricConfigs, group, templates]);
 
   const dashboardGroupsConfig = useMemo<IndicatorGroupInDashboard[]>(() => {
     if (!group) return [];
@@ -147,6 +163,9 @@ export function useGroupBreakdown(
   const groupByColumn = nextLevel?.columnName;
   const groupByDateColumn = isTimeMode ? dateColumn.columnName : undefined;
 
+const formulaOptions = useAppSettingsStore(useShallow(selectFormulaOptions));  
+const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.requireExplicit}`;
+
   const configHash = useMemo(() => {
     return (
       generateConfigHash({
@@ -156,9 +175,10 @@ export function useGroupBreakdown(
         virtualMetrics,
       }) +
       (groupByColumn ? `:gb:${groupByColumn}` : '') +
-      (isTimeMode ? `:dc:${groupByDateColumn}:dg:${dateGranularity}` : '')
+      (isTimeMode ? `:dc:${groupByDateColumn}:dg:${dateGranularity}` : '') +
+      `:fo:${formulaOptionsHash}`
     );
-  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn, isTimeMode, groupByDateColumn, dateGranularity]);
+  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn, isTimeMode, groupByDateColumn, dateGranularity, formulaOptionsHash]);
 
   const buildParams = useCallback((): ClientComputeParams | null => {
     if (!activeDatasetId || !group) return null;
@@ -175,6 +195,7 @@ export function useGroupBreakdown(
       groupByColumn: groupByColumn ?? undefined,
       groupByDateColumn,
       groupByDateGranularity: isTimeMode ? dateGranularity : undefined,
+      formulaOptions,
       validColumns,
       pgSchema,
       pgTable,
@@ -183,7 +204,7 @@ export function useGroupBreakdown(
     activeDatasetId, group, groupId, encryptedConnection, currentPath,
     dashboardGroupsConfig, templates, virtualMetrics,
     groupByColumn, groupByDateColumn, isTimeMode, dateGranularity,
-    validColumns, pgSchema, pgTable,
+    formulaOptions, validColumns, pgSchema, pgTable,
   ]);
 
   const buildCacheKey = useCallback((): CacheKey | null => {
@@ -201,11 +222,18 @@ export function useGroupBreakdown(
     isSyncing,
     buildParams,
     buildCacheKey,
-    deps: [filtersHash, configHash, currentPath, group?.id],
+    deps: [filtersHash, configHash, group?.id],
+    label: 'group',
   });
 
   const summary = computeResult?.groups[0] ?? null;
   const breakdown = computeResult?.groups[0]?.breakdown;
+
+  // Справочник колонки текущего уровня: имена в drill-down/крошках/таблицах
+  const { resolve: resolveLabel } = useColumnDictionary(
+    activeDatasetId,
+    nextLevel?.columnName
+  );
 
   const drillDown = useCallback(
     (label: string) => {
@@ -217,20 +245,25 @@ export function useGroupBreakdown(
         levelIndex: nextLevel.order,
         columnName: nextLevel.columnName,
         value: label,
-        displayValue: label,
+        // Имя из справочника — в крошках виден текст, в WHERE уходит код
+        displayValue: resolveLabel(label),
       };
-      setCurrentPath(prev => [...prev, newFilter]);
+      setPath([...currentPath, newFilter]); 
     },
-    [nextLevel]
+      [nextLevel, resolveLabel, currentPath, setPath]
   );
 
+  // Клик по хлебной крошке = выбрать ЭТОТ уровень (оставить его в пути),
+  // а не удалить. slice(0, idx+1) сохраняет кликнутый уровень и отбрасывает
+  // только более глубокие. Подъём выше — клик по родительской крошке или
+  // «Все данные».
   const resetToLevel = useCallback((levelIndex: number) => {
-    setCurrentPath(prev => prev.slice(0, levelIndex));
-  }, []);
+    setPath(currentPath.slice(0, levelIndex + 1));
+  }, [currentPath, setPath]);
 
   const resetAll = useCallback(() => {
-    setCurrentPath([]);
-  }, []);
+    setPath([]);
+  }, [setPath]);
 
   return {
     group,
@@ -249,5 +282,6 @@ export function useGroupBreakdown(
     dateGranularity,
     setDateGranularity,
     isTwoDimensional,
+    resolveLabel,
   };
 }

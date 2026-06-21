@@ -20,6 +20,8 @@ export interface UseComputationOptions {
   debounceMs?: number;
   autoExecute?: boolean;
   deps?: unknown[];
+  /** Метка для профиля задержки (например 'dashboard' / 'hierarchy:НП'). */
+  label?: string;
 }
 
 export interface UseComputationResult {
@@ -65,21 +67,23 @@ export function useComputation({
   debounceMs = 100,
   autoExecute = true,
   deps = [],
+  label = 'compute',
 }: UseComputationOptions): UseComputationResult {
   const [result, setResult] = useState<DashboardComputationResult | null>(null);
   const [isComputing, setIsComputing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const requestVersionRef = useRef(0);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Момент, когда работа была запрошена (изменение deps) — для замера
+  // сквозной задержки «клик → результат» (debounce + очередь + воркер).
+  const pendingStartRef = useRef<number | null>(null);
 
-  // Колбэки в ref: identity buildParams/buildCacheKey не должна
-  // пересоздавать executeInternal и триггерить авто-эффект (п.9 аудита
-  // ядра — двойной триггер и пересчёт при правке условного форматирования)
+  // ✅ NEW: Храним последние версии функций в refs
   const buildParamsRef = useRef(buildParams);
   const buildCacheKeyRef = useRef(buildCacheKey);
+
+  // Обновляем refs при каждом рендере (без зависимостей)
   useEffect(() => {
     buildParamsRef.current = buildParams;
     buildCacheKeyRef.current = buildCacheKey;
@@ -99,11 +103,27 @@ export function useComputation({
     async (force = false): Promise<void> => {
       if (!activeDatasetId || isSyncing) return;
 
+      // ✅ Используем refs вместо прямых вызовов
       const params = buildParamsRef.current();
       const cacheKey = buildCacheKeyRef.current();
+      
       if (!params || !cacheKey) return;
 
       const currentVersion = ++requestVersionRef.current;
+
+      // Замер сквозной задержки: для force-пути (recalculate без debounce)
+      // ставим отметку здесь, если её ещё не поставил execute().
+      if (pendingStartRef.current === null) pendingStartRef.current = performance.now();
+      const logLatency = (kind: 'cache' | 'worker') => {
+        const start = pendingStartRef.current;
+        pendingStartRef.current = null;
+        if (start != null) {
+          logger.info(
+            `[useComputation] ⏱️ ${label} → ${kind} ${Math.round(performance.now() - start)}ms ` +
+              `(debounce ${debounceMs}ms incl.)`
+          );
+        }
+      };
 
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -115,41 +135,33 @@ export function useComputation({
       setError(null);
 
       try {
-        // 1. Проверяем кэш — попадание не показывает спиннер вовсе
         if (!force) {
           const cached = await cache.get(cacheKey);
-          // Проверка после async-операции
           if (signal.aborted || currentVersion !== requestVersionRef.current) return;
           if (cached) {
             setResult(cached.result);
             setIsComputing(false);
+            logLatency('cache');
             return;
           }
         }
 
         setIsComputing(true);
-
-        // 2. Инициализируем engine
         await engine.initialize(activeDatasetId);
         if (signal.aborted || currentVersion !== requestVersionRef.current) return;
 
-        // 3. выполняем вычисление с AbortSignal
         const computedResult = await engine.compute(params, signal);
-
-        // 4. Финальная проверка перед записью в state
         if (signal.aborted || currentVersion !== requestVersionRef.current) return;
 
         setResult(computedResult);
         setIsComputing(false);
+        logLatency('worker');
 
-        // 5. Сохраняем в кэш (fire-and-forget, но с abort-check)
         cache.set(cacheKey, computedResult).catch(err => {
           logger.warn('[useComputation] Cache save failed:', err);
         });
       } catch (err) {
-        // Отменённые запросы
         if (isAbortError(err)) return;
-
         if (signal.aborted || currentVersion !== requestVersionRef.current) return;
 
         logger.error('[useComputation] Compute failed:', err);
@@ -157,10 +169,14 @@ export function useComputation({
         setIsComputing(false);
       }
     },
-    [activeDatasetId, isSyncing, cache, engine]
+    // ✅ УБРАЛИ buildParams и buildCacheKey из зависимостей!
+    [activeDatasetId, isSyncing, cache, engine, label, debounceMs]
   );
 
   const execute = useCallback(async (): Promise<void> => {
+    // Отметка старта = момент запроса работы (до debounce), чтобы профиль
+    // включал ожидание debounce — главный подозреваемый в «лаге после клика».
+    if (pendingStartRef.current === null) pendingStartRef.current = performance.now();
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
     }
@@ -173,6 +189,8 @@ export function useComputation({
 
   const recalculate = useCallback(async (): Promise<void> => {
     if (!activeDatasetId) return;
+    
+    // ✅ Используем ref
     const cacheKey = buildCacheKeyRef.current();
     if (cacheKey) {
       try {
@@ -184,7 +202,6 @@ export function useComputation({
     await executeInternal(true);
   }, [activeDatasetId, cache, executeInternal]);
 
-  // Auto-execute при изменении зависимостей
   useEffect(() => {
     if (!autoExecute) return;
     execute();
@@ -203,6 +220,14 @@ export function useComputation({
       }
     };
   }, []);
+
+  // Контракт IComputeEngine.dispose: освобождаем ресурсы движка при смене
+  // движка/датасета и при размонтировании (№16). Сейчас обе реализации no-op,
+  // но вызов фиксирует контракт, чтобы будущая реализация не утекла.
+  useEffect(() => {
+    if (!activeDatasetId) return;
+    return () => engine.dispose(activeDatasetId);
+  }, [engine, activeDatasetId]);
 
   return {
     result,

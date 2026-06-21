@@ -3,10 +3,12 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { nanoid } from 'nanoid';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
+import { useMetricTemplateStore } from '@/entities/metric';
 import { useDatasetStore } from '@/entities/dataset';
-import { IndicatorGroupInDashboard, VirtualMetric, VirtualMetricBindingInDashboard } from '@/shared/lib/validators';
+import { IndicatorGroupInDashboard, MetricTemplate, DashboardColumn, VirtualMetricBindingInDashboard } from '@/shared/lib/validators';
 import { useDashboardStore } from '@/entities/dashboard';
 import { Dashboard } from '@/entities/dashboard';
+import { resolveColumnTemplateId } from '@/shared/lib/utils/dashboard-columns';
 
 export function useDashboardBuilder(existingDashboardId?: string) {
   // Сначала ВСЕ хуки — никаких условий до useState.
@@ -17,12 +19,13 @@ export function useDashboardBuilder(existingDashboardId?: string) {
   const updateDashboard = useDashboardStore(s => s.updateDashboard);
   const getDashboard = useDashboardStore(s => s.getDashboard);
   const allGroups = useIndicatorGroupStore(s => s.groups);
+  const templates = useMetricTemplateStore(s => s.templates);
   const activeDatasetId = useDatasetStore(s => s.activeDatasetId);
   
   // useState вызываются в фиксированном порядке — БЕЗ вычислений до них
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [virtualMetrics, setVirtualMetrics] = useState<VirtualMetric[]>([]);
+  const [virtualMetrics, setVirtualMetrics] = useState<DashboardColumn[]>([]);
   const [dashboardGroups, setDashboardGroups] = useState<IndicatorGroupInDashboard[]>([]);
 
   // Мемоизируем existingDashboard
@@ -31,40 +34,41 @@ export function useDashboardBuilder(existingDashboardId?: string) {
     [existingDashboardId, getDashboard]
   );
 
-  // Загрузка данных дашборда при монтировании
+  // Загрузка данных дашборда при монтировании. Старые колонки без
+  // templateId лениво мигрируем: выводим шаблон из привязок — при
+  // сохранении templateId запишется в колонку.
   useEffect(() => {
     if (existingDashboard) {
       setName(existingDashboard.name || '');
       setDescription(existingDashboard.description || '');
-      setVirtualMetrics(existingDashboard.virtualMetrics || []);
-      setDashboardGroups(existingDashboard.indicatorGroups || []);
+      const groupsCfg = existingDashboard.indicatorGroups || [];
+      const groupsState = useIndicatorGroupStore.getState().groups;
+      setVirtualMetrics(
+        (existingDashboard.virtualMetrics || []).map(vm => ({
+          ...vm,
+          templateId: resolveColumnTemplateId(vm, groupsCfg, groupsState),
+        }))
+      );
+      setDashboardGroups(groupsCfg);
     }
   }, [existingDashboard]);
 
-  const addVirtualMetric = useCallback((name: string) => {
-    const newMetric: VirtualMetric = {
-      id: nanoid(),
-      name,
-      displayFormat: 'number',
-      decimalPlaces: 0,
-      order: virtualMetrics.length
-    };
-    setVirtualMetrics(prev => [...prev, newMetric]);
-  }, [virtualMetrics.length]);
+  // Колонка дашборда = шаблон: формат/имя/единица берутся из него,
+  // отдельно настраивать не нужно. Колонка хранит только templateId,
+  // colorConfig (пороги задаются на дашборде) и order.
+  const addColumn = useCallback((templateId: string) => {
+    if (!templateId) return;
+    setVirtualMetrics(prev => {
+      if (prev.some(vm => vm.templateId === templateId)) return prev; // без дублей
+      return [...prev, { id: nanoid(), templateId, order: prev.length }];
+    });
+  }, []);
 
   const removeVirtualMetric = useCallback((id: string) => {
     setVirtualMetrics(prev => prev.filter(vm => vm.id !== id));
   }, []);
 
-  // Единица измерения колонки дашборда: отображалась (formatValue,
-  // таблица метрик), но задать её в билдере было негде.
-  const updateVirtualMetricUnit = useCallback((id: string, unit: string) => {
-    setVirtualMetrics(prev => prev.map(vm =>
-      vm.id === id ? { ...vm, unit: unit || undefined } : vm
-    ));
-  }, []);
-
-  const reorderVirtualMetrics = useCallback((newOrder: VirtualMetric[]) => {
+  const reorderVirtualMetrics = useCallback((newOrder: DashboardColumn[]) => {
     const reordered = newOrder.map((vm, idx) => ({ ...vm, order: idx }));
     setVirtualMetrics(reordered);
   }, []);
@@ -139,15 +143,32 @@ export function useDashboardBuilder(existingDashboardId?: string) {
     [allGroups, targetDatasetId]
   );
 
+  // Шаблоны-кандидаты для колонок: те, что реально используются метриками
+  // добавленных в дашборд групп (минус уже добавленные колонки).
+  const availableTemplates = useMemo<MetricTemplate[]>(() => {
+    const usedTemplateIds = new Set<string>();
+    for (const cfg of dashboardGroups) {
+      const group = allGroups.find(g => g.id === cfg.groupId);
+      group?.metrics.forEach(m => usedTemplateIds.add(m.templateId));
+    }
+    const addedColumnTemplateIds = new Set(
+      virtualMetrics.map(vm => vm.templateId).filter(Boolean)
+    );
+    return templates.filter(
+      t => usedTemplateIds.has(t.id) && !addedColumnTemplateIds.has(t.id)
+    );
+  }, [dashboardGroups, allGroups, virtualMetrics, templates]);
+
   return {
     name, setName,
     description, setDescription,
-    virtualMetrics, addVirtualMetric, removeVirtualMetric, reorderVirtualMetrics,
-    updateVirtualMetricUnit,
+    virtualMetrics, addColumn, removeVirtualMetric, reorderVirtualMetrics,
     dashboardGroups, addGroupToDashboard, removeGroupFromDashboard,
     updateBinding,
     saveDashboard,
     availableGroups,
+    availableTemplates,
+    templates,
     allGroups,
   };
 }

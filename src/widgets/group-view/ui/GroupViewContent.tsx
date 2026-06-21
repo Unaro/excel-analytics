@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useEffect } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { GroupBreakdownTable } from './GroupBreakdownTable';
 import { GroupPageHeader } from './GroupPageHeader';
 import { GroupKpiGrid } from './GroupKpiGrid';
@@ -15,6 +15,10 @@ import { CalendarClock } from 'lucide-react';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
+import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
+import type { MetricChartStyle } from '@/shared/lib/types/chart';
+import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/entities/aggregate-nodes';
+import { nodePathKey } from '@/shared/lib/types/aggregate';
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -35,7 +39,6 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
 
   const {
     group,
-    currentPath,
     nextLevel,
     summary,
     breakdown,
@@ -50,7 +53,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     dateGranularity,
     setDateGranularity,
     isTwoDimensional,
-  } = useGroupBreakdown(groupId, path);
+    resolveLabel,
+  } = useGroupBreakdown(groupId, path, setPath);
 
   const {
     activeMetricIds,
@@ -65,18 +69,11 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     return group?.metrics.map(m => m.id) ?? [];
   }, [group]);
 
-  useEffect(() => {
-    const pathsEqual =
-      path.length === currentPath.length &&
-      path.every((p, i) =>
-        p.levelId === currentPath[i]?.levelId &&
-        p.value === currentPath[i]?.value
-      );
-
-    if (!pathsEqual) {
-      setPath(currentPath);
-    }
-  }, [currentPath, path, setPath]);
+  // metricId группы → templateId: ячейки таблицы берут CF из шаблона.
+  const metricTemplateIds = useMemo(
+    () => Object.fromEntries((group?.metrics ?? []).map(m => [m.id, m.templateId])),
+    [group]
+  );
 
   // Одномерные потребители не должны видеть устаревшие 2-D строки:
   // при выключении разбивки по дате isTwoDimensional меняется мгновенно,
@@ -87,12 +84,120 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     [breakdown]
   );
 
-  const chartBreakdown = useMemo(() => {
-    if (!oneDimBreakdown || !sortConfig) return oneDimBreakdown ?? [];
-    return sortBreakdown(oneDimBreakdown, sortConfig.key, sortConfig.direction);
-  }, [oneDimBreakdown, sortConfig]);
+  // Видимость элементов (категорий) на барах/радаре — переключается чекбоксами
+  // в таблице (аналог 2-D). Скрытые исключаются только из чартов, таблица
+  // показывает всё.
+  const [chartHiddenLabels, setChartHiddenLabels] = useState<Set<string>>(new Set());
+  const toggleChartLabel = useCallback((label: string) => {
+    setChartHiddenLabels(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
+  }, []);
 
-  const summaryVirtualMetrics = summary?.virtualMetrics ?? [];
+  const summaryVirtualMetrics = useMemo(
+    () => summary?.virtualMetrics ?? [],
+    [summary]
+  );
+
+  // Стиль чарта (столбец/линия) per-metric: храним в group-metric-config по
+  // sourceMetricId. Карта для KPI-карточек + сеттер, пишущий в стор.
+  const updateChartStyle = useGroupMetricConfigStore(s => s.updateChartStyle);
+  const chartStyleByMetricId = useMemo(() => {
+    const map: Record<string, MetricChartStyle | undefined> = {};
+    virtualMetrics.forEach(vm => {
+      if (vm.sourceMetricId) map[vm.sourceMetricId] = vm.chartStyle;
+    });
+    return map;
+  }, [virtualMetrics]);
+  const handleChartStyleChange = useCallback(
+    (metricId: string, style: MetricChartStyle) => updateChartStyle(groupId, metricId, style),
+    [updateChartStyle, groupId]
+  );
+
+  // ── Введённые значения узлов файла-агрегата ──────────────────────────────
+  // Узлы хранятся по datasetId; путь узла = значения ключей currentPath + метка
+  // строки разбивки. Колонка метрики берётся из fieldBinding шаблона SUM.
+  const datasetId = group?.datasetId;
+  const aggregateNodes = useAggregateNodesStore(s =>
+    datasetId ? s.nodesByDataset[datasetId] : undefined
+  );
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, Record<string, number | null>>();
+    for (const n of aggregateNodes ?? []) map.set(nodePathKey(n.path), n.values);
+    return map;
+  }, [aggregateNodes]);
+  // metricId → имя колонки метрики (для lookup введённого значения).
+  // VirtualMetricValue.sourceMetricId = id метрики группы.
+  const columnByMetricId = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const m of group?.metrics ?? []) {
+      const col = m.fieldBindings[0]?.columnName;
+      if (col) map[m.id] = col;
+    }
+    return map;
+  }, [group]);
+  const pathValues = useMemo(() => path.map(f => f.value), [path]);
+  // Введённое значение узла для строки разбивки: rawLabel → vmId → число|null.
+  const enteredByLabel = useMemo(() => {
+    if (nodeMap.size === 0) return undefined;
+    const out = new Map<string, Record<string, number | null>>();
+    for (const item of breakdown ?? []) {
+      if (item.dateLabel !== undefined) continue;
+      const values = nodeMap.get(nodePathKey([...pathValues, item.label]));
+      if (!values) continue;
+      const byVm = enteredVmValues(values, summaryVirtualMetrics, columnByMetricId);
+      if (Object.keys(byVm).length) out.set(item.label, byVm);
+    }
+    return out.size ? out : undefined;
+  }, [nodeMap, breakdown, pathValues, summaryVirtualMetrics, columnByMetricId]);
+  // Введённое значение текущего узла (строка «Итого»).
+  const enteredSummary = useMemo(() => {
+    if (nodeMap.size === 0 || pathValues.length === 0) return undefined;
+    const values = nodeMap.get(nodePathKey(pathValues));
+    if (!values) return undefined;
+    const byVm = enteredVmValues(values, summaryVirtualMetrics, columnByMetricId);
+    return Object.keys(byVm).length ? byVm : undefined;
+  }, [nodeMap, pathValues, summaryVirtualMetrics, columnByMetricId]);
+
+  // Переключатель: считать введённые значения узлов как эффективные (тогда они
+  // форматируются/сортируются/окрашиваются наравне с вычисленными) либо
+  // показывать их отдельной подписью «введено: X» поверх вычисленного.
+  const hasEnteredData = nodeMap.size > 0;
+  const [useEnteredValues, setUseEnteredValues] = useState(true);
+  const useEntered = hasEnteredData && useEnteredValues;
+
+  // Эффективные значения: вычисленное ?? введённое (когда тумблер включён).
+  const effectiveSummaryMetrics = useMemo(
+    () => (useEntered ? mergeEnteredVms(summaryVirtualMetrics, enteredSummary) : summaryVirtualMetrics),
+    [useEntered, summaryVirtualMetrics, enteredSummary]
+  );
+  const effectiveBreakdown = useMemo(() => {
+    if (!useEntered || !enteredByLabel || !oneDimBreakdown) return oneDimBreakdown;
+    return oneDimBreakdown.map(item => {
+      const entered = enteredByLabel.get(item.label);
+      if (!entered) return item;
+      const vms = mergeEnteredVms(item.virtualMetrics, entered);
+      return vms === item.virtualMetrics ? item : { ...item, virtualMetrics: vms };
+    });
+  }, [useEntered, oneDimBreakdown, enteredByLabel]);
+
+  // Сортировка чартов идёт по эффективным значениям (введённые тоже участвуют).
+  const chartBreakdown = useMemo(() => {
+    const base = effectiveBreakdown ?? [];
+    // Сырые (уникальные) label — позиция категории на оси. Резолв словаря НЕ
+    // применяем здесь: разные коды могут давать одно имя → дубль категорий →
+    // recharts роняет ключи осей. Имя — через tickFormatter/тултип в чартах.
+    return sortConfig
+      ? sortBreakdown(base, sortConfig.key, sortConfig.direction)
+      : base;
+  }, [effectiveBreakdown, sortConfig]);
+  const visibleChartBreakdown = useMemo(
+    () => chartBreakdown.filter(item => !chartHiddenLabels.has(item.label)),
+    [chartBreakdown, chartHiddenLabels]
+  );
 
   if (!group) {
     return <GroupNotFound />;
@@ -103,16 +208,18 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
       <GroupPageHeader
         group={group}
         groupId={groupId}
-        currentPath={currentPath}
+        currentPath={path}
         onResetAll={resetAll}
         onResetToLevel={resetToLevel}
       />
 
       <GroupKpiGrid
-        metrics={summaryVirtualMetrics}
+        metrics={effectiveSummaryMetrics}
         activeMetricIds={activeMetricIds}
         recordCount={summary?.recordCount ?? 0}
         onToggleMetric={handleToggleMetric}
+        chartStyleByMetricId={chartStyleByMetricId}
+        onChartStyleChange={handleChartStyleChange}
       />
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -120,6 +227,25 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           Визуализации
         </h2>
         <div className="flex items-center gap-3">
+          {hasEnteredData && (
+            <label
+              className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none"
+              title="Показывать введённые значения узлов файла-агрегата вместо суммы по листьям там, где они заданы (форматирование, сортировка и окрашивание применяются к ним). Выключите, чтобы видеть вычисленное + «введено: X / Δ» отдельной подписью."
+            >
+              <input
+                type="checkbox"
+                checked={useEnteredValues}
+                onChange={e => setUseEnteredValues(e.target.checked)}
+                className="accent-indigo-600 w-4 h-4"
+              />
+              Считать введённые значения
+              {useEntered && (
+                <span className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1">
+                  (<span className="text-amber-500">●</span> — из узла файла)
+                </span>
+              )}
+            </label>
+          )}
           {dateColumn && (
             <div className="flex items-center gap-2">
               <CalendarClock size={16} className="text-indigo-500 shrink-0" />
@@ -176,17 +302,30 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           }
           truncated={summary?.breakdownTruncated}
           onRowClick={drillDown}
+          resolveLabel={resolveLabel}
         />
       )}
 
-      {/* Одномерные режимы: иерархия ИЛИ время (на листе) */}
+      {/* Одномерные режимы: иерархия ИЛИ время (на листе).
+          Чарты — НАД таблицей. */}
+      {!isComputing && !isTwoDimensional && visibleChartBreakdown.length > 0 && (
+        <GroupChartsPanel
+          breakdown={visibleChartBreakdown}
+          virtualMetrics={effectiveSummaryMetrics}
+          metricConfigs={virtualMetrics}
+          activeMetricIds={activeMetricIds}
+          chartTypes={chartTypes}
+          resolveLabel={resolveLabel}
+        />
+      )}
+
       {!isComputing && !isTwoDimensional && oneDimBreakdown && oneDimBreakdown.length > 0 && (
         <GroupBreakdownTable
-          breakdown={oneDimBreakdown}
+          breakdown={effectiveBreakdown ?? oneDimBreakdown}
           sortConfig={sortConfig}
           onSortChange={setSortConfig}
           summary={summary}
-          virtualMetrics={summaryVirtualMetrics}
+          virtualMetrics={effectiveSummaryMetrics}
           metricMetas={baseVirtualMetrics}
           nextLevel={dateGranularity ? null : nextLevel}
           dimensionLabel={
@@ -198,16 +337,12 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           activeMetricIds={activeMetricIds}
           groupId={groupId}
           groupMetricIds={groupMetricIds}
-        />
-      )}
-
-      {!isComputing && !isTwoDimensional && chartBreakdown.length > 0 && (
-        <GroupChartsPanel
-          breakdown={chartBreakdown}
-          virtualMetrics={summaryVirtualMetrics}
-          metricConfigs={virtualMetrics}
-          activeMetricIds={activeMetricIds}
-          chartTypes={chartTypes}
+          metricTemplateIds={metricTemplateIds}
+          resolveLabel={resolveLabel}
+          chartHiddenLabels={chartHiddenLabels}
+          onToggleChartLabel={chartTypes.length > 0 ? toggleChartLabel : undefined}
+          enteredByLabel={useEntered ? undefined : enteredByLabel}
+          enteredSummary={useEntered ? undefined : enteredSummary}
         />
       )}
     </div>

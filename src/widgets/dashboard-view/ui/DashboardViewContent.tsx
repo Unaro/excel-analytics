@@ -21,7 +21,14 @@ import { Loader2, CalendarClock } from 'lucide-react';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
-import type { BreakdownItem } from '@/shared/lib/types/computation';
+import type { BreakdownItem, DashboardComputationResult } from '@/shared/lib/types/computation';
+import { HierarchyFilterValue } from '@/shared/lib/validators';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
+import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/entities/aggregate-nodes';
+import { nodePathKey } from '@/shared/lib/types/aggregate';
+
+
+const EMPTY_FILTERS: HierarchyFilterValue[] = [];
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -71,7 +78,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   const [dateGranularity, setDateGranularity] = useState<DateGranularity | null>(null);
 
   // Вычисление метрик дашборда
-  const { result, isComputing, error, recalculate, dateColumn } =
+  const { result, isComputing, error, recalculate, dateColumn, effectiveVirtualMetrics, kpiResults } =
     useDashboardComputation(dashboardId, { dateGranularity });
 
   // Данные дашборда
@@ -84,18 +91,63 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   // лишняя обёртка скрывала суть сравнения).
   const hierarchyFilters = useDashboardStore(
     useShallow(
-      s => s.dashboards.find(d => d.id === dashboardId)?.hierarchyFilters ?? []
+      s => s.dashboards.find(d => d.id === dashboardId)?.hierarchyFilters ?? EMPTY_FILTERS
     )
   );
 
-  // UI-состояние чартов и таблицы
-  const dashboardVirtualMetrics = dashboard?.virtualMetrics ?? [];
+  // ── Введённые значения узлов агрегата (как на странице группы) ───────────
+  // Дашборд = «группа групп»: каждая строка-группа = узел на текущем пути
+  // иерархических фильтров. Где у узла есть введённое значение — оно перекрывает
+  // вычисленное (форматирование/сортировка/окрашивание работают на нём).
+  const datasetId = dashboard?.datasetId;
+  const aggregateNodes = useAggregateNodesStore(s =>
+    datasetId ? s.nodesByDataset[datasetId] : undefined
+  );
+  const nodeMap = useMemo(() => {
+    const map = new Map<string, Record<string, number | null>>();
+    for (const n of aggregateNodes ?? []) map.set(nodePathKey(n.path), n.values);
+    return map;
+  }, [aggregateNodes]);
+  const indicatorGroups = useIndicatorGroupStore(useShallow(s => s.groups));
+  const columnByMetricId = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const g of indicatorGroups) {
+      for (const m of g.metrics) {
+        const col = m.fieldBindings[0]?.columnName;
+        if (col) map[m.id] = col;
+      }
+    }
+    return map;
+  }, [indicatorGroups]);
+  const pathValues = useMemo(() => hierarchyFilters.map(f => f.value), [hierarchyFilters]);
+
+  const hasEnteredData = nodeMap.size > 0;
+  const [useEnteredValues, setUseEnteredValues] = useState(true);
+  const useEntered = hasEnteredData && useEnteredValues;
+
+  // Эффективный результат: сводки групп с подстановкой введённых значений узла
+  // на текущем пути фильтров (overlay только на virtualMetrics-сводки).
+  const effectiveResult = useMemo<DashboardComputationResult | null>(() => {
+    if (!useEntered || !result) return result;
+    const values = nodeMap.get(nodePathKey(pathValues));
+    if (!values) return result;
+    const groups = result.groups.map(group => {
+      const entered = enteredVmValues(values, group.virtualMetrics, columnByMetricId);
+      const vms = mergeEnteredVms(group.virtualMetrics, entered);
+      return vms === group.virtualMetrics ? group : { ...group, virtualMetrics: vms };
+    });
+    return { ...result, groups };
+  }, [useEntered, result, nodeMap, pathValues, columnByMetricId]);
+
+  // UI-состояние чартов и таблицы — на эффективных колонках (формат из
+  // шаблона), а не на хранимых (которые несут только templateId/colorConfig).
+  const dashboardVirtualMetrics = effectiveVirtualMetrics;
   const viewState = useDashboardViewState(dashboardVirtualMetrics);
 
   // Плоские данные для ChartsSectionWidget
   const { breakdown, virtualMetrics } = useMemo(
-    () => flattenDashboardResult(result, dashboardVirtualMetrics),
-    [result, dashboardVirtualMetrics]
+    () => flattenDashboardResult(effectiveResult, dashboardVirtualMetrics),
+    [effectiveResult, dashboardVirtualMetrics]
   );
 
   // Данные секции динамики: серия — группа дашборда, точка — интервал даты.
@@ -103,8 +155,8 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   // конвертируем его в формат «категория × время» для TimeBreakdownSection.
   const isTimeMode = dateGranularity !== null && !!dateColumn;
   const timeItems = useMemo<BreakdownItem[]>(() => {
-    if (!isTimeMode || !result) return [];
-    return result.groups.flatMap(group =>
+    if (!isTimeMode || !effectiveResult) return [];
+    return effectiveResult.groups.flatMap(group =>
       (group.breakdown ?? []).map(item => ({
         label: group.groupName,
         dateLabel: item.label,
@@ -112,8 +164,8 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
         virtualMetrics: item.virtualMetrics,
       }))
     );
-  }, [isTimeMode, result]);
-  const timeTruncated = isTimeMode && !!result?.groups.some(g => g.breakdownTruncated);
+  }, [isTimeMode, effectiveResult]);
+  const timeTruncated = isTimeMode && !!effectiveResult?.groups.some(g => g.breakdownTruncated);
 
   // Edge case: дашборд не найден
   if (!dashboard) {
@@ -160,22 +212,42 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
               currentFilters={hierarchyFilters}
             />
           </ErrorBoundary>
-          <DashboardStats result={result} />
+          <DashboardStats result={effectiveResult} />
         </div>
 
         <div className="lg:col-span-9 space-y-6">
           <ErrorBoundary label="KPI Grid" onReset={recalculate}>
             <KPIGrid
               dashboardId={dashboardId}
-              widgets={dashboard.kpiWidgets || []}
-              currentFilters={hierarchyFilters}
+              results={kpiResults}
               isEditMode={true}
             />
           </ErrorBoundary>
 
-          {/* Переключатель временно́й группировки (виден при дата-колонке) */}
-          {dateColumn && (
-            <div className="flex items-center justify-end gap-2">
+          {/* Переключатели: введённые значения узлов + временна́я группировка */}
+          {(hasEnteredData || dateColumn) && (
+            <div className="flex items-center justify-end gap-4">
+              {hasEnteredData && (
+                <label
+                  className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none"
+                  title="Показывать введённые значения узлов файла-агрегата вместо вычисленных там, где они заданы (на текущем уровне иерархических фильтров)."
+                >
+                  <input
+                    type="checkbox"
+                    checked={useEnteredValues}
+                    onChange={e => setUseEnteredValues(e.target.checked)}
+                    className="accent-indigo-600 w-4 h-4"
+                  />
+                  Считать введённые значения
+                  {useEntered && (
+                    <span className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1">
+                      (<span className="text-amber-500">●</span> — из узла файла)
+                    </span>
+                  )}
+                </label>
+              )}
+              {dateColumn && (
+              <div className="flex items-center gap-2">
               <CalendarClock size={16} className="text-indigo-500 shrink-0" />
               <Select
                 className="w-52 h-9 text-sm"
@@ -193,6 +265,8 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
                   </SelectOption>
                 ))}
               </Select>
+              </div>
+              )}
             </div>
           )}
 
@@ -215,7 +289,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
           )}
 
           {/* Обычный режим: чарты по сводкам групп */}
-          {!isTimeMode && result && breakdown.length > 0 && (
+          {!isTimeMode && effectiveResult && breakdown.length > 0 && (
             <ErrorBoundary label="Графики" onReset={recalculate}>
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <ChartsSectionWidget
@@ -242,7 +316,8 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
           <ErrorBoundary label="Таблица метрик" onReset={recalculate}>
             <DashboardMetricsTable
               dashboardId={dashboardId}
-              groups={result?.groups || []}
+              groups={effectiveResult?.groups || []}
+              metrics={dashboardVirtualMetrics}
               loading={isComputing}
               hiddenMetricIds={viewState.hiddenMetricIds}
               onToggleMetricVisibility={viewState.toggleMetricVisibility}

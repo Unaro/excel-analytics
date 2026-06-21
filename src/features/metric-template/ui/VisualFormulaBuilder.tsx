@@ -1,7 +1,7 @@
 // features/BuildFormula/ui.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Variable, Plus, Type } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { Input } from '@/shared/ui/input';
@@ -9,6 +9,7 @@ import { Button } from '@/shared/ui/button';
 import { nanoid } from 'nanoid';
 import { DragDropList } from '@/shared/ui/drag-drop-list';
 import type { RenderItemProps } from '@/shared/ui/drag-drop-list';
+import { AGGREGATE_FUNCTIONS } from '@/shared/lib/computation/lib/aggregate-functions';
 
 //──────────────────────────────────────────────────────────
 // Типы токенов
@@ -19,6 +20,8 @@ interface Token {
   id: string;
   type: TokenType;
   value: string;
+  /** Аргумент-переменная для агрегатной функции: MAX(arg). */
+  arg?: string;
 }
 
 interface VisualFormulaBuilderProps {
@@ -26,30 +29,70 @@ interface VisualFormulaBuilderProps {
   onChange: (formula: string) => void;
 }
 
+// Агрегатные функции — со слотом-переменной: MAX(a). Скалярные (ROUND/ABS)
+// остаются обычными токенами (могут принимать выражения, скобки вручную).
+const AGGREGATE_FUNCS: string[] = [...AGGREGATE_FUNCTIONS];
+const SCALAR_FUNCS = ['ROUND', 'ABS'];
+const ALL_FUNCS = [...AGGREGATE_FUNCS, ...SCALAR_FUNCS];
+const DEFAULT_VARS = ['a', 'b', 'c', 'x', 'y', 'z'];
+
+const isAggregate = (name: string) => AGGREGATE_FUNCS.includes(name.toUpperCase());
+
+/** Сериализация токена в строку: агрегат → FN(arg). */
+function tokenToString(t: Token): string {
+  if (t.type === 'function' && isAggregate(t.value)) {
+    return `${t.value}(${t.arg ?? ''})`;
+  }
+  return t.value;
+}
+
 //──────────────────────────────────────────────────────────
-// Парсер формулы в токены
+// Парсер формулы в токены (round-trip: FN(var) → один токен со слотом)
 //──────────────────────────────────────────────────────────
 function parseFormulaToTokens(formula: string): Token[] {
   if (!formula) return [];
   const parts = formula.match(/([a-zA-Z_][a-zA-Z0-9_]*|\d+(\.\d+)?|[+\-*/()])/g) || [];
-  return parts.map((part, idx) => {
+
+  const raw: Token[] = parts.map((part, idx) => {
     const isNumber = /^\d+(\.\d+)?$/.test(part);
     const isOperator = /^[+\-*/()]$/.test(part);
-    const isFunc = ['SUM', 'AVG', 'MAX', 'MIN', 'ROUND', 'ABS', 'CEIL', 'FLOOR'].includes(
-      part.toUpperCase()
-    );
+    const isFunc = ALL_FUNCS.includes(part.toUpperCase());
 
     let type: TokenType = 'variable';
     if (isNumber) type = 'number';
     else if (isOperator) type = 'operator';
     else if (isFunc) type = 'function';
 
-    return {
-      id: `token-${idx}-${part}`,
-      type,
-      value: part,
-    };
+    return { id: `token-${idx}-${part}`, type, value: part };
   });
+
+  // Сворачиваем последовательность [AGG, '(', var, ')'] в один токен со слотом
+  const out: Token[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const t = raw[i];
+    if (
+      t.type === 'function' && isAggregate(t.value) &&
+      raw[i + 1]?.value === '(' &&
+      raw[i + 2]?.type === 'variable' &&
+      raw[i + 3]?.value === ')'
+    ) {
+      out.push({ ...t, arg: raw[i + 2].value });
+      i += 3;
+    } else {
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/** Имена переменных формулы сверх дефолтных (включая аргументы агрегатов). */
+function extractCustomVars(tokens: Token[]): string[] {
+  const names = new Set<string>();
+  for (const t of tokens) {
+    if (t.type === 'variable') names.add(t.value);
+    if (t.arg) names.add(t.arg);
+  }
+  return [...names].filter((n) => !DEFAULT_VARS.includes(n));
 }
 
 //──────────────────────────────────────────────────────────
@@ -59,28 +102,49 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
   const [tokens, setTokens] = useState<Token[]>(() => parseFormulaToTokens(initialFormula));
   const [customNumber, setCustomNumber] = useState('');
   const [customVar, setCustomVar] = useState('');
+  // Пул кастомных абстрактных переменных (сверх дефолтных). Засеян из формулы,
+  // чтобы при повторном открытии шаблона свои переменные были доступны как
+  // кнопки и в слотах FN(·), а не только как одноразовый токен.
+  const [customVars, setCustomVars] = useState<string[]>(
+    () => extractCustomVars(parseFormulaToTokens(initialFormula))
+  );
+
+  /** Полный пул абстрактных переменных: дефолтные + кастомные. */
+  const allVars = useMemo(
+    () => Array.from(new Set([...DEFAULT_VARS, ...customVars])),
+    [customVars]
+  );
 
   // Синхронизация токенов с onChange
   useEffect(() => {
-    const formulaString = tokens.map((t) => t.value).join(' ');
+    const formulaString = tokens.map(tokenToString).join(' ');
     if (formulaString !== initialFormula) {
       onChange(formulaString);
     }
   }, [tokens, onChange, initialFormula]);
 
   //Действия с токенами
-  const addToken = (type: TokenType, value: string) => {
-    const newToken: Token = {
-      id: `token-${nanoid()}`,
-      type,
-      value,
-    };
+  const addToken = (type: TokenType, value: string, arg?: string) => {
+    const newToken: Token = { id: `token-${nanoid()}`, type, value, arg };
     setTokens((prev) => [...prev, newToken]);
+  };
+
+  const setTokenArg = (id: string, arg: string) => {
+    setTokens((prev) => prev.map((t) => (t.id === id ? { ...t, arg } : t)));
   };
 
   const removeToken = (id: string) => {
     setTokens((prev) => prev.filter((t) => t.id !== id));
   };
+
+  // Переменные для слотов агрегатов: весь пул + уже использованные в формуле
+  const slotVars = Array.from(
+    new Set([
+      ...allVars,
+      ...tokens.filter((t) => t.type === 'variable').map((t) => t.value),
+      ...tokens.filter((t) => t.arg).map((t) => t.arg as string),
+    ])
+  );
 
   const handleAddCustomNumber = () => {
     if (!customNumber || !/^\d+(\.\d+)?$/.test(customNumber)) return;
@@ -89,13 +153,21 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
   };
 
   const handleAddCustomVar = () => {
-    if (!customVar || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(customVar)) return;
-    if (['SUM', 'AVG', 'MAX', 'MIN', 'ROUND'].includes(customVar.toUpperCase())) {
+    const name = customVar.trim();
+    if (!name || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) return;
+    if (ALL_FUNCS.includes(name.toUpperCase())) {
       alert('Это имя зарезервировано для функций');
       return;
     }
-    addToken('variable', customVar);
+    // В пул (а не одноразовым токеном): становится переиспользуемой кнопкой и
+    // доступна в слотах FN(·). На холст ставится кликом по кнопке/в слоте.
+    setCustomVars((prev) => (prev.includes(name) || DEFAULT_VARS.includes(name) ? prev : [...prev, name]));
     setCustomVar('');
+  };
+
+  /** Убрать кастомную переменную из пула (в токенах формулы остаётся). */
+  const removeCustomVar = (name: string) => {
+    setCustomVars((prev) => prev.filter((v) => v !== name));
   };
 
   //──────────────────────────────────────────────────────────
@@ -130,7 +202,27 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
         )}
       >
         {token.type === 'variable' && <Variable size={10} className="opacity-50" />}
-        <span>{token.value}</span>
+        {token.type === 'function' && isAggregate(token.value) ? (
+          // Агрегат со слотом-переменной: FN( <select> )
+          <span className="flex items-center gap-0.5 normal-case">
+            <span>{token.value}(</span>
+            <select
+              value={token.arg ?? ''}
+              onChange={(e) => setTokenArg(token.id, e.target.value)}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="bg-white/70 dark:bg-slate-950/50 border border-purple-300 dark:border-purple-700 rounded px-1 text-[11px] font-bold text-purple-800 dark:text-purple-200 outline-none"
+            >
+              <option value="">·</option>
+              {slotVars.map((v) => (
+                <option key={v} value={v}>{v}</option>
+              ))}
+            </select>
+            <span>)</span>
+          </span>
+        ) : (
+          <span>{token.value}</span>
+        )}
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
@@ -149,8 +241,6 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
 
   // Константы для панелей инструментов
   const operators = ['+', '-', '*', '/', '(', ')'];
-  const functions = ['MAX', 'MIN', 'ROUND', 'ABS'];
-  const defaultVars = ['a', 'b', 'c', 'x', 'y', 'z'];
 
   return (
     <div className="space-y-4">
@@ -226,15 +316,36 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
               Переменные (Абстрактные)
             </span>
             <div className="flex flex-wrap gap-1.5 mb-3">
-              {defaultVars.map((v) => (
-                <button
-                  key={v}
-                  onClick={() => addToken('variable', v)}
-                  className="w-8 h-8 flex items-center justify-center bg-white dark:bg-slate-800 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 border border-orange-100 dark:border-orange-900/30 rounded font-bold transition-colors shadow-sm"
-                >
-                  {v}
-                </button>
-              ))}
+              {allVars.map((v) => {
+                const isCustom = !DEFAULT_VARS.includes(v);
+                return (
+                  <div key={v} className="relative group/var">
+                    <button
+                      onClick={() => addToken('variable', v)}
+                      title={isCustom ? `Своя переменная «${v}»` : undefined}
+                      className={cn(
+                        'min-w-8 h-8 px-2 flex items-center justify-center rounded font-bold transition-colors shadow-sm border',
+                        'bg-white dark:bg-slate-800 text-orange-600 dark:text-orange-400',
+                        'hover:bg-orange-50 dark:hover:bg-orange-900/20',
+                        isCustom
+                          ? 'border-orange-300 dark:border-orange-700'
+                          : 'border-orange-100 dark:border-orange-900/30'
+                      )}
+                    >
+                      {v}
+                    </button>
+                    {isCustom && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeCustomVar(v); }}
+                        title="Убрать переменную из пула"
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 flex items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-rose-500 hover:text-white opacity-0 group-hover/var:opacity-100 transition-opacity shadow"
+                      >
+                        <X size={9} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="flex gap-2">
               <div className="relative flex-1">
@@ -269,19 +380,38 @@ export function VisualFormulaBuilder({ initialFormula, onChange }: VisualFormula
           </div>
           <div className="space-y-2 pt-2 border-t dark:border-slate-800">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-              Функции
+              Агрегатные функции
             </span>
             <div className="flex flex-wrap gap-1.5">
-              {functions.map((fn) => (
+              {AGGREGATE_FUNCS.map((fn) => (
+                <button
+                  key={fn}
+                  onClick={() => addToken('function', fn, '')}
+                  title={`Вставить ${fn}( · ) — выберите переменную в слоте`}
+                  className="px-2 h-7 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 border border-purple-100 dark:border-purple-900/50 rounded text-[10px] font-bold transition-colors"
+                >
+                  {fn}( )
+                </button>
+              ))}
+            </div>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pt-1">
+              Скалярные
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {SCALAR_FUNCS.map((fn) => (
                 <button
                   key={fn}
                   onClick={() => addToken('function', fn)}
-                  className="px-2 h-7 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 border border-purple-100 dark:border-purple-900/50 rounded text-[10px] font-bold transition-colors"
+                  className="px-2 h-7 bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded text-[10px] font-bold transition-colors"
                 >
                   {fn}
                 </button>
               ))}
             </div>
+            <p className="text-[10px] text-slate-400 pt-1">
+              Агрегат задаётся функцией: <code>MAX(a)</code>. Колонка без агрегата
+              берётся с дефолтным агрегатом из «Настройки → Агрегатные формулы».
+            </p>
           </div>
         </div>
       </div>

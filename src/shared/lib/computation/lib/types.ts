@@ -47,6 +47,19 @@ export interface ClientComputeParams {
   validColumns?: string[];
   pgSchema?: string;
   pgTable?: string;
+  /**
+   * Настройки агрегатных формул: дефолтный авто-агрегат для голой колонки
+   * и режим запрета голых колонок. Отсутствует → DEFAULT_AGGREGATE_OPTIONS.
+   */
+  formulaOptions?: AggregateFormulaOptions;
+}
+
+/** Настройки агрегатных формул (дефолтный авто-агрегат + строгий режим). */
+export interface AggregateFormulaOptions {
+  /** Чем оборачивать голую колонку вне агрегата (SUM/AVG/MIN/MAX/COUNT…). */
+  defaultAggregate: string;
+  /** true — голая колонка вне агрегата запрещена (ошибка вместо авто-обёртки). */
+  requireExplicit: boolean;
 }
 
 /** Размерность временно́й группировки breakdown. */

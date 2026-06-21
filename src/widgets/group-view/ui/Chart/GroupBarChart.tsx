@@ -1,12 +1,13 @@
 'use client';
 import { memo, useMemo } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Rectangle, ReferenceLine, Label,
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
+import { ScrollableChart } from '@/shared/ui/scrollable-chart';
 import type { VirtualMetric } from '@/shared/lib/validators';
-import { getColorForValue } from '@/shared/lib/utils/metric-colors';
+import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
@@ -20,6 +21,8 @@ interface GroupBarChartProps {
   metricNames: Record<string, string>;
   title: string;
   metricConfigs?: VirtualMetric[];
+  /** Код → имя (словарь): для подписей оси/тултипа. Позиция — по сырому name. */
+  resolveLabel?: (label: string) => string;
 }
 
 export const GroupBarChart = memo(function GroupBarChart({
@@ -28,7 +31,10 @@ export const GroupBarChart = memo(function GroupBarChart({
   metricNames,
   title,
   metricConfigs,
+  resolveLabel,
 }: GroupBarChartProps) {
+  const displayLabel = (v: unknown) =>
+    resolveLabel ? resolveLabel(String(v)) : String(v);
   const groupedThresholds = useMemo(
     () => groupThresholdsByValue(metricConfigs || [], metricKeys),
     [metricConfigs, metricKeys]
@@ -39,12 +45,16 @@ export const GroupBarChart = memo(function GroupBarChart({
   return (
     <Card className="p-6">
       <h3 className="font-bold text-slate-900 dark:text-white mb-4">{title}</h3>
-      <div className="h-[400px] w-full">
-        <ResponsiveContainer width="100%" height="100%" minWidth={300} minHeight={300}>
-          <BarChart data={data} margin={{ top: 20, left: 20, right: 60, bottom: 20 }}>
+      <ScrollableChart
+        slotCount={data.length}
+        slotWidth={Math.max(48, metricKeys.length * 28)}
+        height={400}
+      >
+          <ComposedChart data={data} margin={{ top: 20, left: 20, right: 60, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} vertical={false} />
             <XAxis
               dataKey="name"
+              tickFormatter={displayLabel}
               tick={{ fontSize: 11, fill: '#94a3b8' }}
               axisLine={false}
               tickLine={false}
@@ -61,19 +71,22 @@ export const GroupBarChart = memo(function GroupBarChart({
                 if (!active || !payload || !payload.length) return null;
                 return (
                   <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
-                    <div className="font-bold text-slate-900 dark:text-white mb-2">{label}</div>
-                    {payload.map((entry, i) => (
-                      <div key={i} className="flex justify-between gap-3">
-                        <span style={{ color: entry.color ?? '#6366f1' }}>
-                          {metricNames[String(entry.dataKey)]}
-                        </span>
-                        <span className="font-mono font-bold">
-                          {typeof entry.value === 'number'
-                            ? entry.value.toLocaleString('ru-RU')
-                            : String(entry.value ?? '—')}
-                        </span>
-                      </div>
-                    ))}
+                    <div className="font-bold text-slate-900 dark:text-white mb-2">{displayLabel(label)}</div>
+                    {payload.map((entry, i) => {
+                      const vm = metricConfigs?.find(v => v.id === entry.dataKey);
+                      return (
+                        <div key={i} className="flex justify-between gap-3">
+                          <span style={{ color: entry.color ?? '#6366f1' }}>
+                            {metricNames[String(entry.dataKey)]}
+                          </span>
+                          <span className="font-mono font-bold">
+                            {typeof entry.value === 'number'
+                              ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
+                              : String(entry.value ?? '—')}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 );
               }}
@@ -93,7 +106,7 @@ export const GroupBarChart = memo(function GroupBarChart({
                   content={(props) => (
                     <ThresholdLabel
                       viewBox={props.viewBox as { x: number; y: number; width: number; height: number }}
-                      value={group.y}
+                      value={group.labelValue}
                       group={group}
                     />
                   )}
@@ -104,6 +117,42 @@ export const GroupBarChart = memo(function GroupBarChart({
               const vm = metricConfigs?.find((v) => v.id === key);
               const rules = vm?.colorConfig?.rules;
               const defaultColor = COLORS[idx % COLORS.length];
+              const style = vm?.chartStyle;
+
+              // Метрика-линия: гладкая/ломаная (type) + сплошная/пунктир (dash).
+              if (style?.kind === 'line') {
+                return (
+                  <Line
+                    key={key}
+                    type={style.curve === 'linear' ? 'linear' : 'monotone'}
+                    dataKey={key}
+                    name={metricNames[key]}
+                    stroke={defaultColor}
+                    strokeWidth={2}
+                    strokeDasharray={style.dash === 'dashed' ? '6 4' : undefined}
+                    isAnimationActive={true}
+                    animationDuration={800}
+                    dot={(props) => {
+                      const { cx = 0, cy = 0, payload } = props;
+                      const raw = payload?.[key];
+                      const numericValue = typeof raw === 'number' ? raw : null;
+                      const conditionalColor = getColorForValue(numericValue, rules);
+                      const highlighted = !!conditionalColor;
+                      return (
+                        <circle
+                          key={`${key}-${cx}-${cy}`}
+                          cx={cx} cy={cy}
+                          r={highlighted ? 5 : 3}
+                          fill={conditionalColor || defaultColor}
+                          stroke="#fff"
+                          strokeWidth={highlighted ? 2 : 1}
+                        />
+                      );
+                    }}
+                  />
+                );
+              }
+
               return (
                 <Bar
                   key={key}
@@ -117,6 +166,8 @@ export const GroupBarChart = memo(function GroupBarChart({
                   shape={(props: CustomBarShapeProps) => {
                     const { x = 0, y = 0, width = 0, height = 0, value, fill } = props;
                     const numericValue = typeof value === 'number' ? value : null;
+                    // value уже в масштабе отображения (данные прогнаны через
+                    // toDisplayScale) — формат НЕ передаём, иначе двойной ×100.
                     const conditionalColor = getColorForValue(numericValue, rules);
                     const finalFill = conditionalColor || fill || defaultColor;
                     return (
@@ -133,9 +184,8 @@ export const GroupBarChart = memo(function GroupBarChart({
                 />
               );
             })}
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+          </ComposedChart>
+      </ScrollableChart>
     </Card>
   );
 });

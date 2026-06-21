@@ -13,6 +13,7 @@ import {
   MetricTemplateSchema,
   VirtualMetricSchema,
 } from '@/shared/lib/validators';
+import { AGGREGATE_FUNCTIONS } from '@/shared/lib/computation/lib/aggregate-functions';
 
 /** Конфигурация подключения к PostgreSQL (валидация перед коннектом). */
 export const PgConfigSchema = z.object({
@@ -52,4 +53,12 @@ export const ClientComputeParamsSchema = z.object({
   validColumns: z.array(z.string()).optional(),
   pgSchema: z.string().min(1).max(255),
   pgTable: z.string().min(1).max(255),
+  // Дефолтный агрегат уходит в buildAggregateExpr (whitelist функций),
+  // requireExplicit влияет только на компиляцию формулы.
+  formulaOptions: z
+    .object({
+      defaultAggregate: z.enum(AGGREGATE_FUNCTIONS),
+      requireExplicit: z.boolean(),
+    })
+    .optional(),
 });

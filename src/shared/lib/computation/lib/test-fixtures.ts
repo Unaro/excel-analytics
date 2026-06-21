@@ -14,15 +14,14 @@ import type {
 import type { ClientComputeParams } from './types';
 
 /** Создаёт aggregate-шаблон метрики (SUM по полю `value` по умолчанию). */
+/** Шаблон одиночного агрегата: формула `SUM(value)` (бывший aggregate-тип). */
 export function makeAggregateTemplate(
   over: Partial<MetricTemplate> = {}
 ): MetricTemplate {
   return {
     id: 'tpl-agg',
     name: 'Сумма',
-    type: 'aggregate',
-    aggregateFunction: 'SUM',
-    aggregateField: 'value',
+    formula: 'SUM(value)',
     dependencies: [{ type: 'field', alias: 'value' }],
     displayFormat: 'number',
     decimalPlaces: 0,
@@ -32,7 +31,7 @@ export function makeAggregateTemplate(
   };
 }
 
-/** Создаёт calculated-шаблон метрики с формулой. */
+/** Создаёт шаблон метрики с формулой. */
 export function makeCalculatedTemplate(
   formula: string,
   over: Partial<MetricTemplate> = {}
@@ -40,7 +39,6 @@ export function makeCalculatedTemplate(
   return {
     id: 'tpl-calc',
     name: 'Расчётная',
-    type: 'calculated',
     formula,
     dependencies: [],
     displayFormat: 'number',

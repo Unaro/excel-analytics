@@ -7,7 +7,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type {
-  VirtualMetric,
+  DashboardColumn,
   IndicatorGroupInDashboard,
   HierarchyFilterValue,
 } from '@/shared/lib/validators';
@@ -168,8 +168,9 @@ export interface Dashboard {
   name: string;
   description?: string;
 
-  // Виртуальные метрики (общие показатели для всех групп)
-  virtualMetrics: VirtualMetric[];
+  // Колонки таблицы показателей: ссылки на шаблоны метрик
+  // (формат/единица — из шаблона, см. dashboard-columns.ts)
+  virtualMetrics: DashboardColumn[];
 
   // Активный иерархический фильтр
   // Определяет уровень детализации данных для ВСЕХ групп

@@ -5,14 +5,14 @@ import * as duckdb from '@duckdb/duckdb-wasm';
 import { tableFromIPC, tableFromJSON } from 'apache-arrow';
 import { compileQuery, BREAKDOWN_LIMIT } from '../query-compiler';
 import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
-import { getActiveFilter, formatValue } from '../utils';
+import { getActiveFilter, buildGroupVirtualMetrics, computeTotalRecordCount } from '../utils';
 import { transliterate } from '@/shared/lib/utils/translit';
 import { aggregateProcessedRows } from '../aggregation';
 import type { ClientComputeParams } from '../types';
 import { buildTableName } from './table-name';
 import { exportTableInChunks } from './chunked-export';
 import { preparedStatementCache } from './prepared-statement-cache';
-import { parseExcelToJson, classifyColumn } from './excel-parser';
+import { parseExcelToJson, classifyColumn, type ParseTimings } from './excel-parser';
 import { DatasetRow } from '@/shared/lib/types';
 
 /**
@@ -24,6 +24,62 @@ import { DatasetRow } from '@/shared/lib/types';
  */
 function yieldToEventLoop(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Логирует разбивку времени импорта по фазам (профилирование больших файлов).
+ *
+ * Парсинг делится на read (XLSX.read), toJson (sheet_to_json) и normalize
+ * (normalizeValue/регэкспы); вставка — единой фазой. Лог идёт через
+ * logger.info (виден только в dev), throughput — строк/сек по самой долгой
+ * стадии, чтобы сразу видеть узкое место.
+ */
+function logImportTimings(
+  strategy: 'csv' | 'batched',
+  parse: ParseTimings,
+  insertMs: number,
+  rows: number
+): void {
+  const totalMs = parse.totalMs + insertMs;
+  const pct = (ms: number) => `${Math.round((ms / totalMs) * 100)}%`;
+  const rps = (ms: number) => (ms > 0 ? Math.round(rows / (ms / 1000)).toLocaleString() : '∞');
+  logger.info(
+    `[Worker] ⏱️ Import profile (${strategy}, ${rows.toLocaleString()} rows, ` +
+      `${Math.round(totalMs)}ms, ${rps(totalMs)} rows/s):\n` +
+      `  read=${Math.round(parse.readMs)}ms (${pct(parse.readMs)}) · ` +
+      `header=${Math.round(parse.headerMs)}ms (${pct(parse.headerMs)}) · ` +
+      `toJson=${Math.round(parse.toJsonMs)}ms (${pct(parse.toJsonMs)}) · ` +
+      `normalize=${Math.round(parse.normalizeMs)}ms (${pct(parse.normalizeMs)}) · ` +
+      `insert=${Math.round(insertMs)}ms (${pct(insertMs)})`
+  );
+}
+
+/**
+ * Логирует разбивку времени COMPUTE по фазам (профилирование дашборда).
+ *
+ * describe — DESCRIBE схемы (метаданные, round-trip на каждый пересчёт);
+ * compile — сборка SQL; exec — исполнение запроса DuckDB (скан+агрегация);
+ * build — toArray + пост-обработка + сборка групп в JS. Лог через
+ * logger.info (только dev), чтобы видеть, что доминирует при смене фильтра.
+ */
+function logComputeTimings(p: {
+  describeMs: number;
+  compileMs: number;
+  execMs: number;
+  buildMs: number;
+  sqlRows: number;
+  groups: number;
+}): void {
+  const total = p.describeMs + p.compileMs + p.execMs + p.buildMs;
+  const pct = (ms: number) => `${Math.round((ms / total) * 100)}%`;
+  logger.info(
+    `[Worker] ⏱️ Compute profile (${Math.round(total)}ms, ` +
+      `${p.sqlRows.toLocaleString()} sql-rows, ${p.groups} groups):\n` +
+      `  describe=${Math.round(p.describeMs)}ms (${pct(p.describeMs)}) · ` +
+      `compile=${Math.round(p.compileMs)}ms (${pct(p.compileMs)}) · ` +
+      `exec=${Math.round(p.execMs)}ms (${pct(p.execMs)}) · ` +
+      `build=${Math.round(p.buildMs)}ms (${pct(p.buildMs)})`
+  );
 }
 
 /**
@@ -87,10 +143,26 @@ export interface ComputePayload {
   params: ClientComputeParams;
 }
 
+export interface ImportParseOptions {
+  /** Разделитель колонок CSV. */
+  delimiter: string;
+  /** Десятичный разделитель чисел. */
+  decimalSeparator: '.' | ',';
+  /** Тип каждой колонки по имени; categorical/ignore → читать как VARCHAR
+   *  (сохраняет коды с ведущими нулями). */
+  columnTypes: Record<string, string>;
+  /** strptime-формат дат для read_csv_auto (напр. `%d.%m.%Y` для RU-дат);
+   *  undefined — полагаемся на авто-детект (ISO). */
+  dateFormat?: string;
+}
+
 export interface ImportExcelPayload {
   datasetId: string;
   fileName: string;
   buffer: ArrayBuffer;
+  /** Явные параметры разбора (шаг «Импорт»). Есть → CSV идёт нативным
+   *  путём read_csv_auto (без SheetJS). Нет → прежний путь. */
+  parseOptions?: ImportParseOptions;
 }
 
 export interface GetPreviewPayload {
@@ -124,7 +196,19 @@ export interface CancelPayload {
   targetId: number;
 }
 
+export interface GetColumnPairsPayload {
+  datasetId: string;
+  keyColumn: string;
+  valueColumn: string;
+}
+
+export interface ConfigureEnginePayload {
+  /** Потолок памяти DuckDB в МБ; null — снять явный лимит. */
+  memoryLimitMB: number | null;
+}
+
 export type WorkerMessage =
+  | { type: 'CONFIGURE_ENGINE'; id: number; payload: ConfigureEnginePayload }
   | { type: 'REGISTER_ARROW'; id: number; payload: RegisterArrowPayload }
   | { type: 'COMPUTE'; id: number; payload: ComputePayload }
   | { type: 'IMPORT_EXCEL'; id: number; payload: ImportExcelPayload }
@@ -136,6 +220,7 @@ export type WorkerMessage =
   | { type: 'RELOAD_ARROW'; id: number; payload: ReloadArrowPayload }
   | { type: 'EXPORT_ARROW_CHUNKED'; id: number; payload: ExportArrowPayload }
   | { type: 'CANCEL'; id: number; payload: CancelPayload }
+  | { type: 'GET_COLUMN_PAIRS'; id: number; payload: GetColumnPairsPayload }
 
 // ─────────────────────────────────────────────────────────────
 // 2. ХЕЛПЕРЫ
@@ -176,6 +261,46 @@ const MVP_BUNDLE = {
 let db: duckdb.AsyncDuckDB | null = null;
 let conn: duckdb.AsyncDuckDBConnection | null = null;
 
+// Настройки движка (память ↔ время). Хранятся на уровне модуля, чтобы
+// переживать пересоздание соединения и переприменяться после каждого initDB.
+// Менеджер пересылает их заново при перезапуске самого воркера.
+let engineConfig: ConfigureEnginePayload | null = null;
+
+// Кэш схемы таблицы (имена колонок из DESCRIBE). COMPUTE дёргает DESCRIBE на
+// каждый пересчёт (один клик фильтра = несколько COMPUTE), а схема меняется
+// только при импорте/перезагрузке/удалении таблицы. Инвалидируется вместе с
+// prepared-кэшем через invalidateTableCaches (аудит №12).
+const schemaCache = new Map<string, string[]>();
+
+/** Сбрасывает кэши, привязанные к таблице (prepared + схема). */
+function invalidateTableCaches(tableName: string): void {
+  preparedStatementCache.invalidateForTable(tableName);
+  schemaCache.delete(tableName);
+}
+
+/**
+ * Применяет текущие настройки движка к открытому соединению.
+ *
+ * Управляем только `memory_limit` — ограничение пиковой памяти (ценой
+ * возможного замедления). `threads` НЕ трогаем: wasm-сборка EH скомпилирована
+ * без потоков, и любой `SET/RESET threads` бросает «compiled without threads».
+ */
+async function applyEngineConfig(): Promise<void> {
+  if (!conn || !engineConfig) return;
+  const { memoryLimitMB } = engineConfig;
+  try {
+    if (memoryLimitMB != null && memoryLimitMB > 0) {
+      await conn.query(`SET memory_limit='${memoryLimitMB}MB'`);
+    } else {
+      // Снятие лимита: вернуть дефолт DuckDB.
+      await conn.query(`RESET memory_limit`);
+    }
+    logger.debug('[DuckDB] ⚙️ Engine config applied:', engineConfig);
+  } catch (err) {
+    logger.warn('[DuckDB] Failed to apply engine config:', err);
+  }
+}
+
 async function loadWorkerScript(workerUrl: string): Promise<Worker> {
   try {
     return new Worker(workerUrl);
@@ -207,6 +332,7 @@ async function initDB(): Promise<void> {
       conn = await db.connect();
       logger.debug('[DuckDB] ✅ Initialized with EH bundle');
       preparedStatementCache.bind(conn);
+      await applyEngineConfig();
     } catch (ehError) {
       logger.warn('[DuckDB] EH bundle failed, falling back to MVP:', ehError);
       try {
@@ -216,6 +342,8 @@ async function initDB(): Promise<void> {
         await db.instantiate(MVP_BUNDLE.mainModule);
         conn = await db.connect();
         logger.debug('[DuckDB] ✅ Initialized with MVP bundle (fallback)');
+        preparedStatementCache.bind(conn);
+        await applyEngineConfig();
       } catch (mvpError) {
         initPromise = null;
         throw new Error(
@@ -247,6 +375,129 @@ function markCancelled(targetId: number): void {
   cancelledComputeIds.add(targetId);
 }
 
+/** Текстовый файл (CSV/TSV) — всё, что не xlsx/xls. */
+function isCsvFileName(fileName: string): boolean {
+  return !/\.(xlsx|xls)$/i.test(fileName);
+}
+
+/** Экранирование одинарных кавычек для SQL-строкового литерала. */
+function sqlStr(s: string): string {
+  return s.replace(/'/g, "''");
+}
+
+/**
+ * Быстрый импорт CSV: исходный буфер отдаётся DuckDB через `read_csv_auto`
+ * (без SheetJS). Уважает выбранные пользователем разделитель, десятичный
+ * разделитель и типы (categorical/ignore → VARCHAR, чтобы сохранить коды
+ * с ведущими нулями). Это путь ~×10 быстрее SheetJS для больших CSV.
+ */
+async function importCsvNative(
+  datasetId: string,
+  fileName: string,
+  buffer: ArrayBuffer,
+  opts: ImportParseOptions,
+  id: number
+): Promise<void> {
+  if (!conn || !db) throw new Error('DuckDB not initialized');
+  const tableName = buildTableName(datasetId);
+  const tStart = performance.now();
+
+  await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+  invalidateTableCaches(tableName);
+
+  const csvFileName = `${datasetId}_import.csv`;
+  db.registerFileBuffer(csvFileName, new Uint8Array(buffer));
+
+  const varcharCols = Object.entries(opts.columnTypes)
+    .filter(([, t]) => t === 'categorical' || t === 'ignore')
+    .map(([name]) => `'${sqlStr(name)}': 'VARCHAR'`);
+  const typesClause = varcharCols.length ? `, types = {${varcharCols.join(', ')}}` : '';
+  // RU-даты (`15.03.2024`) авто-детект DuckDB не разбирает — навязываем формат.
+  const dateClause = opts.dateFormat
+    ? `, dateformat = '${sqlStr(opts.dateFormat)}'`
+    : '';
+
+  const buildSql = (withTypes: boolean) => `
+    CREATE TABLE ${tableName} AS SELECT * FROM read_csv_auto(
+      '${csvFileName}',
+      sample_size = 20000,
+      auto_detect = true,
+      ignore_errors = true,
+      null_padding = true,
+      all_varchar = false,
+      header = true,
+      delim = '${sqlStr(opts.delimiter)}',
+      decimal_separator = '${sqlStr(opts.decimalSeparator)}',
+      quote = '"'${dateClause}${withTypes ? typesClause : ''}
+    )
+  `;
+
+  try {
+    await conn.query(buildSql(true));
+  } catch (err) {
+    // Имя колонки в types могло не совпасть с заголовком файла — повторяем
+    // без жёстких типов (классификация всё равно применится на стороне UI).
+    if (typesClause) {
+      logger.warn('[Worker] read_csv types override failed, retrying without:', err);
+      await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+      await conn.query(buildSql(false));
+    } else {
+      throw err;
+    }
+  }
+
+  // TIME → VARCHAR (как в прежнем CSV-пути): тип TIME неудобен для UI.
+  const schema = (await conn.query(`DESCRIBE ${tableName}`)).toArray() as Array<{
+    column_name: string;
+    column_type: string;
+  }>;
+  for (const row of schema) {
+    const t = row.column_type.toUpperCase();
+    if (t === 'TIME' || t === 'TIME WITH TIME ZONE') {
+      await conn.query(
+        `ALTER TABLE ${tableName} ALTER COLUMN "${row.column_name}" TYPE VARCHAR`
+      );
+    }
+  }
+
+  const finalSchema = (await conn.query(`DESCRIBE ${tableName}`)).toArray() as Array<{
+    column_name: string;
+    column_type: string;
+  }>;
+  const configs = finalSchema.map((row, idx) => {
+    const duckType = row.column_type.toUpperCase();
+    let classification: 'numeric' | 'date' | 'categorical' = 'categorical';
+    if (/INT|DECIMAL|FLOAT|DOUBLE|NUMERIC|HUGEINT|REAL/.test(duckType)) {
+      classification = 'numeric';
+    } else if (duckType.includes('DATE') || duckType.includes('TIMESTAMP')) {
+      classification = 'date';
+    }
+    return {
+      columnName: row.column_name,
+      displayName: row.column_name,
+      alias: transliterate(row.column_name) || `col_${idx}`,
+      classification,
+      description: `Из файла ${fileName}`,
+    };
+  });
+
+  const countRes = await conn.query(`SELECT COUNT(*) as cnt FROM ${tableName}`);
+  const totalRows = Number(
+    toNumber((countRes.toArray()[0] as Record<string, unknown>).cnt) ?? 0
+  );
+
+  logger.info(
+    `[Worker] ⏱️ Import profile (csv-native, ${totalRows.toLocaleString()} rows, ` +
+      `${Math.round(performance.now() - tStart)}ms)`
+  );
+
+  self.postMessage({
+    id,
+    success: true,
+    result: { configs, totalRows, totalColumns: configs.length, sheetNames: [] },
+  });
+}
+
 self.onmessage = async (e: MessageEvent) => {
   const { type, payload, id } = e.data as WorkerMessage;
 
@@ -265,6 +516,16 @@ self.onmessage = async (e: MessageEvent) => {
     }
 
     // ═══════════════════════════════════════════════════════════
+    // CONFIGURE_ENGINE — настройки память ↔ время (memory_limit/threads)
+    // ═══════════════════════════════════════════════════════════
+    if (type === 'CONFIGURE_ENGINE') {
+      engineConfig = payload;
+      await applyEngineConfig();
+      self.postMessage({ id, success: true });
+      return;
+    }
+
+    // ═══════════════════════════════════════════════════════════
     // REGISTER_ARROW
     // ═══════════════════════════════════════════════════════════
     if (type === 'REGISTER_ARROW') {
@@ -272,7 +533,7 @@ self.onmessage = async (e: MessageEvent) => {
       const tableName = buildTableName(datasetId);
 
       await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
-      preparedStatementCache.invalidateForTable(tableName);
+      invalidateTableCaches(tableName);
 
       const arrowTable = tableFromIPC(buffer);
       await conn!.insertArrowTable(arrowTable, { name: tableName });
@@ -298,17 +559,25 @@ self.onmessage = async (e: MessageEvent) => {
 
       if (abortIfCancelled()) return;
 
-      // ─── ПОЛУЧАЕМ РЕАЛЬНУЮ СХЕМУ ИЗ DUCKDB ─────────────────
+      // Профилирование COMPUTE по фазам (см. ROADMAP «Оптимизация вычислений
+      // главного дашборда»): describe → compile → exec → build.
+      const tComputeStart = performance.now();
+
+      // ─── ПОЛУЧАЕМ РЕАЛЬНУЮ СХЕМУ ИЗ DUCKDB (с кэшем) ───────
       let effectiveParams = params;
       try {
-        const schemaResult = await conn!.query(`DESCRIBE ${tableName}`);
-        const realColumns = schemaResult.toArray().map(
-          (r) => (r as Record<string, unknown>)['column_name'] as string
-        );
-        logger.debug(
-          `[Worker] 🔍 DESCRIBE ${tableName}: ${realColumns.length} columns`,
-          realColumns
-        );
+        let realColumns = schemaCache.get(tableName);
+        if (!realColumns) {
+          const schemaResult = await conn!.query(`DESCRIBE ${tableName}`);
+          realColumns = schemaResult.toArray().map(
+            (r) => (r as Record<string, unknown>)['column_name'] as string
+          );
+          if (realColumns.length > 0) schemaCache.set(tableName, realColumns);
+          logger.debug(
+            `[Worker] 🔍 DESCRIBE ${tableName}: ${realColumns.length} columns`,
+            realColumns
+          );
+        }
         if (realColumns.length > 0) {
           effectiveParams = { ...params, validColumns: realColumns };
         }
@@ -319,9 +588,13 @@ self.onmessage = async (e: MessageEvent) => {
         );
       }
 
+      const tAfterDescribe = performance.now();
+
       const compiled = compileQuery(effectiveParams, 'duckdb');
 
       logger.debug(`[Worker] 📝 Compiled SQL (${compiled.sql.length} chars):`, compiled.sql.slice(0, 200) + '...');
+
+      const tAfterCompile = performance.now();
 
       // Отмена могла прийти, пока ждали DESCRIBE — не запускаем тяжёлый SQL
       if (abortIfCancelled()) return;
@@ -334,6 +607,8 @@ self.onmessage = async (e: MessageEvent) => {
       } else {
         table = await conn!.query(compiled.sql);
       }
+
+      const tAfterExec = performance.now();
 
       // SQL уже исполнен, но пост-обработка и сериализация результата
       // отменённой задачи никому не нужны
@@ -350,18 +625,6 @@ self.onmessage = async (e: MessageEvent) => {
       const rows = breakdownTruncated ? allRows.slice(0, BREAKDOWN_LIMIT) : allRows;
       const processedRows = postProcessAggregates(rows, compiled);
 
-      const computeTotalRecordCount = (sqlRows: Record<string, unknown>[]): number => {
-        let total = 0;
-        for (const row of sqlRows) {
-          const rc = row['_record_count'];
-          if (typeof rc === 'number' && isFinite(rc)) {
-            total += rc;
-          } else if (typeof rc === 'bigint') {
-            total += Number(rc);
-          }
-        }
-        return total;
-      };
 
       const groups = dashboardGroupsConfig
         .filter(cfg => cfg.enabled)
@@ -388,35 +651,11 @@ self.onmessage = async (e: MessageEvent) => {
                       : typeof rowRc === 'bigint'
                         ? Number(rowRc)
                         : 0;
-                  const groupVirtualMetrics = virtualMetrics.map(vm => {
-                    const binding = cfg.virtualMetricBindings?.find(
-                      b => b.virtualMetricId === vm.id
-                    );
-                    if (!binding) {
-                      return {
-                        virtualMetricId: vm.id,
-                        virtualMetricName: vm.name,
-                        value: null,
-                        formattedValue: '—',
-                        sourceMetricId: '',
-                      };
-                    }
-                    const alias = `${cfg.groupId}__${binding.metricId}`;
-                    const numericValue =
-                      typeof processed[alias] === 'number' ? processed[alias] : null;
-                    return {
-                      virtualMetricId: vm.id,
-                      virtualMetricName: vm.name,
-                      value: numericValue,
-                      formattedValue: formatValue(
-                        numericValue,
-                        vm.displayFormat,
-                        vm.decimalPlaces,
-                        vm.unit
-                      ),
-                      sourceMetricId: binding.metricId,
-                    };
-                  });
+                  const groupVirtualMetrics = buildGroupVirtualMetrics(
+                    virtualMetrics,
+                    cfg,
+                    processed
+                  );
                   return { label, dateLabel, recordCount, virtualMetrics: groupVirtualMetrics };
                 })
                 .filter(item => item.label !== '')
@@ -433,37 +672,11 @@ self.onmessage = async (e: MessageEvent) => {
             summaryProcessed = processedRows[0] || {};
           }
 
-          const groupVirtualMetrics = virtualMetrics.map(vm => {
-            const binding = cfg.virtualMetricBindings?.find(
-              b => b.virtualMetricId === vm.id
-            );
-            if (!binding) {
-              return {
-                virtualMetricId: vm.id,
-                virtualMetricName: vm.name,
-                value: null,
-                formattedValue: '—',
-                sourceMetricId: '',
-              };
-            }
-            const alias = `${cfg.groupId}__${binding.metricId}`;
-            const numericValue =
-              typeof summaryProcessed[alias] === 'number'
-                ? summaryProcessed[alias]
-                : null;
-            return {
-              virtualMetricId: vm.id,
-              virtualMetricName: vm.name,
-              value: numericValue,
-              formattedValue: formatValue(
-                numericValue,
-                vm.displayFormat,
-                vm.decimalPlaces,
-                vm.unit
-              ),
-              sourceMetricId: binding.metricId,
-            };
-          });
+          const groupVirtualMetrics = buildGroupVirtualMetrics(
+            virtualMetrics,
+            cfg,
+            summaryProcessed
+          );
 
           return {
             groupId: cfg.groupId,
@@ -486,18 +699,45 @@ self.onmessage = async (e: MessageEvent) => {
         computedAt: Date.now(),
       };
 
+      const tBuildEnd = performance.now();
+      logComputeTimings({
+        describeMs: tAfterDescribe - tComputeStart,
+        compileMs: tAfterCompile - tAfterDescribe,
+        execMs: tAfterExec - tAfterCompile,
+        buildMs: tBuildEnd - tAfterExec,
+        sqlRows: allRows.length,
+        groups: groups.length,
+      });
+
       self.postMessage({ id, success: true, result });
     }
 
     if (type === 'IMPORT_EXCEL') {
-      const { datasetId, fileName, buffer } = payload;
+      const { datasetId, fileName, buffer, parseOptions } = payload;
       const tableName = buildTableName(datasetId);
+
+      // ── Быстрый путь: CSV с явными параметрами → нативный read_csv_auto.
+      // Отдаём исходный буфер прямо DuckDB (без SheetJS): порядок быстрее
+      // и уважает выбранные разделитель/десятичный/типы колонок.
+      if (parseOptions && isCsvFileName(fileName)) {
+        try {
+          await importCsvNative(datasetId, fileName, buffer, parseOptions, id);
+        } catch (err) {
+          logger.error('[Worker] Native CSV import failed:', err);
+          self.postMessage({
+            id,
+            success: false,
+            error: err instanceof Error ? err.message : 'Import failed',
+          });
+        }
+        return;
+      }
 
       try {
         // ─── ЭТАП 1: Парсинг Excel в JSON ───────────────────────
         await yieldToEventLoop();
 
-        const { flatRows, sheetNames, headers } = parseExcelToJson(buffer);
+        const { flatRows, sheetNames, headers, timings } = parseExcelToJson(buffer);
 
         if (flatRows.length === 0) {
           throw new Error('Файл пуст или не содержит валидных данных');
@@ -511,7 +751,12 @@ self.onmessage = async (e: MessageEvent) => {
         const BATCH_THRESHOLD = 50_000;
         const useBatchedInsert = flatRows.length > BATCH_THRESHOLD;
 
+        // Профилирование импорта (см. ROADMAP «Производительность обработки
+        // файлов»): засекаем фазу вставки, чтобы сопоставить с фазами парсинга.
+        const tInsertStart = performance.now();
+
         await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+        invalidateTableCaches(tableName);
 
         let classificationSample: Record<string, unknown[]> = {};
 
@@ -521,52 +766,68 @@ self.onmessage = async (e: MessageEvent) => {
           // ═══════════════════════════════════════════════════════
           const BATCH_SIZE = 25_000;
           const totalBatches = Math.ceil(flatRows.length / BATCH_SIZE);
+          // Имя последней созданной temp-таблицы — для отката (№16): при ошибке
+          // батча сбрасываем и temp, и частично заполненную целевую таблицу,
+          // иначе остаётся «полуимпорт», который COUNT(*) не ловит как ошибку.
+          let pendingTempTable: string | null = null;
 
-          for (let i = 0; i < flatRows.length; i += BATCH_SIZE) {
-            const chunk = flatRows.slice(i, i + BATCH_SIZE);
-            const isFirstBatch = i === 0;
-            const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
+          try {
+            for (let i = 0; i < flatRows.length; i += BATCH_SIZE) {
+              const chunk = flatRows.slice(i, i + BATCH_SIZE);
+              const isFirstBatch = i === 0;
+              const batchIndex = Math.floor(i / BATCH_SIZE) + 1;
 
-            const arrowTable = tableFromJSON(chunk);
-            
-            if (isFirstBatch) {
-              // Первый батч — создаём таблицу
-              await conn.insertArrowTable(arrowTable, {
-                name: tableName,
-                create: true,
-              });
-            } else {
-              const tempTableName = `${tableName}_batch_${batchIndex}`;
-              await conn.insertArrowTable(arrowTable, {
-                name: tempTableName,
-                create: true,
-              });
-              
-              // Явный INSERT INTO — гарантированно добавляет данные
-              await conn.query(
-                `INSERT INTO ${tableName} SELECT * FROM ${tempTableName}`
-              );
-              
-              // Удаляем временную таблицу
-              await conn.query(`DROP TABLE IF EXISTS ${tempTableName}`);
+              const arrowTable = tableFromJSON(chunk);
+
+              if (isFirstBatch) {
+                // Первый батч — создаём таблицу
+                await conn.insertArrowTable(arrowTable, {
+                  name: tableName,
+                  create: true,
+                });
+              } else {
+                const tempTableName = `${tableName}_batch_${batchIndex}`;
+                pendingTempTable = tempTableName;
+                await conn.insertArrowTable(arrowTable, {
+                  name: tempTableName,
+                  create: true,
+                });
+
+                // Явный INSERT INTO — гарантированно добавляет данные
+                await conn.query(
+                  `INSERT INTO ${tableName} SELECT * FROM ${tempTableName}`
+                );
+
+                // Удаляем временную таблицу
+                await conn.query(`DROP TABLE IF EXISTS ${tempTableName}`);
+                pendingTempTable = null;
+              }
+
+              // Отдаём управление event loop между батчами
+              await yieldToEventLoop();
+
+              // Прогресс-репорт в UI
+              if (batchIndex % 5 === 0 || batchIndex === totalBatches) {
+                self.postMessage({
+                  id,
+                  type: 'PROGRESS',
+                  progress: {
+                    phase: 'import',
+                    current: i + chunk.length,
+                    total: flatRows.length,
+                    percent: Math.round(((i + chunk.length) / flatRows.length) * 100),
+                  },
+                });
+              }
             }
-
-            // Отдаём управление event loop между батчами
-            await yieldToEventLoop();
-
-            // Прогресс-репорт в UI
-            if (batchIndex % 5 === 0 || batchIndex === totalBatches) {
-              self.postMessage({
-                id,
-                type: 'PROGRESS',
-                progress: {
-                  phase: 'import',
-                  current: i + chunk.length,
-                  total: flatRows.length,
-                  percent: Math.round(((i + chunk.length) / flatRows.length) * 100),
-                },
-              });
+          } catch (batchErr) {
+            // Откат: не оставляем частично заполненную таблицу под видом готовой.
+            if (pendingTempTable) {
+              await conn.query(`DROP TABLE IF EXISTS ${pendingTempTable}`).catch(() => {});
             }
+            await conn.query(`DROP TABLE IF EXISTS ${tableName}`).catch(() => {});
+            invalidateTableCaches(tableName);
+            throw batchErr;
           }
 
           const countResult = await conn.query(
@@ -665,6 +926,8 @@ self.onmessage = async (e: MessageEvent) => {
             toNumber((countResult.toArray()[0] as Record<string, unknown>).cnt) ?? 0
           );
 
+          logImportTimings('csv', timings, performance.now() - tInsertStart, flatRows.length);
+
           self.postMessage({
             id,
             success: true,
@@ -698,6 +961,8 @@ self.onmessage = async (e: MessageEvent) => {
           toNumber((finalCountResult.toArray()[0] as Record<string, unknown>).cnt) ?? 0
         );
 
+        logImportTimings('batched', timings, performance.now() - tInsertStart, flatRows.length);
+
         self.postMessage({
           id,
           success: true,
@@ -714,6 +979,41 @@ self.onmessage = async (e: MessageEvent) => {
           id,
           success: false,
           error: err instanceof Error ? err.message : 'Import failed',
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // GET_COLUMN_PAIRS — пары «ключ → значение» для словаря справочника
+    // ═══════════════════════════════════════════════════════════
+    if (type === 'GET_COLUMN_PAIRS') {
+      const { datasetId, keyColumn, valueColumn } = payload;
+      const tableName = buildTableName(datasetId);
+      // Идентификаторы экранируются кавычками (имена колонок приходят
+      // из DESCRIBE-конфигов, но защищаемся как везде в компиляторе)
+      const qk = `"${keyColumn.replace(/"/g, '""')}"`;
+      const qv = `"${valueColumn.replace(/"/g, '""')}"`;
+
+      try {
+        const table = await conn!.query(
+          `SELECT CAST(${qk} AS VARCHAR) AS k, CAST(${qv} AS VARCHAR) AS v ` +
+          `FROM ${tableName} WHERE ${qk} IS NOT NULL AND ${qv} IS NOT NULL`
+        );
+        const pairs: Array<[string, string]> = table
+          .toArray()
+          .map((row) => {
+            const r = row as { k: unknown; v: unknown };
+            return [String(r.k).trim(), String(r.v).trim()] as [string, string];
+          })
+          .filter(([k, v]) => k !== '' && v !== '');
+
+        self.postMessage({ id, success: true, result: pairs });
+      } catch (err) {
+        logger.error('[Worker] GET_COLUMN_PAIRS failed:', err);
+        self.postMessage({
+          id,
+          success: false,
+          error: err instanceof Error ? err.message : 'Column pairs fetch failed',
         });
       }
     }
@@ -825,7 +1125,7 @@ self.onmessage = async (e: MessageEvent) => {
       const tableName = buildTableName(datasetId);
       try {
         await conn!.query(`DROP TABLE IF EXISTS ${tableName}`);
-        preparedStatementCache.invalidateForTable(tableName);
+        invalidateTableCaches(tableName);
         logger.debug(`[Worker] Dropped table: ${tableName}`);
         self.postMessage({ id, success: true });
       } catch (err) {
@@ -998,6 +1298,7 @@ self.onmessage = async (e: MessageEvent) => {
       const tableName = buildTableName(datasetId);
 
       await conn.query(`DROP TABLE IF EXISTS ${tableName}`);
+      invalidateTableCaches(tableName);
       const arrowTable = tableFromIPC(buffer);
       await conn.insertArrowTable(arrowTable, { name: tableName });
 

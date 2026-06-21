@@ -14,18 +14,19 @@
 // и дашбордом (серии = группы показателей).
 // ─────────────────────────────────────────────────────────────
 
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, ReferenceLine, Label,
+  Legend, ReferenceLine, Label,
 } from 'recharts';
+import { ScrollableChart } from '@/shared/ui/scrollable-chart';
 import { Search, AlertTriangle, ChevronRight, TrendingUp } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
-import { checkRule, COLOR_STYLES } from '@/shared/lib/utils/metric-colors';
+import { checkRule, COLOR_STYLES, toDisplayScale, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
@@ -55,6 +56,11 @@ export interface TimeBreakdownSectionProps {
   truncated?: boolean;
   /** Клик по названию строки (drill-down). Не задан — строки не кликабельны. */
   onRowClick?: (label: string) => void;
+  /**
+   * Подстановка справочника: код → наименование (только отображение;
+   * в onRowClick, ключи строк и dataKey чарта уходит исходный label).
+   */
+  resolveLabel?: (label: string) => string;
 }
 
 interface PivotRow {
@@ -73,7 +79,12 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   dateTitle,
   truncated,
   onRowClick,
+  resolveLabel,
 }: TimeBreakdownSectionProps) {
+  const display = useMemo(
+    () => resolveLabel ?? ((label: string) => label),
+    [resolveLabel]
+  );
   const metricOptions = useMemo(
     () =>
       activeMetricIds
@@ -88,6 +99,24 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const [searchQuery, setSearchQuery] = useState('');
   // null — авто-режим top-N; Set — явный выбор пользователя
   const [selectedLabels, setSelectedLabels] = useState<Set<string> | null>(null);
+
+  // Чарт и pivot-таблица — одна ось дат: их горизонтальные скроллы связаны,
+  // чтобы листать вместе (а не наводиться на каждый скроллбар отдельно).
+  // Пропорционально по доле прокрутки — устойчиво к разной ширине контента.
+  const chartScrollRef = useRef<HTMLDivElement>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const syncingRef = useRef(false);
+  const syncScroll = (from: HTMLDivElement | null, to: HTMLDivElement | null) => {
+    if (!from || !to || syncingRef.current) return;
+    const fromMax = from.scrollWidth - from.clientWidth;
+    const toMax = to.scrollWidth - to.clientWidth;
+    if (fromMax <= 0 || toMax <= 0) return;
+    const target = (from.scrollLeft / fromMax) * toMax;
+    if (Math.abs(to.scrollLeft - target) < 1) return;
+    syncingRef.current = true;
+    to.scrollLeft = target;
+    requestAnimationFrame(() => { syncingRef.current = false; });
+  };
 
   const metricValue = (item: BreakdownItem | undefined): number | null => {
     const vm = item?.virtualMetrics.find(v => v.virtualMetricId === effectiveMetricId);
@@ -121,6 +150,31 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, effectiveMetricId]);
 
+  // Колесо мыши → горизонтальный скролл (вертикального колеса на широком
+  // 2D-чарте/таблице нет, листать иначе неудобно). Нативный листенер с
+  // passive:false — React вешает onWheel пассивно, и preventDefault не
+  // сработал бы. Перехватываем только при горизонтальном переполнении и
+  // ОТСУТСТВИИ вертикального (у высокой таблицы колесо листает строки).
+  useEffect(() => {
+    const els = [chartScrollRef.current, tableScrollRef.current].filter(
+      (el): el is HTMLDivElement => el !== null
+    );
+    const onWheel = (e: WheelEvent) => {
+      const el = e.currentTarget as HTMLDivElement;
+      const canX = el.scrollWidth > el.clientWidth;
+      const canY = el.scrollHeight > el.clientHeight;
+      if (!canX || canY || e.deltaY === 0) return;
+      const atStart = el.scrollLeft <= 0;
+      const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+      // На границах отдаём событие странице (вертикальный скролл страницы).
+      if ((e.deltaY < 0 && atStart) || (e.deltaY > 0 && atEnd)) return;
+      el.scrollLeft += e.deltaY;
+      e.preventDefault();
+    };
+    els.forEach((el) => el.addEventListener('wheel', onWheel, { passive: false }));
+    return () => els.forEach((el) => el.removeEventListener('wheel', onWheel));
+  }, [dates.length, rows.length]);
+
   const chartLabels = useMemo(() => {
     if (selectedLabels) {
       return rows.filter(r => selectedLabels.has(r.label)).map(r => r.label);
@@ -132,10 +186,13 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
 
   const chartData = useMemo(() => {
     const rowByLabel = new Map(rows.map(r => [r.label, r]));
+    const fmt = currentMetric?.displayFormat;
     return dates.map(date => {
       const point: Record<string, string | number | null> = { date };
       for (const label of chartLabels) {
-        point[label] = metricValue(rowByLabel.get(label)?.cells.get(date));
+        // Масштаб отображения, как и порог-линия (group.y): percent доля → %.
+        const raw = metricValue(rowByLabel.get(label)?.cells.get(date));
+        point[label] = raw === null ? null : toDisplayScale(raw, fmt);
       }
       return point;
     });
@@ -155,8 +212,12 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const visibleRows = useMemo(() => {
     if (!searchQuery) return rows;
     const q = searchQuery.toLowerCase();
-    return rows.filter(r => r.label.toLowerCase().includes(q));
-  }, [rows, searchQuery]);
+    // Поиск и по коду, и по наименованию из справочника
+    return rows.filter(r =>
+      r.label.toLowerCase().includes(q) ||
+      display(r.label).toLowerCase().includes(q)
+    );
+  }, [rows, searchQuery, display]);
 
   const currentMetric = metricOptions.find(m => m.id === effectiveMetricId);
 
@@ -173,7 +234,9 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     if (!colorRules || colorRules.length === 0) return null;
     const v = metricValue(item);
     if (v === null) return null;
-    const rule = colorRules.find(r => checkRule(v, r.operator, r.value, r.value2));
+    // Порог — в масштабе отображения (для percent в процентах)
+    const scaled = toDisplayScale(v, currentMetric?.displayFormat);
+    const rule = colorRules.find(r => checkRule(scaled, r.operator, r.value, r.value2));
     return rule ? COLOR_STYLES[rule.color] : null;
   };
 
@@ -235,9 +298,17 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
         </div>
       </div>
 
-      {/* Линейный чарт: динамика выбранной метрики по сериям */}
-      <div className="px-4 pt-4 h-80">
-        <ResponsiveContainer width="100%" height="100%">
+      {/* Линейный чарт: динамика выбранной метрики по сериям.
+          При многих интервалах — горизонтальный скролл внутри бокса,
+          чтобы точки/подписи не сжимались, а страница не растягивалась. */}
+      <div className="px-4 pt-4">
+        <ScrollableChart
+          ref={chartScrollRef}
+          onScroll={() => syncScroll(chartScrollRef.current, tableScrollRef.current)}
+          slotCount={dates.length}
+          slotWidth={56}
+          height={304}
+        >
           <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" />
             <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
@@ -253,7 +324,9 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                 fontSize: 12,
               }}
               formatter={(value) =>
-                typeof value === 'number' ? value.toLocaleString('ru-RU') : '—'
+                typeof value === 'number'
+                  ? formatDisplayValue(value, currentMetric?.displayFormat, currentMetric?.unit)
+                  : '—'
               }
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
@@ -271,7 +344,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                   content={(props) => (
                     <ThresholdLabel
                       viewBox={props.viewBox as { x: number; y: number; width: number; height: number }}
-                      value={group.y}
+                      value={group.labelValue}
                       group={group}
                     />
                   )}
@@ -283,6 +356,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                 key={label}
                 type="monotone"
                 dataKey={label}
+                name={display(label)}
                 stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
                 strokeWidth={2}
                 dot={dates.length <= 31}
@@ -290,11 +364,16 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               />
             ))}
           </LineChart>
-        </ResponsiveContainer>
+        </ScrollableChart>
       </div>
 
-      {/* Pivot-таблица: строки — элементы, колонки — интервалы */}
-      <div className="overflow-x-auto custom-scrollbar max-h-[480px] overflow-y-auto border-t border-slate-100 dark:border-slate-800">
+      {/* Pivot-таблица: строки — элементы, колонки — интервалы.
+          Горизонталь синхронизирована с чартом, вертикаль скроллится внутри. */}
+      <div
+        ref={tableScrollRef}
+        onScroll={() => syncScroll(tableScrollRef.current, chartScrollRef.current)}
+        className="overflow-x-auto custom-scrollbar max-h-[480px] overflow-y-auto border-t border-slate-100 dark:border-slate-800"
+      >
         <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800">
           <thead className="bg-slate-50 dark:bg-slate-900/50 sticky top-0 z-10">
             <tr>
@@ -343,7 +422,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                   onClick={() => onRowClick?.(row.label)}
                 >
                   <span className="flex items-center gap-1">
-                    {row.label}
+                    {display(row.label)}
                     {onRowClick && (
                       <ChevronRight size={13} className="text-slate-300 group-hover:text-indigo-500 transition-colors shrink-0" />
                     )}

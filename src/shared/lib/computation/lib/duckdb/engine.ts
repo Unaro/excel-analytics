@@ -10,7 +10,7 @@ export class DuckDbEngine implements IComputeEngine {
 
   async compute(
     params: ClientComputeParams,
-    signal?: AbortSignal 
+    signal?: AbortSignal
   ): Promise<DashboardComputationResult> {
     const start = Date.now();
     const duckParams = {
@@ -18,17 +18,20 @@ export class DuckDbEngine implements IComputeEngine {
       tableName: buildTableName(params.datasetId),
     };
 
-    let arrowBuffer: Uint8Array | undefined;
-    try {
-      const buf = await get(`arrow:${params.datasetId}`);
-      if (buf instanceof Uint8Array && buf.byteLength > 0) {
-        arrowBuffer = buf;
+    // Arrow-буфер (сотни МБ) нужен лишь для редкого восстановления таблицы,
+    // поэтому грузим его ЛЕНИВО — только если COMPUTE упал с «table missing».
+    // Раньше read из IndexedDB шёл на каждый запрос и блокировал поток.
+    const loadArrowBuffer = async (): Promise<Uint8Array | undefined> => {
+      try {
+        const buf = await get(`arrow:${params.datasetId}`);
+        if (buf instanceof Uint8Array && buf.byteLength > 0) return buf;
+      } catch (err) {
+        logger.warn('[DuckDbEngine] Failed to load Arrow buffer for retry:', err);
       }
-    } catch (err) {
-      logger.warn('[DuckDbEngine] Failed to load Arrow buffer for retry:', err);
-    }
+      return undefined;
+    };
 
-    const result = await duckdbManager.computeDashboard(duckParams, arrowBuffer, signal);
+    const result = await duckdbManager.computeDashboard(duckParams, loadArrowBuffer, signal);
     return {
       ...result,
       computationTime: Date.now() - start,

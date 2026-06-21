@@ -61,6 +61,8 @@ export function useConfigPersistence() {
           metricTemplates: useMetricTemplateStore.getState().templates,
           groupMetricConfigs:
             useGroupMetricConfigStore.getState().configsByGroup,
+          aggregateConfig:
+            useDatasetStore.getState().datasets[datasetId]?.aggregateConfig,
         },
         activeDatasetId
       );
@@ -133,6 +135,14 @@ export function useConfigPersistence() {
           useGroupMetricConfigStore
             .getState()
             .importConfigs(result.importedGroupMetricConfigs);
+        }
+
+        // Разметка агрегата → на целевой датасет (чтобы замена файла работала
+        // по тем же настройкам и после переноса конфига).
+        if (result.aggregateConfig) {
+          useDatasetStore
+            .getState()
+            .updateDataset(targetDatasetId, { aggregateConfig: result.aggregateConfig });
         }
 
         // Инвалидация кэша

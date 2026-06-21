@@ -14,6 +14,10 @@ import {
   wrapWithCoalesce,
 } from './formula-to-sql';
 import { quoteIdent as quote } from './sql-utils';
+import {
+  preprocessAggregateFormula,
+  DEFAULT_AGGREGATE_OPTIONS,
+} from './aggregate-formula';
 
 // ─────────────────────────────────────────────────────────────
 // Whitelist SQL-операторов для WHERE
@@ -222,6 +226,9 @@ export function compileQuery(
     validColumns,
   } = params;
 
+  // Дефолтный авто-агрегат и режим «требовать явный агрегат» (из настроек).
+  const formulaOptions = params.formulaOptions ?? DEFAULT_AGGREGATE_OPTIONS;
+
   if (dialect === 'postgres' && !validColumns) {
     throw new Error(
       '[query-compiler] validColumns обязателен для PostgreSQL: ' +
@@ -237,6 +244,27 @@ export function compileQuery(
   const calculatedInSqlAliases = new Set<string>();
 
   const baseSelectParts: string[] = [];
+
+  // Эмитит агрегат (метрики или field-зависимости) в base-CTE: само значение
+  // + для AVG помощники взвешенного «Итого» (Σsum/Σcount — иначе среднее
+  // средних исказит сводку). Невалидная колонка → NULL во все части.
+  const emitAggregateSelect = (columnName: string, aggregateFn: string, alias: string): void => {
+    const fn = aggregateFn.toUpperCase();
+    if (!isColumnValid(columnName)) {
+      baseSelectParts.push(`NULL AS ${quote(alias)}`);
+      if (fn === 'AVG') {
+        baseSelectParts.push(`NULL AS ${quote(`__agg_sum__${alias}`)}`);
+        baseSelectParts.push(`NULL AS ${quote(`__agg_count__${alias}`)}`);
+      }
+      return;
+    }
+    baseSelectParts.push(`${buildAggregateExpr(columnName, fn, dialect)} AS ${quote(alias)}`);
+    if (fn === 'AVG') {
+      const castedCol = castToNumeric(quote(columnName), dialect);
+      baseSelectParts.push(`SUM(${castedCol}) AS ${quote(`__agg_sum__${alias}`)}`);
+      baseSelectParts.push(`COUNT(${quote(columnName)}) AS ${quote(`__agg_count__${alias}`)}`);
+    }
+  };
   const pgParams: QueryParam[] = [];
   const whereConditions: string[] = [];
   const calculatedMetrics: CalculatedMetricEntry[] = [];
@@ -325,77 +353,72 @@ export function compileQuery(
   // ───────────────────────────────────────────────────────────
   // SELECT expressions (base CTE)
   // ───────────────────────────────────────────────────────────
+  // Индексы id→объект: линейный .find() во вложенном цикле давал
+  // O(групп × метрик × шаблонов); на 100+ метрик/шаблонов заметно (№15).
+  const groupById = new Map(groups.map((g) => [g.id, g]));
+  const templateById = new Map(metricTemplates.map((t) => [t.id, t]));
+
   for (const cfg of dashboardGroupsConfig) {
     if (!cfg.enabled) continue;
-    const groupDef = groups.find((g) => g.id === cfg.groupId);
+    const groupDef = groupById.get(cfg.groupId);
     if (!groupDef) continue;
 
     for (const metric of groupDef.metrics) {
       if (!metric.enabled) continue;
-      const tpl = metricTemplates.find((t) => t.id === metric.templateId);
+      const tpl = templateById.get(metric.templateId);
       if (!tpl) continue;
 
       const finalAlias = `${cfg.groupId}__${metric.id}`;
       const baseAlias = `base_${finalAlias}`;
 
       // ═══════════════════════════════════════════════════════
-      // AGGREGATE метрика
+      // МЕТРИКА = ФОРМУЛА (агрегаты задаются функциями: MAX(a)/SUM(b)).
+      // Препроцессор превращает агрегаты в зависимости и переписывает
+      // формулу на пред-агрегированные псевдо-переменные. Голая колонка
+      // авто-оборачивается в дефолтный агрегат (или запрещается).
       // ═══════════════════════════════════════════════════════
-      if (tpl.type === 'aggregate' && tpl.aggregateFunction && tpl.aggregateField) {
-        const binding = metric.fieldBindings.find(
-          (b) => b.fieldAlias === tpl.aggregateField
+      if (tpl.formula) {
+        const fieldBindingMap = new Map(
+          metric.fieldBindings.map((fb) => [fb.fieldAlias, fb.columnName])
         );
-        if (!binding) continue;
-        const fn = tpl.aggregateFunction.toUpperCase();
-
-        if (!isColumnValid(binding.columnName)) {
-          baseSelectParts.push(`NULL AS ${quote(finalAlias)}`);
-          aggregateMetadata.set(finalAlias, { aggregateFunction: tpl.aggregateFunction });
-          if (fn === 'AVG') {
-            baseSelectParts.push(`NULL AS ${quote(`__agg_sum__${finalAlias}`)}`);
-            baseSelectParts.push(`NULL AS ${quote(`__agg_count__${finalAlias}`)}`);
-          }
+        const metricAliasSet = new Set(
+          metric.metricBindings.map((mb) => mb.metricAlias)
+        );
+        const pre = preprocessAggregateFormula(
+          tpl.formula,
+          fieldBindingMap,
+          metricAliasSet,
+          formulaOptions
+        );
+        if (!pre.success) {
+          logger.warn(
+            `[query-compiler] Метрика ${metric.id}: формула не скомпилирована — ${pre.error}`
+          );
           continue;
         }
 
-        const expr = buildAggregateExpr(binding.columnName, fn, dialect);
-        baseSelectParts.push(`${expr} AS ${quote(finalAlias)}`);
-        aggregateMetadata.set(finalAlias, { aggregateFunction: tpl.aggregateFunction });
-
-        if (fn === 'AVG') {
-          const castedCol = castToNumeric(quote(binding.columnName), dialect);
-          baseSelectParts.push(
-            `SUM(${castedCol}) AS ${quote(`__agg_sum__${finalAlias}`)}`
-          );
-          baseSelectParts.push(
-            `COUNT(${quote(binding.columnName)}) AS ${quote(`__agg_count__${finalAlias}`)}`
-          );
-        }
-        continue;
-      }
-
-      // ═══════════════════════════════════════════════════════
-      // CALCULATED метрика
-      // ═══════════════════════════════════════════════════════
-      if (tpl.type === 'calculated' && tpl.formula) {
-        const fieldDependencies: CompiledFormulaMeta['fieldDependencies'] = [];
-
-        for (const fb of metric.fieldBindings) {
-          const depBaseAlias = `${FIELD_DEP_PREFIX}${cfg.groupId}_${metric.id}_${fb.fieldAlias}`;
-          const aggregateFn = 'SUM';
-
-          if (!isColumnValid(fb.columnName)) {
-            baseSelectParts.push(`NULL AS ${quote(depBaseAlias)}`);
-          } else {
-            const expr = buildAggregateExpr(fb.columnName, aggregateFn, dialect);
-            baseSelectParts.push(`${expr} AS ${quote(depBaseAlias)}`);
-          }
-
-          fieldDependencies.push({
-            alias: fb.fieldAlias,
-            columnName: fb.columnName,
-            aggregateFn,
+        // Fast-path: формула — единственный агрегат над колонкой (FN(field)).
+        // Эмитим прямой агрегат как метрику-значение (без CTE), сохраняя
+        // SQL-форму, aggregateMetadata и точное взвешенное «Итого» для AVG.
+        if (
+          pre.fieldDependencies.length === 1 &&
+          metric.metricBindings.length === 0 &&
+          pre.formula.trim() === pre.fieldDependencies[0].alias
+        ) {
+          const fd = pre.fieldDependencies[0];
+          const fn = fd.aggregateFn.toUpperCase();
+          aggregateMetadata.set(finalAlias, {
+            aggregateFunction: fd.aggregateFn as MetricAggregationMeta['aggregateFunction'],
           });
+
+          emitAggregateSelect(fd.columnName, fn, finalAlias);
+          continue;
+        }
+
+        const fieldDependencies = pre.fieldDependencies;
+        for (const fd of fieldDependencies) {
+          const depBaseAlias = `${FIELD_DEP_PREFIX}${cfg.groupId}_${metric.id}_${fd.alias}`;
+          emitAggregateSelect(fd.columnName, fd.aggregateFn, depBaseAlias);
         }
 
         const metricDependencies: CompiledFormulaMeta['metricDependencies'] =
@@ -404,12 +427,14 @@ export function compileQuery(
             metricId: mb.metricId,
           }));
 
-        // Сохраняем метаданные (для fallback и пост-обработки)
+        // Сохраняем метаданные (для fallback и пост-обработки).
+        // formula — ПЕРЕПИСАННАЯ (на пред-агрегированные псевдо-переменные),
+        // её же считает и mathjs-fallback в post-process.
         formulas.set(baseAlias, {
           groupId: cfg.groupId,
           metricId: metric.id,
           templateId: tpl.id,
-          formula: tpl.formula,
+          formula: pre.formula,
           fieldDependencies,
           metricDependencies,
         });
@@ -417,7 +442,7 @@ export function compileQuery(
         calculatedMetrics.push({
           baseAlias,
           finalAlias,
-          formula: tpl.formula,
+          formula: pre.formula,
           groupId: cfg.groupId,
           metricId: metric.id,
           templateId: tpl.id,

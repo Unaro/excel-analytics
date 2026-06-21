@@ -1,20 +1,23 @@
 'use client';
 
 import { cn } from "@/shared/lib/utils";
-import { COLOR_STYLES, checkRule } from "@/shared/lib/utils/metric-colors";
+import { COLOR_STYLES, checkRule, toDisplayScale } from "@/shared/lib/utils/metric-colors";
+import { formatValue } from "@/shared/lib/computation/lib/utils";
 import { VirtualMetric } from "@/shared/lib/validators";
 
 interface MetricCellProps {
   value: number | null;
   formattedValue: string;
   metric: VirtualMetric;
+  /** Значение введено из узла файла-агрегата — подсвечиваем ячейку. */
+  fromNode?: boolean;
 }
 
-export function MetricCell({ value, formattedValue, metric }: MetricCellProps) {
+export function MetricCell({ value, formattedValue, metric, fromNode }: MetricCellProps) {
 
   const displayValue = formattedValue !== undefined && formattedValue !== '—'
     ? formattedValue
-    : formatFallback(value, metric.displayFormat, metric.decimalPlaces, metric.unit);
+    : formatValue(value, metric.displayFormat, metric.decimalPlaces, metric.unit);
 
   if (displayValue === '—') {
     return <span className="text-slate-300 dark:text-slate-600 select-none">−</span>;
@@ -22,24 +25,25 @@ export function MetricCell({ value, formattedValue, metric }: MetricCellProps) {
 
   let className = "font-mono font-medium text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-md transition-colors";
   const rules = metric.colorConfig?.rules || [];
-  const activeRule = rules.find(rule => checkRule(value ?? 0, rule.operator, rule.value, rule.value2));
-  
+  // Порог сравнивается в масштабе отображения (для percent — в процентах)
+  const scaled = toDisplayScale(value ?? 0, metric.displayFormat);
+  const activeRule = rules.find(rule => checkRule(scaled, rule.operator, rule.value, rule.value2));
+
   if (activeRule) {
     className = cn(className, COLOR_STYLES[activeRule.color]);
   }
 
-  return <span className={className}>{displayValue}</span>;
-}
+  const valueSpan = <span className={className}>{displayValue}</span>;
+  if (!fromNode) return valueSpan;
 
-function formatFallback(val: number | null, format: string, decimals: number, unit?: string): string {
-  if (val === null) return '—';
-  const round = (n: number, d: number) => Math.round((n + Number.EPSILON) * 10 ** d) / 10 ** d;
-  
-  switch (format) {
-    case 'percent': return `${round(val * 100, decimals)}%`;
-    case 'currency':
-    case 'decimal':
-      return round(val, decimals).toLocaleString('ru-RU', { maximumFractionDigits: decimals }) + (unit ? ` ${unit}` : '');
-    default: return round(val, decimals).toLocaleString('ru-RU', { maximumFractionDigits: decimals });
-  }
+  // Подсветка «значение из узла файла»: пунктир снизу + точка-индикатор.
+  return (
+    <span
+      className="inline-flex items-center gap-1 border-b border-dotted border-amber-400/80"
+      title="Значение введено в файле (узел агрегата), а не рассчитано по строкам"
+    >
+      {valueSpan}
+      <span className="text-amber-500 leading-none text-[10px]" aria-hidden>●</span>
+    </span>
+  );
 }
