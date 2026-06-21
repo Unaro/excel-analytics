@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Layers, GitBranch, ListTree } from 'lucide-react';
+import { Layers, GitBranch, ListTree, Plus, X, Search } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { Input } from '@/shared/ui/input';
 import {
@@ -10,7 +10,6 @@ import {
   buildColumns,
   classifyRows,
   buildHierarchyPreview,
-  proposeGroups,
   type AggregateMatrix,
   type AggregateLayoutConfig,
   type AggregateColumn,
@@ -30,6 +29,14 @@ const KIND_BADGE: Record<RowKind, { label: string; cls: string }> = {
   node: { label: 'узел', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
   total: { label: 'итого', cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' },
 };
+
+interface DraftTemplate {
+  id: string;
+  /** Имя логического показателя (= имя будущего шаблона). */
+  name: string;
+  /** Привязанные колонки (по fullName). Колонка — максимум в одном шаблоне. */
+  columns: string[];
+}
 
 /** Рекурсивный рендер дерева иерархии (предпросмотр). */
 function TreeNodes({ nodes, depth = 0 }: { nodes: HierarchyPreviewNode[]; depth?: number }) {
@@ -82,11 +89,7 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       return next;
     });
 
-  // Имя логического показателя (= шаблона) на колонку-метрику: правки
-  // пользователя поверх дефолта (имя колонки). Ключ — fullName (стабилен).
-  const [metricNameOverrides, setMetricNameOverrides] = useState<Record<string, string>>({});
-
-  const { columns, classified, groups, tree } = useMemo(() => {
+  const { columns, classified, tree } = useMemo(() => {
     const headerMatrix = rawMatrix.slice(0, headerRows);
     const dataRows = rawMatrix.slice(headerRows);
     const cols = buildColumns(headerMatrix, keyColumns, dataRows, emptyCfg);
@@ -94,12 +97,11 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
     return {
       columns: cols,
       classified: rows,
-      groups: proposeGroups(cols),
       tree: buildHierarchyPreview(rows, keyColumns, { empty: emptyCfg, maxNodes: 60 }),
     };
   }, [rawMatrix, headerRows, keyColumns, emptyCfg]);
 
-  // Колонки-метрики по группам + эффективное имя показателя (override ?? имя).
+  // Колонки-метрики по группам (чеклист «какие группы создавать» + счётчики).
   const metricsByGroup = useMemo(() => {
     const m = new Map<string, AggregateColumn[]>();
     for (const c of columns) {
@@ -110,21 +112,70 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
     }
     return m;
   }, [columns]);
-  const indicatorName = (col: AggregateColumn) =>
-    (metricNameOverrides[col.fullName] ?? col.name) || col.fullName;
-  // fullName → имя показателя (шаблона) для импорта.
+
+  // Пул колонок-метрик включённых групп — источник привязки к шаблонам.
+  const metricColumns = useMemo(
+    () =>
+      columns.filter(
+        c => c.role === 'metric' && !excludedGroups.has(c.groupName || '(без группы)')
+      ),
+    [columns, excludedGroups]
+  );
+  const metricColumnSet = useMemo(
+    () => new Set(metricColumns.map(c => c.fullName)),
+    [metricColumns]
+  );
+
+  // ── Шаблоны-первыми: пользователь создаёт шаблоны логических показателей и
+  // привязывает к ним колонки поиском. Колонка принадлежит ОДНОМУ шаблону.
+  const [templates, setTemplates] = useState<DraftTemplate[]>([]);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [searchByTemplate, setSearchByTemplate] = useState<Record<string, string>>({});
+
+  const assigned = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of templates) for (const col of t.columns) s.add(col);
+    return s;
+  }, [templates]);
+  const unassignedColumns = useMemo(
+    () => metricColumns.filter(c => !assigned.has(c.fullName)),
+    [metricColumns, assigned]
+  );
+
+  const addTemplate = () => {
+    const name = newTemplateName.trim();
+    if (!name) return;
+    const id = `tpl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    setTemplates(prev => [...prev, { id, name, columns: [] }]);
+    setSearchByTemplate(prev => ({ ...prev, [id]: name })); // поиск преднабит именем
+    setNewTemplateName('');
+  };
+  const renameTemplate = (id: string, name: string) =>
+    setTemplates(prev => prev.map(t => (t.id === id ? { ...t, name } : t)));
+  const removeTemplate = (id: string) =>
+    setTemplates(prev => prev.filter(t => t.id !== id));
+  const assignColumns = (id: string, fulls: string[]) =>
+    setTemplates(prev =>
+      prev.map(t =>
+        t.id === id ? { ...t, columns: Array.from(new Set([...t.columns, ...fulls])) } : t
+      )
+    );
+  const unassignColumn = (id: string, full: string) =>
+    setTemplates(prev =>
+      prev.map(t => (t.id === id ? { ...t, columns: t.columns.filter(c => c !== full) } : t))
+    );
+
+  // fullName → имя шаблона для импорта (только колонки включённых групп,
+  // привязанные к непустому шаблону). Непривязанные падают на имя колонки.
   const metricTemplateNames = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const c of columns) {
-      if (c.role === 'metric') map[c.fullName] = (metricNameOverrides[c.fullName] ?? c.name) || c.fullName;
+    for (const t of templates) {
+      const name = t.name.trim();
+      if (!name) continue;
+      for (const col of t.columns) if (metricColumnSet.has(col)) map[col] = name;
     }
     return map;
-  }, [columns, metricNameOverrides]);
-  // Сколько РАЗНЫХ шаблонов получится (одинаковые имена сливаются).
-  const distinctTemplates = useMemo(
-    () => new Set(Object.values(metricTemplateNames)).size,
-    [metricTemplateNames]
-  );
+  }, [templates, metricColumnSet]);
 
   // Сообщаем разметку наверх — для импорта.
   useEffect(() => {
@@ -243,62 +294,33 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Группы и показатели (шаблоны) */}
+        {/* Группы к созданию */}
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Группы показателей ({groups.length})
-            </div>
-            <span className="text-[11px] text-slate-400" title="Одинаковые имена показателей сливаются в один шаблон">
-              шаблонов: {distinctTemplates}
-            </span>
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Группы к созданию ({metricsByGroup.size})
           </div>
           <p className="text-[11px] text-slate-400">
-            Имя показателя = шаблон. Одинаковое имя у колонок (в т.ч. в разных
-            группах) → общий шаблон. По умолчанию — имя колонки.
+            Снимите галочку, чтобы не создавать группу. Её метрики не попадут в шаблоны.
           </p>
-          <div className="space-y-2 max-h-[360px] overflow-auto pr-1">
-            {Array.from(metricsByGroup.entries()).map(([name, cols]) => {
-              const included = !excludedGroups.has(name);
-              return (
-                <div
-                  key={name}
-                  className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2"
-                >
-                  <label className="flex items-center gap-2 cursor-pointer mb-1.5">
-                    <input
-                      type="checkbox"
-                      checked={included}
-                      onChange={() => toggleGroup(name)}
-                    />
-                    <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{name}</span>
-                    <span className="text-[11px] text-slate-400">· {cols.length} метрик</span>
-                  </label>
-                  {included && (
-                    <div className="space-y-1 pl-6">
-                      {cols.map(col => (
-                        <div key={col.index} className="flex items-center gap-2">
-                          <span
-                            className="text-[11px] text-slate-400 w-28 shrink-0 truncate"
-                            title={col.fullName}
-                          >
-                            {col.name || `кол. ${col.index + 1}`}
-                          </span>
-                          <input
-                            value={indicatorName(col)}
-                            onChange={e =>
-                              setMetricNameOverrides(prev => ({ ...prev, [col.fullName]: e.target.value }))
-                            }
-                            placeholder="показатель (шаблон)"
-                            className="flex-1 h-7 px-2 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <div className="space-y-1 max-h-[360px] overflow-auto pr-1">
+            {Array.from(metricsByGroup.entries()).map(([name, cols]) => (
+              <label
+                key={name}
+                className="flex items-center gap-2 cursor-pointer rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2.5 py-1.5"
+              >
+                <input
+                  type="checkbox"
+                  checked={!excludedGroups.has(name)}
+                  onChange={() => toggleGroup(name)}
+                />
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+                  {name}
+                </span>
+                <span className="text-[11px] text-slate-400 ml-auto shrink-0">
+                  {cols.length} метрик
+                </span>
+              </label>
+            ))}
           </div>
         </div>
 
@@ -315,6 +337,156 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
             )}
           </div>
         </div>
+      </div>
+
+      {/* Шаблоны показателей — создание + привязка колонок поиском */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Шаблоны показателей
+          </div>
+          <span className="text-[11px] text-slate-400">
+            шаблонов: {templates.length} · не распределено: {unassignedColumns.length}
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Создайте шаблон логического показателя (Потребность, Мощность…) и
+          привяжите к нему колонки поиском. Колонка принадлежит одному шаблону.
+          Непривязанные колонки станут отдельными шаблонами по своему имени.
+        </p>
+
+        <div className="flex gap-2">
+          <Input
+            value={newTemplateName}
+            onChange={e => setNewTemplateName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addTemplate();
+              }
+            }}
+            placeholder="Имя показателя (шаблона)"
+            className="h-9 max-w-xs"
+          />
+          <button
+            type="button"
+            onClick={addTemplate}
+            disabled={!newTemplateName.trim()}
+            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Plus size={15} /> Создать шаблон
+          </button>
+        </div>
+
+        {templates.length === 0 ? (
+          <p className="text-sm text-slate-400 px-1 py-4">
+            Шаблонов пока нет. Создайте первый — например «{metricColumns[0]?.name || 'Потребность'}».
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {templates.map(t => {
+              const q = (searchByTemplate[t.id] ?? '').trim().toLowerCase();
+              const matches = q
+                ? unassignedColumns.filter(c => c.fullName.toLowerCase().includes(q))
+                : unassignedColumns;
+              const shown = matches.slice(0, 40);
+              return (
+                <div
+                  key={t.id}
+                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={t.name}
+                      onChange={e => renameTemplate(t.id, e.target.value)}
+                      className="flex-1 h-8 px-2 text-sm font-medium rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <span className="text-[11px] text-slate-400 shrink-0">{t.columns.length} кол.</span>
+                    <button
+                      type="button"
+                      onClick={() => removeTemplate(t.id)}
+                      title="Удалить шаблон"
+                      className="text-slate-300 hover:text-rose-500 shrink-0"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+
+                  {t.columns.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {t.columns.map(full => (
+                        <span
+                          key={full}
+                          className="inline-flex items-center gap-1 max-w-[200px] px-2 py-0.5 rounded-md text-[11px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900"
+                        >
+                          <span className="truncate" title={full}>{full}</span>
+                          <button
+                            type="button"
+                            onClick={() => unassignColumn(t.id, full)}
+                            className="hover:text-rose-500 shrink-0"
+                          >
+                            <X size={12} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="relative">
+                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={searchByTemplate[t.id] ?? ''}
+                      onChange={e =>
+                        setSearchByTemplate(prev => ({ ...prev, [t.id]: e.target.value }))
+                      }
+                      placeholder="найти колонки…"
+                      className="w-full h-8 pl-8 pr-2 text-xs rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-slate-400">подходит: {matches.length}</span>
+                    {matches.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => assignColumns(t.id, matches.map(c => c.fullName))}
+                        className="text-[11px] font-medium text-indigo-600 hover:text-indigo-500"
+                      >
+                        Добавить все ({matches.length})
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-0.5 max-h-44 overflow-auto pr-1">
+                    {shown.length === 0 ? (
+                      <p className="text-[11px] text-slate-400 py-2 text-center">
+                        {unassignedColumns.length === 0 ? 'Все колонки распределены' : 'Ничего не найдено'}
+                      </p>
+                    ) : (
+                      shown.map(c => (
+                        <button
+                          key={c.fullName}
+                          type="button"
+                          onClick={() => assignColumns(t.id, [c.fullName])}
+                          title={c.fullName}
+                          className="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-[12px] hover:bg-indigo-50 dark:hover:bg-slate-800 group"
+                        >
+                          <Plus size={12} className="text-slate-300 group-hover:text-indigo-500 shrink-0" />
+                          <span className="truncate text-slate-600 dark:text-slate-300">{c.fullName}</span>
+                        </button>
+                      ))
+                    )}
+                    {matches.length > shown.length && (
+                      <p className="text-[11px] text-slate-400 py-1 text-center">
+                        …и ещё {matches.length - shown.length}. Уточните поиск.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
