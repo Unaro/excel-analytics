@@ -297,6 +297,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                           displayFormat={meta.displayFormat}
                           decimalPlaces={meta.decimalPlaces}
                           unit={meta.unit}
+                          fromNode={val.fromNode}
                         />
                       ) : (
                         <span className="text-slate-300 dark:text-slate-600 select-none">−</span>
@@ -334,6 +335,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                           displayFormat={meta.displayFormat}
                           decimalPlaces={meta.decimalPlaces}
                           unit={meta.unit}
+                          fromNode={vm.fromNode}
                         />
                       ) : (
                         <span className="font-mono text-slate-900 dark:text-slate-100">

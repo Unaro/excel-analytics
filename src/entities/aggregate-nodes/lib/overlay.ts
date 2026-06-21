@@ -41,7 +41,8 @@ export function mergeEnteredVms(
     const e = entered[vm.virtualMetricId];
     if (e != null) {
       changed = true;
-      return { ...vm, value: e, formattedValue: '—' };
+      // fromNode → UI подсвечивает ячейку как «введено из файла».
+      return { ...vm, value: e, formattedValue: '—', fromNode: true };
     }
     return vm;
   });

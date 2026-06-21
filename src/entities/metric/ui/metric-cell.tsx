@@ -9,9 +9,11 @@ interface MetricCellProps {
   value: number | null;
   formattedValue: string;
   metric: VirtualMetric;
+  /** Значение введено из узла файла-агрегата — подсвечиваем ячейку. */
+  fromNode?: boolean;
 }
 
-export function MetricCell({ value, formattedValue, metric }: MetricCellProps) {
+export function MetricCell({ value, formattedValue, metric, fromNode }: MetricCellProps) {
 
   const displayValue = formattedValue !== undefined && formattedValue !== '—'
     ? formattedValue
@@ -26,10 +28,22 @@ export function MetricCell({ value, formattedValue, metric }: MetricCellProps) {
   // Порог сравнивается в масштабе отображения (для percent — в процентах)
   const scaled = toDisplayScale(value ?? 0, metric.displayFormat);
   const activeRule = rules.find(rule => checkRule(scaled, rule.operator, rule.value, rule.value2));
-  
+
   if (activeRule) {
     className = cn(className, COLOR_STYLES[activeRule.color]);
   }
 
-  return <span className={className}>{displayValue}</span>;
+  const valueSpan = <span className={className}>{displayValue}</span>;
+  if (!fromNode) return valueSpan;
+
+  // Подсветка «значение из узла файла»: пунктир снизу + точка-индикатор.
+  return (
+    <span
+      className="inline-flex items-center gap-1 border-b border-dotted border-amber-400/80"
+      title="Значение введено в файле (узел агрегата), а не рассчитано по строкам"
+    >
+      {valueSpan}
+      <span className="text-amber-500 leading-none text-[10px]" aria-hidden>●</span>
+    </span>
+  );
 }

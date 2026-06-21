@@ -239,6 +239,11 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
                 className="accent-indigo-600 w-4 h-4"
               />
               Считать введённые значения
+              {useEntered && (
+                <span className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1">
+                  (<span className="text-amber-500">●</span> — из узла файла)
+                </span>
+              )}
             </label>
           )}
           {dateColumn && (

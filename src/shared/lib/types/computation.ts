@@ -46,6 +46,12 @@ export interface VirtualMetricValue {
   formattedValue: string;
   sourceMetricId: string;
   error?: string;
+  /**
+   * Значение взято из введённого узла файла-агрегата (а не рассчитано по
+   * строкам). Ставится клиентским overlay (`mergeEnteredVms`), движок не
+   * заполняет. UI подсвечивает такие ячейки.
+   */
+  fromNode?: boolean;
 }
 
 /**

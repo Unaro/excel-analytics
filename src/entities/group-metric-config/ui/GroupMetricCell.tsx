@@ -17,6 +17,8 @@ interface GroupMetricCellProps {
   unit?: string;
   /** Шаблон метрики — единый источник условного форматирования. */
   templateId?: string;
+  /** Значение введено из узла файла-агрегата — подсвечиваем ячейку. */
+  fromNode?: boolean;
 }
 
 /**
@@ -31,6 +33,7 @@ export function GroupMetricCell({
   decimalPlaces,
   unit,
   templateId,
+  fromNode,
 }: GroupMetricCellProps) {
   // Единый источник CF — шаблон; групповой стор остаётся фолбэком для
   // немигрированных метрик (правила «переедут» при редактировании).
@@ -55,5 +58,5 @@ export function GroupMetricCell({
     [metricId, displayFormat, decimalPlaces, unit, colorConfig]
   );
 
-  return <MetricCell value={value} formattedValue={formattedValue} metric={metric} />;
+  return <MetricCell value={value} formattedValue={formattedValue} metric={metric} fromNode={fromNode} />;
 }
