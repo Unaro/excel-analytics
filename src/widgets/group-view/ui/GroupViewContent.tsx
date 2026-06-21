@@ -22,11 +22,11 @@ import { nodePathKey } from '@/shared/lib/types/aggregate';
 import type { VirtualMetricValue } from '@/shared/lib/types/computation';
 
 /**
- * Подмешивает введённые значения узлов агрегата в вычисленные метрики: где
- * вычисленное по листьям пусто (null), берём введённое. formattedValue → '—',
- * чтобы MetricCell переформатировал из value — так форматирование, окрашивание
- * и сортировка заработают на введённых числах. Реальное вычисленное (в т.ч. 0)
- * не перетираем.
+ * Подставляет введённые значения узлов агрегата ВМЕСТО вычисленных по листьям:
+ * где у узла есть введённое значение (не null), оно перекрывает сумму по листьям
+ * («официальная» цифра из файла). formattedValue → '—', чтобы MetricCell
+ * переформатировал из value — так форматирование, окрашивание и сортировка
+ * работают на введённых числах. Метрики без введённого значения не трогаем.
  */
 function mergeEnteredVms(
   vms: VirtualMetricValue[],
@@ -36,7 +36,7 @@ function mergeEnteredVms(
   let changed = false;
   const out = vms.map(vm => {
     const e = entered[vm.virtualMetricId];
-    if (vm.value == null && e != null) {
+    if (e != null) {
       changed = true;
       return { ...vm, value: e, formattedValue: '—' };
     }
@@ -263,7 +263,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           {hasEnteredData && (
             <label
               className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none"
-              title="Подставлять введённые значения узлов файла-агрегата вместо пустых вычисленных (форматирование, сортировка и окрашивание применяются к ним). Выключите, чтобы видеть «введено: X» отдельной подписью."
+              title="Показывать введённые значения узлов файла-агрегата вместо суммы по листьям там, где они заданы (форматирование, сортировка и окрашивание применяются к ним). Выключите, чтобы видеть вычисленное + «введено: X / Δ» отдельной подписью."
             >
               <input
                 type="checkbox"
