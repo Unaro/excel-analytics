@@ -13,6 +13,7 @@ import {
   type AggregateMatrix,
   type AggregateLayoutConfig,
   type AggregateColumn,
+  type ColumnRole,
   type EmptyConfig,
   type HierarchyPreviewNode,
   type RowKind,
@@ -28,6 +29,12 @@ const KIND_BADGE: Record<RowKind, { label: string; cls: string }> = {
   leaf: { label: 'лист', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
   node: { label: 'узел', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
   total: { label: 'итого', cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' },
+};
+
+const ROLE_BADGE: Record<ColumnRole, { label: string; cls: string }> = {
+  key: { label: 'ключ', cls: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300' },
+  metric: { label: 'метрика', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' },
+  attribute: { label: 'атрибут', cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' },
 };
 
 interface DraftTemplate {
@@ -124,6 +131,18 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
   const metricColumnSet = useMemo(
     () => new Set(metricColumns.map(c => c.fullName)),
     [metricColumns]
+  );
+  // fullName → колонка (для двухстрочного показа имени: имя + группа).
+  const columnByFullName = useMemo(() => {
+    const m = new Map<string, AggregateColumn>();
+    for (const c of columns) m.set(c.fullName, c);
+    return m;
+  }, [columns]);
+  // Кандидаты в ключи: не-метрики + уже выбранные ключи. Метрики (их сотни)
+  // не показываем — каскад читаемее, а ключами они быть не могут.
+  const keyCandidates = useMemo(
+    () => columns.filter(c => c.role !== 'metric' || keyColumns.includes(c.index)),
+    [columns, keyColumns]
   );
 
   // ── Шаблоны-первыми: пользователь создаёт шаблоны логических показателей и
@@ -241,8 +260,9 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
           <GitBranch size={12} /> Ключевые колонки (каскад уровней)
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {columns.map(col => {
+          {keyCandidates.map(col => {
             const isKey = keyColumns.includes(col.index);
+            const hasGroup = !!col.groupName && col.groupName !== col.name;
             return (
               <button
                 key={col.index}
@@ -250,21 +270,59 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                 onClick={() => toggleKey(col.index)}
                 title={`${col.fullName} · ${col.role}`}
                 className={cn(
-                  'px-2.5 py-1 rounded-lg text-xs border transition-colors max-w-[180px] truncate',
+                  'px-2.5 py-1 rounded-lg text-xs border transition-colors text-left max-w-[280px]',
                   isKey
                     ? 'bg-indigo-600 text-white border-indigo-600'
                     : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
                 )}
               >
-                {col.fullName || `колонка ${col.index + 1}`}
+                {hasGroup && (
+                  <span className={cn('block text-[10px] leading-tight', isKey ? 'text-indigo-100/80' : 'text-slate-400')}>
+                    {col.groupName}
+                  </span>
+                )}
+                <span className="block break-words leading-tight">{col.name || `колонка ${col.index + 1}`}</span>
               </button>
             );
           })}
         </div>
         <p className="text-[11px] text-slate-400">
           Глубина строки = самый правый заполненный ключ. Лист = заполнен самый глубокий ключ.
+          Колонки-метрики скрыты — ключами могут быть только не-числовые колонки.
         </p>
       </div>
+
+      {/* Все колонки — полный список с ролью (свернуто) */}
+      <details className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+          Все колонки ({columns.length})
+        </summary>
+        <div className="max-h-72 overflow-auto border-t border-slate-100 dark:border-slate-800">
+          <table className="min-w-full text-[12px]">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+              {columns.map(col => {
+                const badge = ROLE_BADGE[col.role];
+                return (
+                  <tr key={col.index}>
+                    <td className="px-3 py-1.5 w-10 text-slate-400 align-top">{col.index + 1}</td>
+                    <td className="px-3 py-1.5 w-20 align-top">
+                      <span className={cn('px-1.5 py-0.5 rounded text-[10px] font-medium', badge.cls)}>
+                        {badge.label}
+                      </span>
+                    </td>
+                    <td className="px-3 py-1.5 text-slate-400 align-top break-words max-w-[200px]">
+                      {col.groupName || '—'}
+                    </td>
+                    <td className="px-3 py-1.5 text-slate-700 dark:text-slate-200 align-top break-words">
+                      {col.name || '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </details>
 
       {/* Классификация строк (сэмпл) */}
       <div className="space-y-2">
@@ -414,21 +472,33 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
 
                   {t.columns.length > 0 && (
                     <div className="flex flex-wrap gap-1">
-                      {t.columns.map(full => (
-                        <span
-                          key={full}
-                          className="inline-flex items-center gap-1 max-w-[200px] px-2 py-0.5 rounded-md text-[11px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900"
-                        >
-                          <span className="truncate" title={full}>{full}</span>
-                          <button
-                            type="button"
-                            onClick={() => unassignColumn(t.id, full)}
-                            className="hover:text-rose-500 shrink-0"
+                      {t.columns.map(full => {
+                        const col = columnByFullName.get(full);
+                        const hasGroup = !!col?.groupName && col.groupName !== col.name;
+                        return (
+                          <span
+                            key={full}
+                            title={full}
+                            className="inline-flex items-start gap-1 max-w-full px-2 py-1 rounded-md text-[11px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900"
                           >
-                            <X size={12} />
-                          </button>
-                        </span>
-                      ))}
+                            <span className="min-w-0">
+                              {hasGroup && (
+                                <span className="block text-[10px] leading-tight text-indigo-400 dark:text-indigo-400/70">
+                                  {col!.groupName}
+                                </span>
+                              )}
+                              <span className="block break-words leading-tight">{col?.name || full}</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => unassignColumn(t.id, full)}
+                              className="hover:text-rose-500 shrink-0 mt-0.5"
+                            >
+                              <X size={12} />
+                            </button>
+                          </span>
+                        );
+                      })}
                     </div>
                   )}
 
@@ -463,18 +533,28 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                         {unassignedColumns.length === 0 ? 'Все колонки распределены' : 'Ничего не найдено'}
                       </p>
                     ) : (
-                      shown.map(c => (
-                        <button
-                          key={c.fullName}
-                          type="button"
-                          onClick={() => assignColumns(t.id, [c.fullName])}
-                          title={c.fullName}
-                          className="w-full flex items-center gap-2 px-2 py-1 rounded text-left text-[12px] hover:bg-indigo-50 dark:hover:bg-slate-800 group"
-                        >
-                          <Plus size={12} className="text-slate-300 group-hover:text-indigo-500 shrink-0" />
-                          <span className="truncate text-slate-600 dark:text-slate-300">{c.fullName}</span>
-                        </button>
-                      ))
+                      shown.map(c => {
+                        const hasGroup = !!c.groupName && c.groupName !== c.name;
+                        return (
+                          <button
+                            key={c.fullName}
+                            type="button"
+                            onClick={() => assignColumns(t.id, [c.fullName])}
+                            title={c.fullName}
+                            className="w-full flex items-start gap-2 px-2 py-1 rounded text-left text-[12px] hover:bg-indigo-50 dark:hover:bg-slate-800 group"
+                          >
+                            <Plus size={12} className="text-slate-300 group-hover:text-indigo-500 shrink-0 mt-0.5" />
+                            <span className="min-w-0">
+                              {hasGroup && (
+                                <span className="block text-[10px] leading-tight text-slate-400">{c.groupName}</span>
+                              )}
+                              <span className="block break-words leading-tight text-slate-600 dark:text-slate-300">
+                                {c.name || `колонка ${c.index + 1}`}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })
                     )}
                     {matches.length > shown.length && (
                       <p className="text-[11px] text-slate-400 py-1 text-center">
