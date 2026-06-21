@@ -277,7 +277,7 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                   {included && (
                     <div className="space-y-1 pl-6">
                       {cols.map(col => (
-                        <div key={col.fullName} className="flex items-center gap-2">
+                        <div key={col.index} className="flex items-center gap-2">
                           <span
                             className="text-[11px] text-slate-400 w-28 shrink-0 truncate"
                             title={col.fullName}
