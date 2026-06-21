@@ -126,7 +126,11 @@ export function useGroupBreakdown(
       const tpl = m ? templates.find(t => t.id === m.templateId) : undefined;
       const colorConfig = tpl?.colorConfig
         ?? (vm.sourceMetricId ? groupMetricConfigs?.[vm.sourceMetricId]?.colorConfig : undefined);
-      return { ...vm, colorConfig };
+      // Стиль чарта (столбец/линия) — только из группового стора (per-group).
+      const chartStyle = vm.sourceMetricId
+        ? groupMetricConfigs?.[vm.sourceMetricId]?.chartStyle
+        : undefined;
+      return { ...vm, colorConfig, chartStyle };
     });
   }, [virtualMetrics, groupMetricConfigs, group, templates]);
 

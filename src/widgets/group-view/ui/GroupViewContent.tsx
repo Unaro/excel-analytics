@@ -15,6 +15,8 @@ import { CalendarClock } from 'lucide-react';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
+import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
+import type { MetricChartStyle } from '@/shared/lib/types/chart';
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -110,6 +112,21 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
 
   const summaryVirtualMetrics = summary?.virtualMetrics ?? [];
 
+  // Стиль чарта (столбец/линия) per-metric: храним в group-metric-config по
+  // sourceMetricId. Карта для KPI-карточек + сеттер, пишущий в стор.
+  const updateChartStyle = useGroupMetricConfigStore(s => s.updateChartStyle);
+  const chartStyleByMetricId = useMemo(() => {
+    const map: Record<string, MetricChartStyle | undefined> = {};
+    virtualMetrics.forEach(vm => {
+      if (vm.sourceMetricId) map[vm.sourceMetricId] = vm.chartStyle;
+    });
+    return map;
+  }, [virtualMetrics]);
+  const handleChartStyleChange = useCallback(
+    (metricId: string, style: MetricChartStyle) => updateChartStyle(groupId, metricId, style),
+    [updateChartStyle, groupId]
+  );
+
   if (!group) {
     return <GroupNotFound />;
   }
@@ -129,6 +146,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         activeMetricIds={activeMetricIds}
         recordCount={summary?.recordCount ?? 0}
         onToggleMetric={handleToggleMetric}
+        chartStyleByMetricId={chartStyleByMetricId}
+        onChartStyleChange={handleChartStyleChange}
       />
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

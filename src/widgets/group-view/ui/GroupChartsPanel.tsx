@@ -90,7 +90,9 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
         activeMetricIds={activeMetricIds}
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+      {/* Один выбранный чарт — на всю ширину (не шире контента/экрана);
+          два — рядом по половине на широких экранах. */}
+      <div className={chartTypes.length > 1 ? 'grid grid-cols-1 xl:grid-cols-2 gap-6' : 'grid grid-cols-1 gap-6'}>
         {chartTypes.includes('bar') && (
           <GroupBarChart
             data={multiMetricData}

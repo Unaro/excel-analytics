@@ -1,7 +1,7 @@
 'use client';
 import { memo, useMemo } from 'react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   Rectangle, ReferenceLine, Label,
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
@@ -50,7 +50,7 @@ export const GroupBarChart = memo(function GroupBarChart({
         slotWidth={Math.max(48, metricKeys.length * 28)}
         height={400}
       >
-          <BarChart data={data} margin={{ top: 20, left: 20, right: 60, bottom: 20 }}>
+          <ComposedChart data={data} margin={{ top: 20, left: 20, right: 60, bottom: 20 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} vertical={false} />
             <XAxis
               dataKey="name"
@@ -117,6 +117,42 @@ export const GroupBarChart = memo(function GroupBarChart({
               const vm = metricConfigs?.find((v) => v.id === key);
               const rules = vm?.colorConfig?.rules;
               const defaultColor = COLORS[idx % COLORS.length];
+              const style = vm?.chartStyle;
+
+              // Метрика-линия: гладкая/ломаная (type) + сплошная/пунктир (dash).
+              if (style?.kind === 'line') {
+                return (
+                  <Line
+                    key={key}
+                    type={style.curve === 'linear' ? 'linear' : 'monotone'}
+                    dataKey={key}
+                    name={metricNames[key]}
+                    stroke={defaultColor}
+                    strokeWidth={2}
+                    strokeDasharray={style.dash === 'dashed' ? '6 4' : undefined}
+                    isAnimationActive={true}
+                    animationDuration={800}
+                    dot={(props) => {
+                      const { cx = 0, cy = 0, payload } = props;
+                      const raw = payload?.[key];
+                      const numericValue = typeof raw === 'number' ? raw : null;
+                      const conditionalColor = getColorForValue(numericValue, rules);
+                      const highlighted = !!conditionalColor;
+                      return (
+                        <circle
+                          key={`${key}-${cx}-${cy}`}
+                          cx={cx} cy={cy}
+                          r={highlighted ? 5 : 3}
+                          fill={conditionalColor || defaultColor}
+                          stroke="#fff"
+                          strokeWidth={highlighted ? 2 : 1}
+                        />
+                      );
+                    }}
+                  />
+                );
+              }
+
               return (
                 <Bar
                   key={key}
@@ -148,7 +184,7 @@ export const GroupBarChart = memo(function GroupBarChart({
                 />
               );
             })}
-          </BarChart>
+          </ComposedChart>
       </ScrollableChart>
     </Card>
   );

@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { createMigration } from '@/shared/lib/storage/migration';
 import type { ColorConfig } from '@/shared/lib/types/dashboard';
+import type { MetricChartStyle } from '@/shared/lib/types/chart';
 import type { GroupMetricConfig } from '@/shared/lib/types/group-metric-config';
 
 // Тип перенесён в shared/lib/types/group-metric-config (нужен сервисам
@@ -33,6 +34,11 @@ interface GroupMetricConfigState {
    * Селектор для чтения
    */
   getColorConfig: (groupId: string, metricId: string) => ColorConfig | undefined;
+
+  /**
+   * Обновить только стиль метрики на чарте (столбец/линия + стиль линии)
+   */
+  updateChartStyle: (groupId: string, metricId: string, chartStyle: MetricChartStyle) => void;
 
   /**
    * Удалить ВСЕ настройки метрики
@@ -81,6 +87,19 @@ export const useGroupMetricConfigStore = create<GroupMetricConfigState>()(
 
       getColorConfig: (groupId, metricId) =>
         get().configsByGroup[groupId]?.[metricId]?.colorConfig,
+
+      updateChartStyle: (groupId, metricId, chartStyle) => {
+        const current = get().configsByGroup[groupId]?.[metricId] || {};
+        set((state) => ({
+          configsByGroup: {
+            ...state.configsByGroup,
+            [groupId]: {
+              ...(state.configsByGroup[groupId] || {}),
+              [metricId]: { ...current, chartStyle },
+            },
+          },
+        }));
+      },
 
       clearMetricConfig: (groupId, metricId) =>
         set((state) => {
