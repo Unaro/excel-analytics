@@ -126,10 +126,13 @@ export function ImportConfigStep({
         </div>
       </label>
 
-      {isAggregate && (
+      {/* Агрегат: разметку и типы задаёт панель «Структура»; плоская таблица
+          выбора типов скрыта (она не понимает multi-row шапку и на импорт
+          агрегата не влияет — типы выводятся из ролей колонок). */}
+      {isAggregate ? (
         <AggregateStructurePanel matrix={aggregateMatrix} onLayoutChange={onAggregateLayoutChange} />
-      )}
-
+      ) : (
+        <>
       {/* ─── Параметры разбора (CSV) ─── */}
       {showCsvControls && importParams && (
         <div className="flex flex-wrap gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
@@ -246,6 +249,8 @@ export function ImportConfigStep({
             </div>
           )}
         </div>
+      )}
+        </>
       )}
 
       <div className="flex justify-between items-center pt-4 border-t dark:border-slate-800">
