@@ -12,6 +12,7 @@ import { del } from 'idb-keyval';
 import { useDatasetStore } from '@/entities/dataset';
 import { useColumnConfigStore } from '@/entities/column-config';
 import { useHierarchyStore } from '@/entities/hierarchy';
+import { useAggregateNodesStore } from '@/entities/aggregate-nodes';
 import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';
 import { createComputationCache } from '@/shared/lib/storage';
 
@@ -57,6 +58,9 @@ export async function removeDatasetCompletely(datasetId: string): Promise<void> 
     // они копились бы в persist как orphan-записи (п.8 аудита ядра).
     // Группы и дашборды сохраняются намеренно (см. текст диалога удаления).
     useHierarchyStore.getState().clearDatasetLevels(datasetId);
+
+    // Введённые значения узлов агрегата — тоже orphan без очистки (фаза 2).
+    useAggregateNodesStore.getState().clearNodes(datasetId);
   }
 
   store.removeDataset(datasetId);

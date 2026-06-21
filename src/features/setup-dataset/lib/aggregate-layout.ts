@@ -11,6 +11,8 @@
 // План: docs/architecture/aggregate-files.md
 // ─────────────────────────────────────────────────────────────
 
+import type { AggregateNode } from '@/shared/lib/types/aggregate';
+
 /** Роль колонки в агрегате. */
 export type ColumnRole = 'key' | 'metric' | 'attribute';
 /** Тип строки данных. */
@@ -385,23 +387,10 @@ export function parseMetricValue(s: string | null | undefined, cfg?: EmptyConfig
 // Извлечение узлов (фаза 2) — введённые/предпосчитанные значения уровней.
 // ─────────────────────────────────────────────────────────────
 
-export interface AggregateNode {
-  /** Путь значений ключевых колонок от корня до узла. */
-  path: string[];
-  /** Уровень = глубина в каскаде (индекс самого правого ключа). */
-  level: number;
-  /** Метка узла (последний элемент пути). */
-  label: string;
-  /** Это строка «Итого/Всего»? */
-  isTotal: boolean;
-  /** Введённые значения метрик по составному имени колонки. */
-  values: Record<string, number | null>;
-}
+export type { AggregateNode };
 
-/** Стабильный ключ узла из пути (для словаря узлов). */
-export function nodePathKey(path: string[]): string {
-  return path.join('');
-}
+// Единый источник ключа узла — shared (используется и entity-стором).
+export { nodePathKey } from '@/shared/lib/types/aggregate';
 
 /**
  * Извлекает УЗЛЫ агрегата (промежуточные строки-уровни и «Итого») с их

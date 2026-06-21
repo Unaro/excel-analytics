@@ -42,13 +42,16 @@ import { generateColumnConfigsFromPgSchema } from '@/entities/dataset';
 import { useHierarchyStore } from '@/entities/hierarchy';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
+import { useAggregateNodesStore } from '@/entities/aggregate-nodes';
 import { DatasetRow } from '@/shared/lib/types';
 import type { ColumnClassification } from '@/shared/lib/types';
+import type { AggregateNode } from '@/shared/lib/types/aggregate';
 import type { ImportParams } from '../lib/file-preview';
 import { readAggregateMatrix } from '../lib/file-preview';
 import {
   flattenLeaves,
   toAggregateCsv,
+  extractNodes,
   type AggregateLayoutConfig,
   type AggregateColumn,
 } from '../lib/aggregate-layout';
@@ -160,6 +163,7 @@ export async function syncFromFile(
     let importFileName = file.name;
     let aggregateKeyNames: string[] | null = null;
     let aggregateColumns: AggregateColumn[] | null = null;
+    let aggregateNodes: AggregateNode[] | null = null;
     let effectiveTypes: Record<string, ColumnClassification> | undefined = params?.columnTypes;
     let parseOptions = params
       ? {
@@ -184,7 +188,8 @@ export async function syncFromFile(
       parseOptions = { delimiter: ',', decimalSeparator: '.', columnTypes, dateFormat: undefined };
       aggregateKeyNames = flat.keyColumnNames;
       aggregateColumns = flat.columns;
-      logger.info(`[syncFromFile] Агрегат сплющен: ${flat.rows.length} листьев, ${flat.keyColumnNames.length} уровней`);
+      aggregateNodes = extractNodes(matrix, aggregate);
+      logger.info(`[syncFromFile] Агрегат сплющен: ${flat.rows.length} листьев, ${flat.keyColumnNames.length} уровней, ${aggregateNodes.length} узлов`);
     }
 
     const { configs, totalRows, totalColumns, sheetNames } =
@@ -260,6 +265,11 @@ export async function syncFromFile(
     if (aggregateColumns) {
       const n = createAggregateGroups(datasetId, aggregateColumns, aggregate?.excludeGroups);
       logger.info(`[syncFromFile] Создано групп показателей: ${n}`);
+    }
+
+    // Агрегат: введённые значения узлов (overlay «введённое vs вычисленное»).
+    if (aggregateNodes) {
+      useAggregateNodesStore.getState().setNodes(datasetId, aggregateNodes);
     }
 
     setDatasetRows(datasetId, previewRows);
