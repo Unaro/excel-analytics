@@ -374,6 +374,81 @@ function canonicalNumber(s: string): string {
   return s.replace(/\s/g, '').replace(',', '.');
 }
 
+/** Парсит ячейку-метрику в число; пусто/нечисло → null. */
+export function parseMetricValue(s: string | null | undefined, cfg?: EmptyConfig): number | null {
+  if (isEmptyCell(s, cfg)) return null;
+  const n = Number(canonicalNumber(String(s).trim()));
+  return Number.isFinite(n) ? n : null;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Извлечение узлов (фаза 2) — введённые/предпосчитанные значения уровней.
+// ─────────────────────────────────────────────────────────────
+
+export interface AggregateNode {
+  /** Путь значений ключевых колонок от корня до узла. */
+  path: string[];
+  /** Уровень = глубина в каскаде (индекс самого правого ключа). */
+  level: number;
+  /** Метка узла (последний элемент пути). */
+  label: string;
+  /** Это строка «Итого/Всего»? */
+  isTotal: boolean;
+  /** Введённые значения метрик по составному имени колонки. */
+  values: Record<string, number | null>;
+}
+
+/** Стабильный ключ узла из пути (для словаря узлов). */
+export function nodePathKey(path: string[]): string {
+  return path.join('');
+}
+
+/**
+ * Извлекает УЗЛЫ агрегата (промежуточные строки-уровни и «Итого») с их
+ * введёнными метриками — фаза 2. Листья пропускаются (их значения считает
+ * движок по таблице). Путь узла собирается carry-forward, как в flattenLeaves.
+ */
+export function extractNodes(
+  matrix: string[][],
+  config: AggregateLayoutConfig
+): AggregateNode[] {
+  const { headerRows, keyColumns, empty, totalKeywords } = config;
+  const headerMatrix = matrix.slice(0, headerRows);
+  const dataRows = matrix.slice(headerRows);
+  const columns = buildColumns(headerMatrix, keyColumns, dataRows, empty);
+  const classified = classifyRows(dataRows, keyColumns, { empty, totalKeywords });
+  const metricCols = columns.filter(c => c.role === 'metric');
+
+  const currentKeys: string[] = [];
+  const nodes: AggregateNode[] = [];
+
+  for (const row of classified) {
+    if (row.level >= 0) {
+      for (let i = 0; i < keyColumns.length; i++) {
+        const v = row.cells[keyColumns[i]] ?? '';
+        if (!isEmptyCell(v, empty)) currentKeys[i] = String(v).trim();
+      }
+      currentKeys.length = row.level + 1;
+    }
+    if (row.kind === 'leaf') continue;
+
+    // узел/итого: путь + введённые значения метрик
+    const path = row.level >= 0 ? currentKeys.slice(0, row.level + 1) : [row.label];
+    const values: Record<string, number | null> = {};
+    for (const col of metricCols) {
+      values[col.fullName] = parseMetricValue(row.cells[col.index], empty);
+    }
+    nodes.push({
+      path,
+      level: row.level,
+      label: row.label,
+      isTotal: row.kind === 'total',
+      values,
+    });
+  }
+  return nodes;
+}
+
 /** Экранирует поле CSV (кавычки/запятая/перевод строки). */
 function csvField(s: string): string {
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

@@ -39,6 +39,9 @@ export {
   proposeGroups,
   flattenLeaves,
   toAggregateCsv,
+  extractNodes,
+  parseMetricValue,
+  nodePathKey,
 } from './lib/aggregate-layout';
 export { readAggregateMatrix } from './lib/file-preview';
 export type { AggregateMatrix } from './lib/file-preview';
@@ -52,4 +55,5 @@ export type {
   ProposedGroup,
   AggregateLayoutConfig,
   FlattenResult,
+  AggregateNode,
 } from './lib/aggregate-layout';
