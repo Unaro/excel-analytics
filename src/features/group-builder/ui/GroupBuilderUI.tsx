@@ -13,6 +13,20 @@ import { DragDropList, RenderItemProps } from '@/shared/ui/drag-drop-list';
 import { MetricRow } from './MetricRow';
 import type { GroupBuilderUIProps, FormMetricState } from '../model/types';
 
+/** Цвет точки-индикатора по классификации колонки. */
+const CLASSIFICATION_DOT: Record<string, string> = {
+  numeric: 'bg-blue-400',
+  date: 'bg-purple-400',
+  categorical: 'bg-emerald-400',
+  ignore: 'bg-slate-300 dark:bg-slate-600',
+};
+const CLASSIFICATION_LABEL: Record<string, string> = {
+  numeric: 'Число',
+  date: 'Дата',
+  categorical: 'Категория',
+  ignore: 'Игнорируется',
+};
+
 export function GroupBuilderUI({ builder, mode, onSave }: GroupBuilderUIProps) {
   const {
     name, setName, selectedMetrics, addMetricToGroup,
@@ -92,6 +106,33 @@ export function GroupBuilderUI({ builder, mode, onSave }: GroupBuilderUIProps) {
             </div>
           </div>
         </div>
+
+        {/* Доступные поля под заданный контекст — полоса на всю ширину.
+            Показываем, только когда задан контекст данных. */}
+        {columnSearchQuery.trim() && (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 p-4 -mt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                <Filter size={12} /> Доступные поля
+              </h4>
+              <span className="text-xs text-slate-400">{availableColumns.length} шт.</span>
+            </div>
+            {availableColumns.length === 0 ? (
+              <p className="text-sm text-slate-400">Нет колонок под этот контекст — измените запрос.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto">
+                {availableColumns.map(c => (
+                  <span key={c.columnName}
+                    title={`${c.columnName} · ${CLASSIFICATION_LABEL[c.classification] ?? c.classification}`}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-700 dark:text-slate-200">
+                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${CLASSIFICATION_DOT[c.classification] ?? 'bg-slate-300'}`} />
+                    {c.displayName}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
