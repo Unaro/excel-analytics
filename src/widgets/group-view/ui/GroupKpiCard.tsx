@@ -3,6 +3,7 @@ import { memo } from 'react';
 import { Calculator, Check } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { cn } from '@/shared/lib/utils';
+import { formatRu } from '@/shared/lib/utils/format';
 import { VirtualMetricValue } from '@/entities/metric';
 
 interface GroupKpiCardProps {
@@ -74,7 +75,7 @@ export const GroupKpiCard = memo(function GroupKpiCard({
         </div>
         {recordCount > 0 && (
           <div className="text-[10px] text-slate-400 mt-1">
-            {recordCount.toLocaleString('ru-RU')} записей
+            {formatRu(recordCount)} записей
           </div>
         )}
       </div>

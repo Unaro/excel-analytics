@@ -6,6 +6,7 @@ import * as Popover from '@radix-ui/react-popover';
 import { cn } from '@/shared/lib/utils';
 import { METRIC_COLOR_HEX, MetricColor } from '@/shared/lib/utils/metric-colors';
 import { FormattingRule } from '@/shared/lib/utils/formatting-rules';
+import { formatRu } from '@/shared/lib/utils/format';
 
 function getOperatorLabel(op: string): string {
   switch (op) {
@@ -114,8 +115,8 @@ export const ThresholdPopup = memo(function ThresholdPopup({
               const color = METRIC_COLOR_HEX[entry.rule.color];
               const op = getOperatorLabel(entry.rule.operator);
               const text = entry.rule.operator === 'between' && entry.rule.value2 != null
-                ? `${entry.rule.value.toLocaleString('ru-RU')} – ${entry.rule.value2.toLocaleString('ru-RU')}`
-                : `${op} ${entry.rule.value.toLocaleString('ru-RU')}`;
+                ? `${formatRu(entry.rule.value)} – ${formatRu(entry.rule.value2)}`
+                : `${op} ${formatRu(entry.rule.value)}`;
 
               return (
                 <div

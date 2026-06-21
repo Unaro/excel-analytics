@@ -8,7 +8,7 @@ import { Card } from '@/shared/ui/card';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { getColorForValue } from '@/shared/lib/utils/metric-colors';
-import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { formatCompactNumber, formatRu } from '@/shared/lib/utils/format';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
@@ -79,7 +79,7 @@ export const GroupBarChart = memo(function GroupBarChart({
                         </span>
                         <span className="font-mono font-bold">
                           {typeof entry.value === 'number'
-                            ? entry.value.toLocaleString('ru-RU')
+                            ? formatRu(entry.value)
                             : String(entry.value ?? '—')}
                         </span>
                       </div>

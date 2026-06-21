@@ -25,7 +25,7 @@ import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
-import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { formatCompactNumber, formatRu } from '@/shared/lib/utils/format';
 import { checkRule, COLOR_STYLES, toDisplayScale } from '@/shared/lib/utils/metric-colors';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
@@ -321,7 +321,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                 fontSize: 12,
               }}
               formatter={(value) =>
-                typeof value === 'number' ? value.toLocaleString('ru-RU') : '—'
+                typeof value === 'number' ? formatRu(value) : '—'
               }
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />

@@ -9,6 +9,7 @@ import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
+import { formatRu } from '@/shared/lib/utils/format';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -82,7 +83,7 @@ export const GroupRadarChart = memo(function GroupRadarChart({
               return (
                 <Radar
                   key={`threshold-${gi}`}
-                  name={`Порог: ${group.y.toLocaleString('ru-RU')}`}
+                  name={`Порог: ${formatRu(group.y)}`}
                   dataKey={thresholdKey}
                   stroke={group.primaryColor}
                   strokeWidth={group.isOverlap ? 2.5 : 2}
@@ -150,7 +151,7 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                         </span>
                         <span className="font-mono font-bold">
                           {typeof entry.value === 'number'
-                            ? entry.value.toLocaleString('ru-RU')
+                            ? formatRu(entry.value)
                             : String(entry.value ?? '—')}
                         </span>
                       </div>

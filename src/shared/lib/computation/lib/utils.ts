@@ -83,28 +83,43 @@ export function getActiveFilter(
  * Собирает VirtualMetricValue из сырого числа: форматирование по настройкам
  * виртуальной метрики + ссылка на метрику-источник.
  */
-export function buildVirtualMetricValue(
-  vm: {
+export function buildGroupVirtualMetrics(
+  virtualMetrics: ReadonlyArray<{
     id: string;
     name: string;
     displayFormat: string;
     decimalPlaces: number;
     unit?: string;
+  }>,
+  cfg: {
+    groupId: string;
+    virtualMetricBindings?: ReadonlyArray<{ virtualMetricId: string; metricId: string }>;
   },
-  value: number | null
-): VirtualMetricValue {
-  return {
-    virtualMetricId: vm.id,
-    virtualMetricName: vm.name,
-    value,
-    formattedValue: formatValue(
-      value,
-      vm.displayFormat,
-      vm.decimalPlaces,
-      vm.unit
-    ),
-    sourceMetricId: '',
-  };
+  processed: Record<string, number | null>
+): VirtualMetricValue[] {
+  return virtualMetrics.map(vm => {
+    const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
+    if (!binding) {
+      // Метрика не привязана в этой группе — пустое значение-заглушка.
+      return {
+        virtualMetricId: vm.id,
+        virtualMetricName: vm.name,
+        value: null,
+        formattedValue: '—',
+        sourceMetricId: '',
+      };
+    }
+    // Алиас колонки результата: `${groupId}__${metricId}` (см. query-compiler).
+    const alias = `${cfg.groupId}__${binding.metricId}`;
+    const numericValue = typeof processed[alias] === 'number' ? processed[alias] : null;
+    return {
+      virtualMetricId: vm.id,
+      virtualMetricName: vm.name,
+      value: numericValue,
+      formattedValue: formatValue(numericValue, vm.displayFormat, vm.decimalPlaces, vm.unit),
+      sourceMetricId: binding.metricId,
+    };
+  });
 }
 
 /**

@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import { ClientOnly } from '@/shared/ui/client-only';
 import { LoadingScreen } from '@/shared/ui/loading-screen';
 import { toast } from '@/shared/ui/toast';
+import { formatRu } from '@/shared/lib/utils/format';
 import { logger } from '@/shared/lib/logger';
 import { useDatasetStore } from '@/entities/dataset';
 import {
@@ -117,7 +118,7 @@ function ReferenceManagerContent() {
       const type = useReferenceTypeStore.getState().getType(typeId);
       if (!type) throw new Error('Тип не сохранился');
       const count = await buildDictionary(type);
-      toast.success(`Тип «${draft.name}» создан: ${count.toLocaleString('ru-RU')} записей`);
+      toast.success(`Тип «${draft.name}» создан: ${formatRu(count)} записей`);
       setDraft(null);
     } catch (err) {
       logger.error('[ReferenceManager] Save failed:', err);
@@ -133,7 +134,7 @@ function ReferenceManagerContent() {
     setRebuildingId(typeId);
     try {
       const count = await buildDictionary(type);
-      toast.success(`Словарь пересобран: ${count.toLocaleString('ru-RU')} записей`);
+      toast.success(`Словарь пересобран: ${formatRu(count)} записей`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Не удалось пересобрать словарь');
     } finally {
@@ -296,7 +297,7 @@ function ReferenceManagerContent() {
                     {type.keyColumn} <ArrowRight size={10} /> {type.displayColumn}
                   </span>
                   {type.entryCount !== undefined && (
-                    <span>{type.entryCount.toLocaleString('ru-RU')} записей</span>
+                    <span>{formatRu(type.entryCount)} записей</span>
                   )}
                   <span className="opacity-70">{NORMALIZATION_LABELS[type.keyNormalization]}</span>
                 </div>

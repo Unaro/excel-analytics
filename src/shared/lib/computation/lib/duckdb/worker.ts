@@ -5,7 +5,7 @@ import * as duckdb from '@duckdb/duckdb-wasm';
 import { tableFromIPC, tableFromJSON } from 'apache-arrow';
 import { compileQuery, BREAKDOWN_LIMIT } from '../query-compiler';
 import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
-import { getActiveFilter, formatValue } from '../utils';
+import { getActiveFilter, buildGroupVirtualMetrics, computeTotalRecordCount } from '../utils';
 import { transliterate } from '@/shared/lib/utils/translit';
 import { aggregateProcessedRows } from '../aggregation';
 import type { ClientComputeParams } from '../types';
@@ -625,18 +625,6 @@ self.onmessage = async (e: MessageEvent) => {
       const rows = breakdownTruncated ? allRows.slice(0, BREAKDOWN_LIMIT) : allRows;
       const processedRows = postProcessAggregates(rows, compiled);
 
-      const computeTotalRecordCount = (sqlRows: Record<string, unknown>[]): number => {
-        let total = 0;
-        for (const row of sqlRows) {
-          const rc = row['_record_count'];
-          if (typeof rc === 'number' && isFinite(rc)) {
-            total += rc;
-          } else if (typeof rc === 'bigint') {
-            total += Number(rc);
-          }
-        }
-        return total;
-      };
 
       const groups = dashboardGroupsConfig
         .filter(cfg => cfg.enabled)
@@ -663,35 +651,11 @@ self.onmessage = async (e: MessageEvent) => {
                       : typeof rowRc === 'bigint'
                         ? Number(rowRc)
                         : 0;
-                  const groupVirtualMetrics = virtualMetrics.map(vm => {
-                    const binding = cfg.virtualMetricBindings?.find(
-                      b => b.virtualMetricId === vm.id
-                    );
-                    if (!binding) {
-                      return {
-                        virtualMetricId: vm.id,
-                        virtualMetricName: vm.name,
-                        value: null,
-                        formattedValue: '—',
-                        sourceMetricId: '',
-                      };
-                    }
-                    const alias = `${cfg.groupId}__${binding.metricId}`;
-                    const numericValue =
-                      typeof processed[alias] === 'number' ? processed[alias] : null;
-                    return {
-                      virtualMetricId: vm.id,
-                      virtualMetricName: vm.name,
-                      value: numericValue,
-                      formattedValue: formatValue(
-                        numericValue,
-                        vm.displayFormat,
-                        vm.decimalPlaces,
-                        vm.unit
-                      ),
-                      sourceMetricId: binding.metricId,
-                    };
-                  });
+                  const groupVirtualMetrics = buildGroupVirtualMetrics(
+                    virtualMetrics,
+                    cfg,
+                    processed
+                  );
                   return { label, dateLabel, recordCount, virtualMetrics: groupVirtualMetrics };
                 })
                 .filter(item => item.label !== '')
@@ -708,37 +672,11 @@ self.onmessage = async (e: MessageEvent) => {
             summaryProcessed = processedRows[0] || {};
           }
 
-          const groupVirtualMetrics = virtualMetrics.map(vm => {
-            const binding = cfg.virtualMetricBindings?.find(
-              b => b.virtualMetricId === vm.id
-            );
-            if (!binding) {
-              return {
-                virtualMetricId: vm.id,
-                virtualMetricName: vm.name,
-                value: null,
-                formattedValue: '—',
-                sourceMetricId: '',
-              };
-            }
-            const alias = `${cfg.groupId}__${binding.metricId}`;
-            const numericValue =
-              typeof summaryProcessed[alias] === 'number'
-                ? summaryProcessed[alias]
-                : null;
-            return {
-              virtualMetricId: vm.id,
-              virtualMetricName: vm.name,
-              value: numericValue,
-              formattedValue: formatValue(
-                numericValue,
-                vm.displayFormat,
-                vm.decimalPlaces,
-                vm.unit
-              ),
-              sourceMetricId: binding.metricId,
-            };
-          });
+          const groupVirtualMetrics = buildGroupVirtualMetrics(
+            virtualMetrics,
+            cfg,
+            summaryProcessed
+          );
 
           return {
             groupId: cfg.groupId,

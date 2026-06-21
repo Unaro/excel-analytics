@@ -3,7 +3,7 @@ import type {
   IComputeEngine,
 } from '../types';
 import { compileQuery, BREAKDOWN_LIMIT } from '../query-compiler';
-import { getActiveFilter, formatValue, computeTotalRecordCount } from '../utils';
+import { getActiveFilter, buildGroupVirtualMetrics, computeTotalRecordCount } from '../utils';
 import { postProcessAggregates, recalculateFormulasOnAggregated } from '../post-process';
 import { decryptConfig } from '@/shared/lib/utils/crypto';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
@@ -90,27 +90,7 @@ export class PgEngine implements IComputeEngine {
       .map(cfg => {
         const groupDef = params.groups.find(g => g.id === cfg.groupId);
         const buildVirtualMetrics = (processed: Record<string, number | null>): VirtualMetricValue[] =>
-          virtualMetrics.map(vm => {
-            const binding = cfg.virtualMetricBindings?.find(b => b.virtualMetricId === vm.id);
-            if (!binding) {
-              return {
-                virtualMetricId: vm.id,
-                virtualMetricName: vm.name,
-                value: null,
-                formattedValue: '—',
-                sourceMetricId: '',
-              };
-            }
-            const alias = `${cfg.groupId}__${binding.metricId}`;
-            const numericValue = typeof processed[alias] === 'number' ? processed[alias] : null;
-            return {
-              virtualMetricId: vm.id,
-              virtualMetricName: vm.name,
-              value: numericValue,
-              formattedValue: formatValue(numericValue, vm.displayFormat, vm.decimalPlaces, vm.unit),
-              sourceMetricId: binding.metricId,
-            };
-          });
+          buildGroupVirtualMetrics(virtualMetrics, cfg, processed);
 
         const breakdown = hasGrouping
           ? processedRows

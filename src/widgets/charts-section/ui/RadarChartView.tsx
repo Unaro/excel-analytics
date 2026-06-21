@@ -8,6 +8,7 @@ import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import type { ChartComponentProps } from '../model/types';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
+import { formatRu } from '@/shared/lib/utils/format';
 
 const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
 
@@ -39,7 +40,7 @@ export const RadarChartView = memo(function RadarChartView({
           return (
             <Radar
               key={`threshold-${gi}`}
-              name={`Порог: ${group.y.toLocaleString('ru-RU')}`}
+              name={`Порог: ${formatRu(group.y)}`}
               dataKey={thresholdKey}
               stroke={group.primaryColor}
               strokeWidth={group.isOverlap ? 2.5 : 2}
@@ -109,7 +110,7 @@ export const RadarChartView = memo(function RadarChartView({
                     </span>
                     <span className="font-mono font-medium text-slate-900 dark:text-slate-200 ml-auto">
                       {typeof entry.value === 'number'
-                        ? entry.value.toLocaleString('ru-RU')
+                        ? formatRu(entry.value)
                         : String(entry.value ?? '—')}
                     </span>
                   </div>

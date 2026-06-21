@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, ReferenceLine, Label, Rectangle,
 } from 'recharts';
-import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { formatCompactNumber, formatRu } from '@/shared/lib/utils/format';
 import { getColorForValue } from '@/shared/lib/utils/metric-colors';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
@@ -60,7 +60,7 @@ export const BarChartView = memo(function BarChartView({
                     </span>
                     <span className="font-mono font-medium text-slate-900 dark:text-slate-200 ml-auto">
                       {typeof entry.value === 'number'
-                        ? entry.value.toLocaleString('ru-RU')
+                        ? formatRu(entry.value)
                         : String(entry.value ?? '—')}
                     </span>
                   </div>
