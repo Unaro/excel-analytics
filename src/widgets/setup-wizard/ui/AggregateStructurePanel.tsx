@@ -139,10 +139,19 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
     return m;
   }, [columns]);
   // Кандидаты в ключи: не-метрики + уже выбранные ключи. Метрики (их сотни)
-  // не показываем — каскад читаемее, а ключами они быть не могут.
-  const keyCandidates = useMemo(
-    () => columns.filter(c => c.role !== 'metric' || keyColumns.includes(c.index)),
+  // по умолчанию скрыты — каскад читаемее. Но числовая колонка-ключ (напр.
+  // «номер района» 1,2,3…) детектится как метрика, поэтому даём её открыть.
+  const [showAllKeyCols, setShowAllKeyCols] = useState(false);
+  const hiddenMetricCount = useMemo(
+    () => columns.filter(c => c.role === 'metric' && !keyColumns.includes(c.index)).length,
     [columns, keyColumns]
+  );
+  const keyCandidates = useMemo(
+    () =>
+      showAllKeyCols
+        ? columns
+        : columns.filter(c => c.role !== 'metric' || keyColumns.includes(c.index)),
+    [columns, keyColumns, showAllKeyCols]
   );
 
   // ── Шаблоны-первыми: пользователь создаёт шаблоны логических показателей и
@@ -256,8 +265,19 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
 
       {/* Каскад ключевых колонок */}
       <div className="space-y-2">
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
-          <GitBranch size={12} /> Ключевые колонки (каскад уровней)
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
+            <GitBranch size={12} /> Ключевые колонки (каскад уровней)
+          </div>
+          {(hiddenMetricCount > 0 || showAllKeyCols) && (
+            <button
+              type="button"
+              onClick={() => setShowAllKeyCols(v => !v)}
+              className="text-[11px] font-medium text-indigo-600 hover:text-indigo-500 shrink-0"
+            >
+              {showAllKeyCols ? 'Скрыть числовые' : `+ числовые колонки (${hiddenMetricCount})`}
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap gap-1.5">
           {keyCandidates.map(col => {
@@ -288,7 +308,8 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
         </div>
         <p className="text-[11px] text-slate-400">
           Глубина строки = самый правый заполненный ключ. Лист = заполнен самый глубокий ключ.
-          Колонки-метрики скрыты — ключами могут быть только не-числовые колонки.
+          Числовые колонки скрыты; если ключ — число (напр. номер района),
+          нажмите «+ числовые колонки» и отметьте его.
         </p>
       </div>
 
