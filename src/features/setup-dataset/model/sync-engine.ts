@@ -46,7 +46,8 @@ import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useAggregateNodesStore } from '@/entities/aggregate-nodes';
 import { DatasetRow } from '@/shared/lib/types';
 import type { ColumnClassification } from '@/shared/lib/types';
-import type { AggregateNode } from '@/shared/lib/types/aggregate';
+import type { AggregateNode, AggregateTemplateSpec } from '@/shared/lib/types/aggregate';
+import type { DisplayFormat } from '@/entities/metric';
 import type { ImportParams } from '../lib/file-preview';
 import { readAggregateMatrix } from '../lib/file-preview';
 import {
@@ -70,7 +71,8 @@ function createAggregateGroups(
   columns: AggregateColumn[],
   excludeGroups?: string[],
   metricTemplateNames?: Record<string, string>,
-  importUnassigned: boolean = true
+  importUnassigned: boolean = true,
+  templateSpecs?: AggregateTemplateSpec[]
 ): number {
   const byGroup = new Map<string, AggregateColumn[]>();
   for (const col of columns) {
@@ -85,23 +87,32 @@ function createAggregateGroups(
   const templateStore = useMetricTemplateStore.getState();
   const groupStore = useIndicatorGroupStore.getState();
 
+  // Спецификации шаблонов (формула + формат), заданные пользователем при импорте.
+  // Нет спеки для имени → дефолт SUM(value)/number (как раньше).
+  const specByName = new Map<string, AggregateTemplateSpec>();
+  for (const s of templateSpecs ?? []) specByName.set(s.name, s);
+  const aliasFor = (name: string): string => specByName.get(name)?.alias ?? 'value';
+
   // Общий шаблон на ЛОГИЧЕСКИЙ показатель (имя метрики). Переиспользуем
   // существующий с тем же именем+формулой (в т.ч. между импортами).
   const templateIdByName = new Map<string, string>();
   const templateFor = (name: string): string => {
     const cached = templateIdByName.get(name);
     if (cached) return cached;
+    const spec = specByName.get(name);
+    const formula = spec?.formula ?? 'SUM(value)';
     const existing = templateStore.templates.find(
-      t => t.name === name && t.formula === 'SUM(value)'
+      t => t.name === name && t.formula === formula
     );
     const id = existing
       ? existing.id
       : templateStore.addTemplate({
           name,
-          formula: 'SUM(value)',
-          dependencies: [{ type: 'field', alias: 'value' }],
-          displayFormat: 'number',
-          decimalPlaces: 2,
+          formula,
+          dependencies: [{ type: 'field', alias: aliasFor(name) }],
+          displayFormat: (spec?.displayFormat as DisplayFormat) ?? 'number',
+          decimalPlaces: spec?.decimalPlaces ?? 2,
+          unit: spec?.unit,
         });
     templateIdByName.set(name, id);
     return id;
@@ -123,8 +134,9 @@ function createAggregateGroups(
           id: nanoid(),
           templateId: templateFor(templateName),
           customName: display && display !== templateName ? display : undefined,
-          // Привязка — к УНИКАЛЬНОМУ внутреннему имени колонки (с префиксом группы).
-          fieldBindings: [{ id: nanoid(), fieldAlias: 'value', columnName: col.fullName }],
+          // Привязка алиаса формулы шаблона к УНИКАЛЬНОМУ внутреннему имени
+          // колонки (с префиксом группы). Одновходовая формула — один алиас.
+          fieldBindings: [{ id: nanoid(), fieldAlias: aliasFor(templateName), columnName: col.fullName }],
           metricBindings: [],
           enabled: true,
           order: i,
@@ -336,7 +348,8 @@ export async function syncFromFile(
         aggregateColumns,
         aggregate?.excludeGroups,
         aggregate?.metricTemplateNames,
-        aggregate?.importUnassignedMetrics ?? true
+        aggregate?.importUnassignedMetrics ?? true,
+        aggregate?.metricTemplateSpecs
       );
       logger.info(`[syncFromFile] Создано групп показателей: ${n}`);
     }

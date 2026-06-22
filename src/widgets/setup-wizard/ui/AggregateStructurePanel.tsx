@@ -1,9 +1,11 @@
 'use client';
 
 import { useMemo, useState, useEffect } from 'react';
-import { Layers, GitBranch, ListTree, Plus, X, Search } from 'lucide-react';
+import { Layers, GitBranch, ListTree, Plus, X, Search, Sigma } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { Input } from '@/shared/ui/input';
+import { Select, SelectOption } from '@/shared/ui/select';
+import { extractVariables } from '@/shared/lib/utils/formula';
 import {
   detectHeaderRows,
   detectKeyColumns,
@@ -12,6 +14,7 @@ import {
   buildHierarchyPreview,
   type AggregateMatrix,
   type AggregateLayoutConfig,
+  type AggregateTemplateSpec,
   type AggregateColumn,
   type ColumnRole,
   type EmptyConfig,
@@ -43,6 +46,44 @@ interface DraftTemplate {
   name: string;
   /** Привязанные колонки (по fullName). Колонка — максимум в одном шаблоне. */
   columns: string[];
+  /** Формула шаблона (одновходовая). Дефолт `SUM(value)`. */
+  formula: string;
+  /** Формат отображения (значение DisplayFormat). */
+  displayFormat: string;
+  /** Знаков после запятой. */
+  decimalPlaces: number;
+  /** Единица измерения. */
+  unit: string;
+}
+
+/** Дефолтная формула шаблона — сумма одного поля. */
+const DEFAULT_FORMULA = 'SUM(value)';
+
+/** Быстрый выбор агрегации — пишет `FN(value)`. */
+const AGG_FUNCS = ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'MEDIAN'] as const;
+
+/** Форматы отображения (значения DisplayFormat) + подписи. */
+const FORMAT_OPTIONS: { value: string; label: string }[] = [
+  { value: 'number', label: 'Число (1 234)' },
+  { value: 'decimal', label: 'Дробное (1 234,56)' },
+  { value: 'percent', label: 'Процент: доля → % (0,57 → 57%)' },
+  { value: 'percent_raw', label: 'Процент: готовое (57 → 57%)' },
+  { value: 'currency', label: 'Денежное (1 234,56)' },
+  { value: 'scientific', label: 'Научное (1.2e3)' },
+];
+
+/**
+ * Разбор формулы шаблона при импорте. Фаза 1 — только ОДНОВХОДОВЫЕ: ровно один
+ * алиас поля (к нему привяжется колонка). 0 алиасов или >1 — пока не поддержано.
+ */
+function analyzeFormula(formula: string): { valid: boolean; alias: string | null; error?: string } {
+  const f = formula.trim();
+  if (!f) return { valid: false, alias: null, error: 'Пустая формула' };
+  const vars = extractVariables(f);
+  if (vars.length === 0) return { valid: false, alias: null, error: 'Нет поля в формуле' };
+  if (vars.length > 1)
+    return { valid: false, alias: null, error: `Несколько полей (${vars.join(', ')}) — пока только одно` };
+  return { valid: true, alias: vars[0] };
 }
 
 /** Рекурсивный рендер дерева иерархии (предпросмотр). */
@@ -176,12 +217,17 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
     const name = newTemplateName.trim();
     if (!name) return;
     const id = `tpl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
-    setTemplates(prev => [...prev, { id, name, columns: [] }]);
+    setTemplates(prev => [
+      ...prev,
+      { id, name, columns: [], formula: DEFAULT_FORMULA, displayFormat: 'number', decimalPlaces: 2, unit: '' },
+    ]);
     setSearchByTemplate(prev => ({ ...prev, [id]: name })); // поиск преднабит именем
     setNewTemplateName('');
   };
   const renameTemplate = (id: string, name: string) =>
     setTemplates(prev => prev.map(t => (t.id === id ? { ...t, name } : t)));
+  const patchTemplate = (id: string, patch: Partial<DraftTemplate>) =>
+    setTemplates(prev => prev.map(t => (t.id === id ? { ...t, ...patch } : t)));
   const removeTemplate = (id: string) =>
     setTemplates(prev => prev.filter(t => t.id !== id));
   const assignColumns = (id: string, fulls: string[]) =>
@@ -207,6 +253,28 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
     return map;
   }, [templates, metricColumnSet]);
 
+  // Спецификации шаблонов (формула + формат) для импорта. Только шаблоны с
+  // именем и валидной одновходовой формулой; иначе createAggregateGroups
+  // откатится на дефолт SUM(value).
+  const metricTemplateSpecs = useMemo<AggregateTemplateSpec[]>(() => {
+    const specs: AggregateTemplateSpec[] = [];
+    for (const t of templates) {
+      const name = t.name.trim();
+      if (!name) continue;
+      const a = analyzeFormula(t.formula);
+      if (!a.valid || !a.alias) continue;
+      specs.push({
+        name,
+        formula: t.formula.trim(),
+        alias: a.alias,
+        displayFormat: t.displayFormat,
+        decimalPlaces: t.decimalPlaces,
+        unit: t.unit.trim() || undefined,
+      });
+    }
+    return specs;
+  }, [templates]);
+
   // Сообщаем разметку наверх — для импорта.
   useEffect(() => {
     onLayoutChange?.({
@@ -216,8 +284,9 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       excludeGroups: Array.from(excludedGroups),
       metricTemplateNames,
       importUnassignedMetrics: importUnassigned,
+      metricTemplateSpecs,
     });
-  }, [headerRows, keyColumns, emptyCfg, excludedGroups, metricTemplateNames, importUnassigned, onLayoutChange]);
+  }, [headerRows, keyColumns, emptyCfg, excludedGroups, metricTemplateNames, importUnassigned, metricTemplateSpecs, onLayoutChange]);
 
   const toggleKey = (index: number) =>
     setKeyColumns(prev =>
@@ -487,6 +556,7 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                 ? unassignedColumns.filter(c => c.fullName.toLowerCase().includes(q))
                 : unassignedColumns;
               const shown = matches.slice(0, 40);
+              const formulaInfo = analyzeFormula(t.formula);
               return (
                 <div
                   key={t.id}
@@ -540,6 +610,91 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                       })}
                     </div>
                   )}
+
+                  {/* Формула и формат шаблона (одновходовая) */}
+                  <details className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40">
+                    <summary className="cursor-pointer select-none px-2.5 py-1.5 text-[11px] font-medium text-slate-500 flex items-center gap-1.5">
+                      <Sigma size={12} className="text-indigo-500" />
+                      Формула и формат
+                      <span className="ml-auto font-mono text-[10px] text-slate-400 truncate max-w-[150px]">
+                        {t.formula}
+                      </span>
+                    </summary>
+                    <div className="px-2.5 pb-2.5 pt-1 space-y-2">
+                      <div className="flex flex-wrap gap-1">
+                        {AGG_FUNCS.map(fn => {
+                          const active = t.formula.trim() === `${fn}(value)`;
+                          return (
+                            <button
+                              key={fn}
+                              type="button"
+                              onClick={() => patchTemplate(t.id, { formula: `${fn}(value)` })}
+                              className={cn(
+                                'px-2 py-0.5 rounded text-[11px] font-medium border transition-colors',
+                                active
+                                  ? 'bg-indigo-600 text-white border-indigo-600'
+                                  : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
+                              )}
+                            >
+                              {fn}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <input
+                        value={t.formula}
+                        onChange={e => patchTemplate(t.id, { formula: e.target.value })}
+                        spellCheck={false}
+                        className={cn(
+                          'w-full h-7 px-2 text-[12px] font-mono rounded border bg-white dark:bg-slate-950 outline-none focus:ring-1',
+                          formulaInfo.valid
+                            ? 'border-slate-200 dark:border-slate-700 focus:ring-indigo-500'
+                            : 'border-rose-300 dark:border-rose-800 focus:ring-rose-500'
+                        )}
+                      />
+                      {formulaInfo.valid ? (
+                        <p className="text-[10px] text-slate-400">
+                          Каждая колонка привяжется к полю <code>{formulaInfo.alias}</code>.
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-rose-500">
+                          {formulaInfo.error}. При импорте будет использован <code>SUM(value)</code>.
+                        </p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2">
+                        <Select
+                          className="h-7 text-[11px] px-2 py-0"
+                          value={t.displayFormat}
+                          onChange={e => patchTemplate(t.id, { displayFormat: e.target.value })}
+                        >
+                          {FORMAT_OPTIONS.map(o => (
+                            <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
+                          ))}
+                        </Select>
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            min={0}
+                            max={10}
+                            value={t.decimalPlaces}
+                            title="Знаков после запятой"
+                            onChange={e => {
+                              const n = parseInt(e.target.value, 10);
+                              patchTemplate(t.id, { decimalPlaces: isNaN(n) ? 0 : Math.min(10, Math.max(0, n)) });
+                            }}
+                            className="h-7 w-14 px-2 text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                          <input
+                            value={t.unit}
+                            onChange={e => patchTemplate(t.id, { unit: e.target.value })}
+                            placeholder="ед."
+                            maxLength={10}
+                            className="h-7 flex-1 min-w-0 px-2 text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </details>
 
                   <div className="relative">
                     <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />

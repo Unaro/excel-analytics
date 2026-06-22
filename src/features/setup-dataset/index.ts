@@ -54,6 +54,7 @@ export type {
   HierarchyPreviewNode,
   ProposedGroup,
   AggregateLayoutConfig,
+  AggregateTemplateSpec,
   FlattenResult,
   AggregateNode,
 } from './lib/aggregate-layout';

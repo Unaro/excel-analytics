@@ -267,6 +267,18 @@ export const DatasetConfigExportSchema = z.object({
         excludeGroups: z.array(z.string()).optional(),
         metricTemplateNames: z.record(z.string(), z.string()).optional(),
         importUnassignedMetrics: z.boolean().optional(),
+        metricTemplateSpecs: z
+          .array(
+            z.object({
+              name: z.string(),
+              formula: z.string(),
+              alias: z.string(),
+              displayFormat: z.string(),
+              decimalPlaces: z.number(),
+              unit: z.string().optional(),
+            })
+          )
+          .optional(),
       })
       .optional(),
     groupMetricConfigs: z.record(
