@@ -7,9 +7,16 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { VirtualMetricValue } from '@/shared/lib/types/computation';
+import { formatValue } from '@/shared/lib/computation/lib/utils';
 
 /** Ориентир (знаменатель) нормализации по столбцу. */
 export type NormalizeBase = 'total' | 'max' | 'min' | 'mean';
+
+/** Настройка нормализации метрики: ориентир + точность для показа процента. */
+export interface NormalizeConfig {
+  base: NormalizeBase;
+  decimalPlaces?: number;
+}
 
 function finiteNumbers(values: ReadonlyArray<number | null | undefined>): number[] {
   return values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
@@ -60,23 +67,27 @@ export function normalizeColumn(
 }
 
 /**
- * Нормализует столбцы матрицы значений (ряды × метрики) по базам на метрику.
- * `baseByVmId`: `virtualMetricId` → база (нет записи = метрика не нормализуется).
- * Знаменатель каждого столбца считается по `rows` (= столбец текущего вида).
- * Возвращает новые ряды: для нормализуемых метрик `value` = доля, а
- * `formattedValue` = `'—'` (триггер переформата в ячейке по displayFormat).
- * Ряды без затронутых метрик возвращаются по ссылке (стабильность для memo).
+ * Нормализует столбцы матрицы значений (ряды × метрики) по конфигу на метрику.
+ * `configByVmId`: `virtualMetricId` → {база, точность} (нет записи = не трогаем).
+ * Знаменатель каждого столбца считается по `rows` (= столбец текущего вида),
+ * поэтому передавать сюда нужно ИМЕННО нормализуемые ряды (в группе — дети
+ * уровня, БЕЗ «Итого»: оно остаётся абсолютным и форматируется своим форматом).
+ *
+ * Для нормализуемых метрик: `value` = доля (для сортировки/окрашивания), а
+ * `formattedValue` сразу форматируется процентом — так строка-«Итого» и
+ * KPI-карточки, идущие мимо этого пасса, показывают абсолют в своём формате,
+ * а не «доля × формат-колонки». Ряды без затронутых метрик — по ссылке.
  */
 export function normalizeVmRows<T extends { virtualMetrics: VirtualMetricValue[] }>(
   rows: T[],
-  baseByVmId: Map<string, NormalizeBase>
+  configByVmId: Map<string, NormalizeConfig>
 ): T[] {
-  if (baseByVmId.size === 0 || rows.length === 0) return rows;
+  if (configByVmId.size === 0 || rows.length === 0) return rows;
   // Доли по каждому нормализуемому столбцу (в порядке rows).
   const ratiosByVm = new Map<string, (number | null)[]>();
-  for (const [vmId, base] of baseByVmId) {
+  for (const [vmId, cfg] of configByVmId) {
     const col = rows.map((r) => r.virtualMetrics.find((v) => v.virtualMetricId === vmId)?.value ?? null);
-    ratiosByVm.set(vmId, normalizeColumn(col, base));
+    ratiosByVm.set(vmId, normalizeColumn(col, cfg.base));
   }
   return rows.map((r, i) => {
     let changed = false;
@@ -84,7 +95,9 @@ export function normalizeVmRows<T extends { virtualMetrics: VirtualMetricValue[]
       const ratios = ratiosByVm.get(v.virtualMetricId);
       if (!ratios) return v;
       changed = true;
-      return { ...v, value: ratios[i], formattedValue: '—' };
+      const ratio = ratios[i];
+      const dp = configByVmId.get(v.virtualMetricId)?.decimalPlaces ?? 1;
+      return { ...v, value: ratio, formattedValue: formatValue(ratio, 'percent', dp) };
     });
     return changed ? { ...r, virtualMetrics: vms } : r;
   });

@@ -710,11 +710,9 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                         <Select
                           className="h-7 text-[11px] px-2 py-0 mt-0.5"
                           value={t.normalizeBy}
-                          onChange={e => {
-                            const v = e.target.value as DraftTemplate['normalizeBy'];
-                            // «% от …» → сразу формат «процент» (можно сменить).
-                            patchTemplate(t.id, v ? { normalizeBy: v, displayFormat: 'percent' } : { normalizeBy: v });
-                          }}
+                          onChange={e =>
+                            patchTemplate(t.id, { normalizeBy: e.target.value as DraftTemplate['normalizeBy'] })
+                          }
                         >
                           {NORMALIZE_OPTIONS.map(o => (
                             <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>

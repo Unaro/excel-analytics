@@ -71,11 +71,11 @@ describe('normalizeVmRows', () => {
     { virtualMetrics: [vm('a', 30), vm('b', 3)] },
   ];
 
-  it('нормализует только метрики из baseByVmId, остальные нетронуты', () => {
-    const out = normalizeVmRows(rows, new Map([['a', 'total']]));
-    // 'a' → доля от итога (10/40, 30/40), formattedValue → '—' (переформат в ячейке)
-    expect(out[0].virtualMetrics[0]).toMatchObject({ virtualMetricId: 'a', value: 0.25, formattedValue: '—' });
-    expect(out[1].virtualMetrics[0]).toMatchObject({ virtualMetricId: 'a', value: 0.75, formattedValue: '—' });
+  it('нормализует только метрики из конфига; value=доля, formattedValue=процент', () => {
+    const out = normalizeVmRows(rows, new Map([['a', { base: 'total', decimalPlaces: 1 }]]));
+    // 'a' → доля от итога (10/40, 30/40), показ процентом (×100)
+    expect(out[0].virtualMetrics[0]).toMatchObject({ virtualMetricId: 'a', value: 0.25, formattedValue: '25%' });
+    expect(out[1].virtualMetrics[0]).toMatchObject({ virtualMetricId: 'a', value: 0.75, formattedValue: '75%' });
     // 'b' не в карте — без изменений (та же ссылка на объект)
     expect(out[0].virtualMetrics[1]).toBe(rows[0].virtualMetrics[1]);
   });
@@ -85,14 +85,15 @@ describe('normalizeVmRows', () => {
   });
 
   it('знаменатель — по столбцу переданных рядов (% от максимума)', () => {
-    const out = normalizeVmRows(rows, new Map([['a', 'max']]));
+    const out = normalizeVmRows(rows, new Map([['a', { base: 'max' }]]));
     expect(out[0].virtualMetrics[0].value).toBeCloseTo(10 / 30);
     expect(out[1].virtualMetrics[0].value).toBe(1);
+    expect(out[1].virtualMetrics[0].formattedValue).toBe('100%');
   });
 
   it('сохраняет прочие поля метрики (fromNode и т.п.)', () => {
     const withNode = [{ virtualMetrics: [{ ...vm('a', 10), fromNode: true }] }, { virtualMetrics: [vm('a', 30)] }];
-    const out = normalizeVmRows(withNode, new Map([['a', 'total']]));
+    const out = normalizeVmRows(withNode, new Map([['a', { base: 'total', decimalPlaces: 1 }]]));
     expect(out[0].virtualMetrics[0].fromNode).toBe(true);
     expect(out[0].virtualMetrics[0].value).toBe(0.25);
   });

@@ -19,7 +19,7 @@ import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
 import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/entities/aggregate-nodes';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
-import { useMetricTemplateStore, normalizeVmRows, type NormalizeBase } from '@/entities/metric';
+import { useMetricTemplateStore, normalizeVmRows, type NormalizeConfig } from '@/entities/metric';
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -103,19 +103,20 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     [summary]
   );
 
-  // Нормализация столбцов (% от итога/макс/…): база берётся с шаблона метрики.
-  // virtualMetricId → база. Денормализатор применяется к строкам разбивки;
-  // строка «Итого» остаётся абсолютной (она же — ориентир).
+  // Нормализация столбцов (% от итога/макс/…): конфиг берётся с шаблона метрики.
+  // virtualMetricId → {база, точность}. Применяется только к строкам разбивки
+  // (дети уровня); строка «Итого» остаётся абсолютной (она же — ориентир).
   const templates = useMetricTemplateStore(s => s.templates);
   const normalizeByVmId = useMemo(() => {
-    const byTemplate = new Map<string, NormalizeBase>();
-    for (const t of templates) if (t.normalizeBy) byTemplate.set(t.id, t.normalizeBy);
-    const map = new Map<string, NormalizeBase>();
+    const byTemplate = new Map<string, NormalizeConfig>();
+    for (const t of templates)
+      if (t.normalizeBy) byTemplate.set(t.id, { base: t.normalizeBy, decimalPlaces: t.decimalPlaces });
+    const map = new Map<string, NormalizeConfig>();
     if (byTemplate.size === 0) return map;
     for (const vm of summaryVirtualMetrics) {
       const templateId = metricTemplateIds[vm.sourceMetricId];
-      const base = templateId ? byTemplate.get(templateId) : undefined;
-      if (base) map.set(vm.virtualMetricId, base);
+      const cfg = templateId ? byTemplate.get(templateId) : undefined;
+      if (cfg) map.set(vm.virtualMetricId, cfg);
     }
     return map;
   }, [templates, summaryVirtualMetrics, metricTemplateIds]);

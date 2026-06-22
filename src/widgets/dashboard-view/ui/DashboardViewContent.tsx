@@ -16,7 +16,7 @@ import { useDashboardOrphanCleanup } from '../model';
 import { useDashboardDatasetSync } from '../model';
 import { useDashboardComputation } from '../model';
 import { useDashboardViewState } from '../model';
-import { flattenDashboardResult, normalizeVmRows, type NormalizeBase } from '@/entities/metric';
+import { flattenDashboardResult, normalizeVmRows, type NormalizeConfig } from '@/entities/metric';
 import { Loader2, CalendarClock } from 'lucide-react';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
@@ -149,8 +149,9 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   // overlay (введённые узлы входят в знаменатель). На breakdown/динамику и
   // record-count (DashboardStats) не влияет — только сводки групп в таблице/чартах.
   const normalizeByVmId = useMemo(() => {
-    const map = new Map<string, NormalizeBase>();
-    for (const vm of dashboardVirtualMetrics) if (vm.normalizeBy) map.set(vm.id, vm.normalizeBy);
+    const map = new Map<string, NormalizeConfig>();
+    for (const vm of dashboardVirtualMetrics)
+      if (vm.normalizeBy) map.set(vm.id, { base: vm.normalizeBy, decimalPlaces: vm.decimalPlaces });
     return map;
   }, [dashboardVirtualMetrics]);
   const displayResult = useMemo<DashboardComputationResult | null>(() => {

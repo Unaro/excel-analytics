@@ -54,8 +54,9 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
   const [displayFormat, setDisplayFormat] = useState<DisplayFormat>('number');
   const [decimalPlaces, setDecimalPlaces] = useState(2);
   const [unit, setUnit] = useState('');
-  // Кросс-столбцовая нормализация (пост-обработка): % от итога/макс/… Выбор
-  // «% от …» сразу ставит формат «процент» (можно поменять ниже).
+  // Кросс-столбцовая нормализация (пост-обработка): % от итога/макс/…
+  // Нормализованные строки показываются процентом независимо от формата ниже
+  // (формат остаётся для абсолютных значений — «Итого», KPI-карточки).
   const [normalizeBy, setNormalizeBy] = useState<'' | NormalizeBase>('');
 
   const handleSubmit = () => {
@@ -164,12 +165,7 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
             </label>
             <Select
               value={normalizeBy}
-              onChange={e => {
-                const v = e.target.value as '' | NormalizeBase;
-                setNormalizeBy(v);
-                // «% от …» → сразу формат «процент» (можно сменить вручную).
-                if (v) setDisplayFormat('percent');
-              }}
+              onChange={e => setNormalizeBy(e.target.value as '' | NormalizeBase)}
             >
               {NORMALIZE_OPTIONS.map(o => (
                 <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
@@ -177,9 +173,10 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
             </Select>
             {normalizeBy && (
               <p className="text-xs text-slate-400 mt-1.5">
-                Значение каждой строки делится на ориентир по столбцу текущего вида
-                (в группе — дети уровня, на дашборде — строки-группы). Строка «Итого»
-                остаётся абсолютной.
+                Каждая строка делится на ориентир по столбцу текущего вида
+                (в группе — дети уровня, на дашборде — строки-группы) и показывается
+                процентом. Строка «Итого» и KPI-карточки остаются абсолютными
+                (в выбранном выше формате).
               </p>
             )}
           </div>
