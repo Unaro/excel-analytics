@@ -27,6 +27,8 @@ import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { checkRule, COLOR_STYLES, toDisplayScale, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
+import { formatValue } from '@/shared/lib/computation/lib/utils';
+import { columnReference, normalizeValue, type NormalizeConfig } from '@/shared/lib/utils/normalize';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
@@ -61,6 +63,13 @@ export interface TimeBreakdownSectionProps {
    * в onRowClick, ключи строк и dataKey чарта уходит исходный label).
    */
   resolveLabel?: (label: string) => string;
+  /**
+   * Кросс-столбцовая нормализация (% от итога/макс/…): virtualMetricId →
+   * {база, точность}. В 2-D считается ПО ПЕРИОДАМ: доля от ориентира по столбцу
+   * каждой даты (обобщает 1-D). Ячейки и чарт — в процентах, Σ-столбец — общая
+   * доля строки (итог строки ÷ общий итог). Нет записи = абсолютные значения.
+   */
+  normalizeByVmId?: Map<string, NormalizeConfig>;
 }
 
 interface PivotRow {
@@ -80,6 +89,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   truncated,
   onRowClick,
   resolveLabel,
+  normalizeByVmId,
 }: TimeBreakdownSectionProps) {
   const display = useMemo(
     () => resolveLabel ?? ((label: string) => label),
@@ -95,6 +105,14 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
 
   const [metricId, setMetricId] = useState<string>('');
   const effectiveMetricId = metricId || metricOptions[0]?.id || '';
+
+  const currentMetric = metricOptions.find(m => m.id === effectiveMetricId);
+  // Нормализация выбранной метрики (2-D — по периодам, см. dateRefs ниже):
+  // доля показывается процентом, поэтому формат/масштаб → percent.
+  const normCfg = normalizeByVmId?.get(effectiveMetricId);
+  const isNormalized = !!normCfg;
+  const normDecimals = normCfg?.decimalPlaces ?? currentMetric?.decimalPlaces ?? 1;
+  const effectiveFormat = isNormalized ? 'percent' : currentMetric?.displayFormat;
 
   const [searchQuery, setSearchQuery] = useState('');
   // null — авто-режим top-N; Set — явный выбор пользователя
@@ -123,6 +141,10 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     return typeof vm?.value === 'number' ? vm.value : null;
   };
   const metricFormatted = (item: BreakdownItem | undefined): string => {
+    if (isNormalized) {
+      const r = cellRatio(item);
+      return r === null ? '—' : formatValue(r, 'percent', normDecimals);
+    }
     const vm = item?.virtualMetrics.find(v => v.virtualMetricId === effectiveMetricId);
     return vm?.formattedValue ?? '—';
   };
@@ -149,6 +171,29 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     return Array.from(byLabel.values()).sort((a, b) => b.total - a.total);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, effectiveMetricId]);
+
+  // Нормализация ПО ПЕРИОДАМ: ориентир (знаменатель) — по столбцу каждой даты
+  // (доля от суммы/макс/… по всем категориям внутри периода). Обобщает 1-D.
+  const dateRefs = useMemo(() => {
+    if (!isNormalized) return null;
+    const m = new Map<string, number | null>();
+    for (const date of dates) {
+      const col = rows.map(r => metricValue(r.cells.get(date)));
+      m.set(date, columnReference(col, normCfg!.base));
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNormalized, dates, rows, effectiveMetricId]);
+
+  // Общий итог метрики — знаменатель Σ-столбца (доля строки в общем итоге).
+  const grandTotal = useMemo(() => rows.reduce((s, r) => s + r.total, 0), [rows]);
+
+  // Значение ячейки для показа/окраски/чарта: абсолют или доля (по периоду).
+  const cellRatio = (item: BreakdownItem | undefined): number | null => {
+    const abs = metricValue(item);
+    if (!isNormalized || abs === null) return abs;
+    return normalizeValue(abs, dateRefs?.get(item?.dateLabel ?? '') ?? null);
+  };
 
   // Колесо мыши → горизонтальный скролл (вертикального колеса на широком
   // 2D-чарте/таблице нет, листать иначе неудобно). Нативный листенер с
@@ -186,18 +231,19 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
 
   const chartData = useMemo(() => {
     const rowByLabel = new Map(rows.map(r => [r.label, r]));
-    const fmt = currentMetric?.displayFormat;
     return dates.map(date => {
       const point: Record<string, string | number | null> = { date };
       for (const label of chartLabels) {
         // Масштаб отображения, как и порог-линия (group.y): percent доля → %.
-        const raw = metricValue(rowByLabel.get(label)?.cells.get(date));
-        point[label] = raw === null ? null : toDisplayScale(raw, fmt);
+        // Нормализованная метрика → доля по периоду, формат percent.
+        const cell = rowByLabel.get(label)?.cells.get(date);
+        const v = isNormalized ? cellRatio(cell) : metricValue(cell);
+        point[label] = v === null ? null : toDisplayScale(v, effectiveFormat);
       }
       return point;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dates, rows, chartLabels, effectiveMetricId]);
+  }, [dates, rows, chartLabels, effectiveMetricId, isNormalized]);
 
   const toggleLabel = (label: string) => {
     setSelectedLabels(prev => {
@@ -219,8 +265,6 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     );
   }, [rows, searchQuery, display]);
 
-  const currentMetric = metricOptions.find(m => m.id === effectiveMetricId);
-
   // Пороговые линии условного форматирования выбранной метрики
   // (метаданные метрики должны нести colorConfig)
   const thresholds = useMemo(
@@ -232,10 +276,10 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   /** CSS-классы окраски ячейки по правилам условного форматирования. */
   const cellColorClass = (item: BreakdownItem | undefined): string | null => {
     if (!colorRules || colorRules.length === 0) return null;
-    const v = metricValue(item);
+    const v = cellRatio(item);
     if (v === null) return null;
-    // Порог — в масштабе отображения (для percent в процентах)
-    const scaled = toDisplayScale(v, currentMetric?.displayFormat);
+    // Порог — в масштабе отображения (для percent/нормализации в процентах)
+    const scaled = toDisplayScale(v, effectiveFormat);
     const rule = colorRules.find(r => checkRule(scaled, r.operator, r.value, r.value2));
     return rule ? COLOR_STYLES[rule.color] : null;
   };
@@ -325,7 +369,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               }}
               formatter={(value) =>
                 typeof value === 'number'
-                  ? formatDisplayValue(value, currentMetric?.displayFormat, currentMetric?.unit)
+                  ? formatDisplayValue(value, effectiveFormat, isNormalized ? undefined : currentMetric?.unit)
                   : '—'
               }
             />
@@ -396,7 +440,11 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               <th
                 scope="col"
                 className="px-4 py-2 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider"
-                title={`Сумма «${currentMetric?.name ?? ''}» по строке`}
+                title={
+                  isNormalized
+                    ? `Доля «${currentMetric?.name ?? ''}» строки в общем итоге`
+                    : `Сумма «${currentMetric?.name ?? ''}» по строке`
+                }
               >
                 Σ
               </th>
@@ -447,7 +495,11 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                   );
                 })}
                 <td className="px-4 py-2 text-sm text-right font-mono font-semibold text-slate-900 dark:text-slate-100">
-                  {formatCompactNumber(row.total)}
+                  {isNormalized
+                    ? grandTotal
+                      ? formatValue(row.total / grandTotal, 'percent', normDecimals)
+                      : '—'
+                    : formatCompactNumber(row.total)}
                 </td>
               </tr>
             ))}

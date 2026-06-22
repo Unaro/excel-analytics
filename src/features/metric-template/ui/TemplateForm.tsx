@@ -9,7 +9,8 @@ import { Select, SelectOption } from '@/shared/ui/select';
 import { toast } from '@/shared/ui/toast';
 import { VisualFormulaBuilder } from './VisualFormulaBuilder';
 import { useFormulaValidation } from '@/entities/formula';
-import type { DisplayFormat, NormalizeBase } from '@/entities/metric';
+import type { DisplayFormat } from '@/entities/metric';
+import type { NormalizeBase } from '@/shared/lib/utils/normalize';
 
 interface TemplateFormProps {
   onCancel: () => void;

@@ -19,7 +19,8 @@ import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
 import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/entities/aggregate-nodes';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
-import { useMetricTemplateStore, normalizeVmRows, type NormalizeConfig } from '@/entities/metric';
+import { useMetricTemplateStore } from '@/entities/metric';
+import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -343,6 +344,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           truncated={summary?.breakdownTruncated}
           onRowClick={drillDown}
           resolveLabel={resolveLabel}
+          normalizeByVmId={normalizeByVmId}
         />
       )}
 

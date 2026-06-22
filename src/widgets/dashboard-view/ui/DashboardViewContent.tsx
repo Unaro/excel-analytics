@@ -16,7 +16,8 @@ import { useDashboardOrphanCleanup } from '../model';
 import { useDashboardDatasetSync } from '../model';
 import { useDashboardComputation } from '../model';
 import { useDashboardViewState } from '../model';
-import { flattenDashboardResult, normalizeVmRows, type NormalizeConfig } from '@/entities/metric';
+import { flattenDashboardResult } from '@/entities/metric';
+import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
 import { Loader2, CalendarClock } from 'lucide-react';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
@@ -310,6 +311,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
                     dateGranularity ? GRANULARITY_LABELS[dateGranularity] : ''
                   }`}
                   truncated={timeTruncated}
+                  normalizeByVmId={normalizeByVmId}
                 />
               </div>
             </ErrorBoundary>
