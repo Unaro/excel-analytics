@@ -19,6 +19,7 @@ import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
 import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/entities/aggregate-nodes';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
+import { useMetricTemplateStore, normalizeVmRows, type NormalizeBase } from '@/entities/metric';
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -102,6 +103,23 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     [summary]
   );
 
+  // Нормализация столбцов (% от итога/макс/…): база берётся с шаблона метрики.
+  // virtualMetricId → база. Денормализатор применяется к строкам разбивки;
+  // строка «Итого» остаётся абсолютной (она же — ориентир).
+  const templates = useMetricTemplateStore(s => s.templates);
+  const normalizeByVmId = useMemo(() => {
+    const byTemplate = new Map<string, NormalizeBase>();
+    for (const t of templates) if (t.normalizeBy) byTemplate.set(t.id, t.normalizeBy);
+    const map = new Map<string, NormalizeBase>();
+    if (byTemplate.size === 0) return map;
+    for (const vm of summaryVirtualMetrics) {
+      const templateId = metricTemplateIds[vm.sourceMetricId];
+      const base = templateId ? byTemplate.get(templateId) : undefined;
+      if (base) map.set(vm.virtualMetricId, base);
+    }
+    return map;
+  }, [templates, summaryVirtualMetrics, metricTemplateIds]);
+
   // Стиль чарта (столбец/линия) per-metric: храним в group-metric-config по
   // sourceMetricId. Карта для KPI-карточек + сеттер, пишущий в стор.
   const updateChartStyle = useGroupMetricConfigStore(s => s.updateChartStyle);
@@ -184,16 +202,24 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     });
   }, [useEntered, oneDimBreakdown, enteredByLabel]);
 
+  // Нормализация (% от итога/макс/…) — пост-пасс по столбцу детей текущего
+  // уровня, ПОСЛЕ overlay (введённые узлы входят в знаменатель как есть).
+  // Итого не трогаем (effectiveSummaryMetrics остаётся абсолютным).
+  const displayBreakdown = useMemo(
+    () => (effectiveBreakdown ? normalizeVmRows(effectiveBreakdown, normalizeByVmId) : effectiveBreakdown),
+    [effectiveBreakdown, normalizeByVmId]
+  );
+
   // Сортировка чартов идёт по эффективным значениям (введённые тоже участвуют).
   const chartBreakdown = useMemo(() => {
-    const base = effectiveBreakdown ?? [];
+    const base = displayBreakdown ?? [];
     // Сырые (уникальные) label — позиция категории на оси. Резолв словаря НЕ
     // применяем здесь: разные коды могут давать одно имя → дубль категорий →
     // recharts роняет ключи осей. Имя — через tickFormatter/тултип в чартах.
     return sortConfig
       ? sortBreakdown(base, sortConfig.key, sortConfig.direction)
       : base;
-  }, [effectiveBreakdown, sortConfig]);
+  }, [displayBreakdown, sortConfig]);
   const visibleChartBreakdown = useMemo(
     () => chartBreakdown.filter(item => !chartHiddenLabels.has(item.label)),
     [chartBreakdown, chartHiddenLabels]
@@ -321,7 +347,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
 
       {!isComputing && !isTwoDimensional && oneDimBreakdown && oneDimBreakdown.length > 0 && (
         <GroupBreakdownTable
-          breakdown={effectiveBreakdown ?? oneDimBreakdown}
+          breakdown={displayBreakdown ?? oneDimBreakdown}
           sortConfig={sortConfig}
           onSortChange={setSortConfig}
           summary={summary}

@@ -44,6 +44,8 @@ export const VirtualMetricSchema = z.object({
   order: z.number().int(),
   sourceMetricId: z.string().optional(),
   colorConfig: ColorConfigSchema.optional(),
+  /** Кросс-столбцовая нормализация — выводится из шаблона (см. MetricTemplate.normalizeBy). */
+  normalizeBy: z.enum(['total', 'max', 'min', 'mean']).optional(),
   // Стиль на чарте «Столбцы» (столбец/линия + стиль линии). Прокидывается из
   // group-metric-config в UI-слое, движком вычислений не используется.
   chartStyle: z.object({
@@ -136,6 +138,15 @@ export const MetricTemplateSchema = z.object({
    * редактирование в дашборде и в /groups/[id] меняет одни и те же правила.
    */
   colorConfig: ColorConfigSchema.optional(),
+  /**
+   * Кросс-столбцовая нормализация (пост-обработка результата): значение каждой
+   * строки делится на ориентир по столбцу текущего представления (итог/макс/
+   * мин/среднее). Нет = «как есть». Показ процентом делает displayFormat —
+   * «% от итога» = normalizeBy:'total' + percent. Знаменатель считается на
+   * рендере по столбцу конкретного вида (разбивка группы / строки дашборда),
+   * нигде не хранится.
+   */
+  normalizeBy: z.enum(['total', 'max', 'min', 'mean']).optional(),
   createdAt: z.number(),
   updatedAt: z.number(),
 });
@@ -276,6 +287,7 @@ export const DatasetConfigExportSchema = z.object({
               displayFormat: z.string(),
               decimalPlaces: z.number(),
               unit: z.string().optional(),
+              normalizeBy: z.string().optional(),
             })
           )
           .optional(),

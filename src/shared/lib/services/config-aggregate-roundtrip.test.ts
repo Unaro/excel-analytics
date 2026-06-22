@@ -37,9 +37,10 @@ describe('config export/import: aggregateConfig round-trip', () => {
           name: 'Потребность',
           formula: 'AVG(value)',
           alias: 'value',
-          displayFormat: 'decimal',
+          displayFormat: 'percent',
           decimalPlaces: 1,
           unit: 'чел.',
+          normalizeBy: 'total',
         },
       ],
     };

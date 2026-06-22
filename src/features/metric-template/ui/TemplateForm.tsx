@@ -9,7 +9,7 @@ import { Select, SelectOption } from '@/shared/ui/select';
 import { toast } from '@/shared/ui/toast';
 import { VisualFormulaBuilder } from './VisualFormulaBuilder';
 import { useFormulaValidation } from '@/entities/formula';
-import type { DisplayFormat } from '@/entities/metric';
+import type { DisplayFormat, NormalizeBase } from '@/entities/metric';
 
 interface TemplateFormProps {
   onCancel: () => void;
@@ -24,6 +24,15 @@ const FORMAT_LABELS: Record<DisplayFormat, string> = {
   currency: 'Денежное (1 234,56)',
   scientific: 'Научное (1.2e3)',
 };
+
+/** Курируемые кросс-столбцовые трансформации (доля от ориентира). */
+const NORMALIZE_OPTIONS: { value: '' | NormalizeBase; label: string }[] = [
+  { value: '', label: 'Как есть (абсолютные значения)' },
+  { value: 'total', label: '% от итога столбца' },
+  { value: 'max', label: '% от максимума' },
+  { value: 'mean', label: '% от среднего' },
+  { value: 'min', label: '% от минимума' },
+];
 
 /** Пояснение под выбранным форматом — особенно для двух режимов процента. */
 const FORMAT_HINTS: Partial<Record<DisplayFormat, string>> = {
@@ -45,6 +54,9 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
   const [displayFormat, setDisplayFormat] = useState<DisplayFormat>('number');
   const [decimalPlaces, setDecimalPlaces] = useState(2);
   const [unit, setUnit] = useState('');
+  // Кросс-столбцовая нормализация (пост-обработка): % от итога/макс/… Выбор
+  // «% от …» сразу ставит формат «процент» (можно поменять ниже).
+  const [normalizeBy, setNormalizeBy] = useState<'' | NormalizeBase>('');
 
   const handleSubmit = () => {
     if (!name || !formula || !isValid) return;
@@ -56,6 +68,7 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
       decimalPlaces,
       unit: unit.trim() || undefined,
       dependencies: [],
+      normalizeBy: normalizeBy || undefined,
     });
 
     toast.success('Шаблон создан');
@@ -144,6 +157,31 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
               placeholder="чел., м², ₽…"
               maxLength={10}
             />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">
+              Показывать как <span className="text-slate-400">(пост-обработка по столбцу)</span>
+            </label>
+            <Select
+              value={normalizeBy}
+              onChange={e => {
+                const v = e.target.value as '' | NormalizeBase;
+                setNormalizeBy(v);
+                // «% от …» → сразу формат «процент» (можно сменить вручную).
+                if (v) setDisplayFormat('percent');
+              }}
+            >
+              {NORMALIZE_OPTIONS.map(o => (
+                <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
+              ))}
+            </Select>
+            {normalizeBy && (
+              <p className="text-xs text-slate-400 mt-1.5">
+                Значение каждой строки делится на ориентир по столбцу текущего вида
+                (в группе — дети уровня, на дашборде — строки-группы). Строка «Итого»
+                остаётся абсолютной.
+              </p>
+            )}
           </div>
         </div>
       </div>

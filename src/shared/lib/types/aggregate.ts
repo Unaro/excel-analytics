@@ -41,6 +41,8 @@ export interface AggregateTemplateSpec {
   decimalPlaces: number;
   /** Единица измерения (необязательно). */
   unit?: string;
+  /** Кросс-столбцовая нормализация (значения NormalizeBase: total/max/min/mean). */
+  normalizeBy?: string;
 }
 
 /**

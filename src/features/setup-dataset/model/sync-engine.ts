@@ -113,6 +113,7 @@ function createAggregateGroups(
           displayFormat: (spec?.displayFormat as DisplayFormat) ?? 'number',
           decimalPlaces: spec?.decimalPlaces ?? 2,
           unit: spec?.unit,
+          normalizeBy: spec?.normalizeBy as 'total' | 'max' | 'min' | 'mean' | undefined,
         });
     templateIdByName.set(name, id);
     return id;

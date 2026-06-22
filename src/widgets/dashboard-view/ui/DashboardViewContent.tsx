@@ -16,7 +16,7 @@ import { useDashboardOrphanCleanup } from '../model';
 import { useDashboardDatasetSync } from '../model';
 import { useDashboardComputation } from '../model';
 import { useDashboardViewState } from '../model';
-import { flattenDashboardResult } from '@/entities/metric';
+import { flattenDashboardResult, normalizeVmRows, type NormalizeBase } from '@/entities/metric';
 import { Loader2, CalendarClock } from 'lucide-react';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
@@ -144,10 +144,24 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   const dashboardVirtualMetrics = effectiveVirtualMetrics;
   const viewState = useDashboardViewState(dashboardVirtualMetrics);
 
+  // Нормализация (% от итога/макс/…): столбец дашборда = строки-группы. База
+  // выводится из шаблона (normalizeBy на эффективной колонке). Пост-пасс ПОСЛЕ
+  // overlay (введённые узлы входят в знаменатель). На breakdown/динамику и
+  // record-count (DashboardStats) не влияет — только сводки групп в таблице/чартах.
+  const normalizeByVmId = useMemo(() => {
+    const map = new Map<string, NormalizeBase>();
+    for (const vm of dashboardVirtualMetrics) if (vm.normalizeBy) map.set(vm.id, vm.normalizeBy);
+    return map;
+  }, [dashboardVirtualMetrics]);
+  const displayResult = useMemo<DashboardComputationResult | null>(() => {
+    if (!effectiveResult || normalizeByVmId.size === 0) return effectiveResult;
+    return { ...effectiveResult, groups: normalizeVmRows(effectiveResult.groups, normalizeByVmId) };
+  }, [effectiveResult, normalizeByVmId]);
+
   // Плоские данные для ChartsSectionWidget
   const { breakdown, virtualMetrics } = useMemo(
-    () => flattenDashboardResult(effectiveResult, dashboardVirtualMetrics),
-    [effectiveResult, dashboardVirtualMetrics]
+    () => flattenDashboardResult(displayResult, dashboardVirtualMetrics),
+    [displayResult, dashboardVirtualMetrics]
   );
 
   // Данные секции динамики: серия — группа дашборда, точка — интервал даты.
@@ -289,7 +303,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
           )}
 
           {/* Обычный режим: чарты по сводкам групп */}
-          {!isTimeMode && effectiveResult && breakdown.length > 0 && (
+          {!isTimeMode && displayResult && breakdown.length > 0 && (
             <ErrorBoundary label="Графики" onReset={recalculate}>
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <ChartsSectionWidget
@@ -316,7 +330,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
           <ErrorBoundary label="Таблица метрик" onReset={recalculate}>
             <DashboardMetricsTable
               dashboardId={dashboardId}
-              groups={effectiveResult?.groups || []}
+              groups={displayResult?.groups || []}
               metrics={dashboardVirtualMetrics}
               loading={isComputing}
               hiddenMetricIds={viewState.hiddenMetricIds}

@@ -54,6 +54,8 @@ interface DraftTemplate {
   decimalPlaces: number;
   /** Единица измерения. */
   unit: string;
+  /** Кросс-столбцовая нормализация (total/max/min/mean) или '' = как есть. */
+  normalizeBy: '' | 'total' | 'max' | 'min' | 'mean';
 }
 
 /** Дефолтная формула шаблона — сумма одного поля. */
@@ -61,6 +63,15 @@ const DEFAULT_FORMULA = 'SUM(value)';
 
 /** Быстрый выбор агрегации — пишет `FN(value)`. */
 const AGG_FUNCS = ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'MEDIAN'] as const;
+
+/** Курируемые кросс-столбцовые трансформации (доля от ориентира). */
+const NORMALIZE_OPTIONS: { value: DraftTemplate['normalizeBy']; label: string }[] = [
+  { value: '', label: 'Как есть' },
+  { value: 'total', label: '% от итога' },
+  { value: 'max', label: '% от максимума' },
+  { value: 'mean', label: '% от среднего' },
+  { value: 'min', label: '% от минимума' },
+];
 
 /** Форматы отображения (значения DisplayFormat) + подписи. */
 const FORMAT_OPTIONS: { value: string; label: string }[] = [
@@ -219,7 +230,7 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
     const id = `tpl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
     setTemplates(prev => [
       ...prev,
-      { id, name, columns: [], formula: DEFAULT_FORMULA, displayFormat: 'number', decimalPlaces: 2, unit: '' },
+      { id, name, columns: [], formula: DEFAULT_FORMULA, displayFormat: 'number', decimalPlaces: 2, unit: '', normalizeBy: '' },
     ]);
     setSearchByTemplate(prev => ({ ...prev, [id]: name })); // поиск преднабит именем
     setNewTemplateName('');
@@ -270,6 +281,7 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
         displayFormat: t.displayFormat,
         decimalPlaces: t.decimalPlaces,
         unit: t.unit.trim() || undefined,
+        normalizeBy: t.normalizeBy || undefined,
       });
     }
     return specs;
@@ -693,6 +705,22 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                           />
                         </div>
                       </div>
+                      <label className="block text-[10px] font-medium text-slate-500">
+                        Показывать как
+                        <Select
+                          className="h-7 text-[11px] px-2 py-0 mt-0.5"
+                          value={t.normalizeBy}
+                          onChange={e => {
+                            const v = e.target.value as DraftTemplate['normalizeBy'];
+                            // «% от …» → сразу формат «процент» (можно сменить).
+                            patchTemplate(t.id, v ? { normalizeBy: v, displayFormat: 'percent' } : { normalizeBy: v });
+                          }}
+                        >
+                          {NORMALIZE_OPTIONS.map(o => (
+                            <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
+                          ))}
+                        </Select>
+                      </label>
                     </div>
                   </details>
 
