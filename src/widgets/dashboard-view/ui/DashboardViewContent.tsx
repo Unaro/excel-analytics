@@ -159,6 +159,18 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
     return { ...effectiveResult, groups: normalizeVmRows(effectiveResult.groups, normalizeByVmId) };
   }, [effectiveResult, normalizeByVmId]);
 
+  // Для чартов нормализованные метрики показываем процентом (ось+тултип в
+  // масштабе %); в таблице формат остаётся абсолютным.
+  const chartMetricConfigs = useMemo(
+    () =>
+      normalizeByVmId.size === 0
+        ? dashboardVirtualMetrics
+        : dashboardVirtualMetrics.map(vm =>
+            normalizeByVmId.has(vm.id) ? { ...vm, displayFormat: 'percent' as const } : vm
+          ),
+    [dashboardVirtualMetrics, normalizeByVmId]
+  );
+
   // Плоские данные для ChartsSectionWidget
   const { breakdown, virtualMetrics } = useMemo(
     () => flattenDashboardResult(displayResult, dashboardVirtualMetrics),
@@ -310,7 +322,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
                 <ChartsSectionWidget
                   breakdown={breakdown}
                   virtualMetrics={virtualMetrics}
-                  metricConfigs={dashboardVirtualMetrics}
+                  metricConfigs={chartMetricConfigs}
                   activeMetricIds={viewState.activeMetricIds}
                   chartTypes={viewState.chartTypes}
                   onActiveMetricIdsChange={viewState.setActiveMetricIds}

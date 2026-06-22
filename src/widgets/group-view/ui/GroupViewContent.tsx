@@ -211,6 +211,19 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     [effectiveBreakdown, normalizeByVmId]
   );
 
+  // Для чартов нормализованные метрики показываем процентом: чарт строит только
+  // доли-детей (без «Итого»), поэтому колоночный percent тут корректен (и ось,
+  // и тултип идут в масштабе %). В таблице формат остаётся абсолютным (Итого).
+  const chartMetricConfigs = useMemo(
+    () =>
+      normalizeByVmId.size === 0
+        ? virtualMetrics
+        : virtualMetrics.map(vm =>
+            normalizeByVmId.has(vm.id) ? { ...vm, displayFormat: 'percent' as const } : vm
+          ),
+    [virtualMetrics, normalizeByVmId]
+  );
+
   // Сортировка чартов идёт по эффективным значениям (введённые тоже участвуют).
   const chartBreakdown = useMemo(() => {
     const base = displayBreakdown ?? [];
@@ -339,7 +352,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         <GroupChartsPanel
           breakdown={visibleChartBreakdown}
           virtualMetrics={effectiveSummaryMetrics}
-          metricConfigs={virtualMetrics}
+          metricConfigs={chartMetricConfigs}
           activeMetricIds={activeMetricIds}
           chartTypes={chartTypes}
           resolveLabel={resolveLabel}
