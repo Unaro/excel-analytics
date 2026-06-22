@@ -380,7 +380,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               <th className="px-3 py-2 w-8" title="Серии на графике" />
               <th
                 scope="col"
-                className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sticky left-0 bg-slate-50 dark:bg-slate-900"
+                className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sticky left-0 z-20 bg-slate-50 dark:bg-slate-900"
               >
                 {dimensionTitle}
               </th>
@@ -414,15 +414,18 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                     aria-label={`Показать «${row.label}» на графике`}
                   />
                 </td>
+                {/* Липкая колонка: непрозрачный фон + z-10 (иначе ячейки дат
+                    просвечивают/наезжают при горизонтальном скролле), длинная
+                    метка обрезается (truncate + title). */}
                 <td
                   className={cn(
-                    'px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-indigo-50/40 dark:group-hover:bg-indigo-900/10',
+                    'px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-100 sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-indigo-50 dark:group-hover:bg-slate-800 max-w-[240px]',
                     onRowClick && 'cursor-pointer'
                   )}
                   onClick={() => onRowClick?.(row.label)}
                 >
-                  <span className="flex items-center gap-1">
-                    {display(row.label)}
+                  <span className="flex items-center gap-1 min-w-0">
+                    <span className="truncate" title={display(row.label)}>{display(row.label)}</span>
                     {onRowClick && (
                       <ChevronRight size={13} className="text-slate-300 group-hover:text-indigo-500 transition-colors shrink-0" />
                     )}
