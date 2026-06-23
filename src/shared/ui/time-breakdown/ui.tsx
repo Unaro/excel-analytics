@@ -362,16 +362,27 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               tickFormatter={(v: number) => formatCompactNumber(v)}
             />
             <Tooltip
-              contentStyle={{
-                backgroundColor: 'var(--tooltip-bg, #fff)',
-                borderRadius: 8,
-                fontSize: 12,
+              // Кастомный контент — иначе recharts рисует светлую плашку в тёмной
+              // теме (var(--tooltip-bg) нигде не задана). Тема — через dark:-классы.
+              content={(props) => {
+                const { active, payload, label } = props;
+                if (!active || !payload || !payload.length) return null;
+                return (
+                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
+                    <div className="font-bold text-slate-900 dark:text-white mb-2">{label}</div>
+                    {payload.map((entry, i) => (
+                      <div key={i} className="flex justify-between gap-3">
+                        <span style={{ color: entry.color ?? '#6366f1' }}>{display(String(entry.dataKey ?? ''))}</span>
+                        <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                          {typeof entry.value === 'number'
+                            ? formatDisplayValue(entry.value, effectiveFormat, isNormalized ? undefined : currentMetric?.unit)
+                            : '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
               }}
-              formatter={(value) =>
-                typeof value === 'number'
-                  ? formatDisplayValue(value, effectiveFormat, isNormalized ? undefined : currentMetric?.unit)
-                  : '—'
-              }
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             {thresholds.map((group, gi) => (
