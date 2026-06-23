@@ -91,6 +91,12 @@ export function planAggregateGroups(
   const specByName = new Map<string, AggregateTemplateSpec>();
   for (const s of templateSpecs ?? []) specByName.set(s.name, s);
   const aliasFor = (name: string): string => specByName.get(name)?.alias ?? DEFAULT_ALIAS;
+  // Служебные шаблоны: метрики не создаём, нужны только как операнды расчётных.
+  const serviceOnly = new Set<string>();
+  for (const s of templateSpecs ?? []) if (s.serviceOnly) serviceOnly.add(s.name);
+  // Логический показатель колонки: пользовательский шаблон или имя колонки.
+  const indicatorOf = (col: AggregateColumn): string =>
+    metricTemplateNames?.[col.fullName] || col.name || col.fullName;
 
   // Колонки-меры сгруппированы по верхнему заголовку (groupName).
   const byGroup = new Map<string, AggregateColumn[]>();
@@ -136,13 +142,22 @@ export function planAggregateGroups(
   for (const [groupName, cols] of byGroup) {
     if (exclude.has(groupName)) continue;
 
+    // Логический показатель → колонка этой группы (первая выигрывает).
+    // Используется и расчётными операндами (резолв по показателю).
+    const indicatorToCol = new Map<string, AggregateColumn>();
+    for (const c of cols) {
+      const ind = indicatorOf(c);
+      if (!indicatorToCol.has(ind)) indicatorToCol.set(ind, c);
+    }
+
     // Per-column метрики: колонка = метрика по одновходовой формуле.
+    // Служебные показатели (serviceOnly) в метрики НЕ выводим.
     const perColumn: Omit<PlannedMetric, 'order'>[] = cols
       // Колонки без пользовательского шаблона — только если разрешено.
       .filter(col => importUnassigned || !!metricTemplateNames?.[col.fullName])
+      .filter(col => !serviceOnly.has(indicatorOf(col)))
       .map(col => {
-        // Логический показатель: пользовательский шаблон, иначе имя колонки.
-        const templateName = metricTemplateNames?.[col.fullName] || col.name || col.fullName;
+        const templateName = indicatorOf(col);
         ensurePerColumnTemplate(templateName);
         // Имя метрики = имя колонки; если равно имени шаблона — не дублируем.
         const display = col.name || col.fullName;
@@ -153,16 +168,14 @@ export function planAggregateGroups(
         };
       });
 
-    // Расчётные метрики: раскрытие по группе — нужны ВСЕ колонки-операнды
-    // (по имени) в этой группе; иначе показатель в группе не создаётся.
-    const colByName = new Map<string, AggregateColumn>();
-    for (const c of cols) if (!colByName.has(c.name)) colByName.set(c.name, c);
+    // Расчётные метрики: раскрытие по группе — нужны ВСЕ операнды (по имени
+    // логического показателя) в этой группе; иначе показатель не создаётся.
     const calculated: Omit<PlannedMetric, 'order'>[] = [];
     for (const spec of calculatedSpecs ?? []) {
       const bindings: PlannedFieldBinding[] = [];
       let resolved = true;
       for (const op of spec.operands) {
-        const c = colByName.get(op.columnName);
+        const c = indicatorToCol.get(op.indicatorName);
         if (!c) { resolved = false; break; }
         bindings.push({ fieldAlias: op.alias, columnName: c.fullName });
       }

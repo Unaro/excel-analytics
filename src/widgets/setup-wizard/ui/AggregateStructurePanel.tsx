@@ -57,6 +57,8 @@ interface DraftTemplate {
   unit: string;
   /** Кросс-столбцовая нормализация (total/max/min/mean) или '' = как есть. */
   normalizeBy: '' | 'total' | 'max' | 'min' | 'mean';
+  /** Служебный: не выводить как метрику, только операнд расчётных показателей. */
+  serviceOnly: boolean;
 }
 
 /** Расчётный показатель: многополевая формула над ИМЕНАМИ колонок. */
@@ -248,7 +250,7 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
     const id = `tpl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
     setTemplates(prev => [
       ...prev,
-      { id, name, columns: [], formula: DEFAULT_FORMULA, displayFormat: 'number', decimalPlaces: 2, unit: '', normalizeBy: '' },
+      { id, name, columns: [], formula: DEFAULT_FORMULA, displayFormat: 'number', decimalPlaces: 2, unit: '', normalizeBy: '', serviceOnly: false },
     ]);
     setSearchByTemplate(prev => ({ ...prev, [id]: name })); // поиск преднабит именем
     setNewTemplateName('');
@@ -289,12 +291,14 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
   const removeCalcTemplate = (id: string) =>
     setCalcTemplates(prev => prev.filter(t => t.id !== id));
 
-  // Имена колонок-показателей (для выбора операндов расчётного показателя).
-  const columnNames = useMemo(() => {
+  // Имена логических показателей для операндов расчётных: имена per-column
+  // шаблонов (объединяют разные колонки групп) ∪ имена самих колонок.
+  const indicatorNames = useMemo(() => {
     const s = new Set<string>();
+    for (const t of templates) if (t.name.trim()) s.add(t.name.trim());
     for (const c of metricColumns) if (c.name) s.add(c.name);
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'ru'));
-  }, [metricColumns]);
+  }, [templates, metricColumns]);
 
   // fullName → имя шаблона для импорта (только колонки включённых групп,
   // привязанные к непустому шаблону). Непривязанные падают на имя колонки.
@@ -326,6 +330,7 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
         decimalPlaces: t.decimalPlaces,
         unit: t.unit.trim() || undefined,
         normalizeBy: t.normalizeBy || undefined,
+        serviceOnly: t.serviceOnly || undefined,
       });
     }
     return specs;
@@ -340,8 +345,8 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       if (!name) continue;
       const aliases = extractVariables(t.formula);
       if (aliases.length < 1) continue;
-      const operands = aliases.map(a => ({ alias: a, columnName: t.operands[a] }));
-      if (operands.some(o => !o.columnName)) continue; // не все алиасы привязаны
+      const operands = aliases.map(a => ({ alias: a, indicatorName: t.operands[a] }));
+      if (operands.some(o => !o.indicatorName)) continue; // не все алиасы привязаны
       out.push({
         name,
         formula: t.formula.trim(),
@@ -788,6 +793,18 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                           ))}
                         </Select>
                       </label>
+                      <label
+                        className="flex items-start gap-1.5 text-[10px] text-slate-500"
+                        title="Не выводить этот показатель как метрику — использовать только как операнд расчётных показателей (связь колонок групп по имени)."
+                      >
+                        <input
+                          type="checkbox"
+                          checked={t.serviceOnly}
+                          onChange={e => patchTemplate(t.id, { serviceOnly: e.target.checked })}
+                          className="mt-0.5"
+                        />
+                        <span>Служебный — только для связи расчётных (не создавать метрику)</span>
+                      </label>
                     </div>
                   </details>
 
@@ -953,8 +970,8 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                               patchCalcTemplate(t.id, { operands: { ...t.operands, [a]: e.target.value } })
                             }
                           >
-                            <SelectOption value="">— колонка —</SelectOption>
-                            {columnNames.map(n => (
+                            <SelectOption value="">— показатель —</SelectOption>
+                            {indicatorNames.map(n => (
                               <SelectOption key={n} value={n}>{n}</SelectOption>
                             ))}
                           </Select>

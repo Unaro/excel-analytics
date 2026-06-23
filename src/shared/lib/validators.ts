@@ -290,6 +290,7 @@ export const DatasetConfigExportSchema = z.object({
               decimalPlaces: z.number(),
               unit: z.string().optional(),
               normalizeBy: z.string().optional(),
+              serviceOnly: z.boolean().optional(),
             })
           )
           .optional(),
@@ -299,7 +300,7 @@ export const DatasetConfigExportSchema = z.object({
               name: z.string(),
               formula: z.string(),
               operands: z.array(
-                z.object({ alias: z.string(), columnName: z.string() })
+                z.object({ alias: z.string(), indicatorName: z.string() })
               ),
               displayFormat: z.string(),
               decimalPlaces: z.number(),
