@@ -28,7 +28,16 @@ import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { checkRule, COLOR_STYLES, toDisplayScale, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { formatValue } from '@/shared/lib/computation/lib/utils';
-import { columnReference, normalizeValue, type NormalizeConfig } from '@/shared/lib/utils/normalize';
+import { type NormalizeConfig } from '@/shared/lib/utils/normalize';
+import {
+  buildPivotDates,
+  buildPivotRows,
+  buildDateRefs,
+  pivotGrandTotal,
+  metricValueOf,
+  cellRatioOf,
+  type PivotRow,
+} from './pivot';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
@@ -70,14 +79,6 @@ export interface TimeBreakdownSectionProps {
    * доля строки (итог строки ÷ общий итог). Нет записи = абсолютные значения.
    */
   normalizeByVmId?: Map<string, NormalizeConfig>;
-}
-
-interface PivotRow {
-  label: string;
-  /** dateLabel → элемент breakdown */
-  cells: Map<string, BreakdownItem>;
-  /** Сумма выбранной метрики по строке (сортировка и top-N). */
-  total: number;
 }
 
 export const TimeBreakdownSection = memo(function TimeBreakdownSection({
@@ -136,10 +137,8 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     requestAnimationFrame(() => { syncingRef.current = false; });
   };
 
-  const metricValue = (item: BreakdownItem | undefined): number | null => {
-    const vm = item?.virtualMetrics.find(v => v.virtualMetricId === effectiveMetricId);
-    return typeof vm?.value === 'number' ? vm.value : null;
-  };
+  const metricValue = (item: BreakdownItem | undefined): number | null =>
+    metricValueOf(item, effectiveMetricId);
   const metricFormatted = (item: BreakdownItem | undefined): string => {
     if (isNormalized) {
       const r = cellRatio(item);
@@ -150,50 +149,26 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   };
 
   // Оси pivot: интервалы хронологически, строки по сумме метрики
-  const dates = useMemo(
-    () => Array.from(new Set(items.map(i => i.dateLabel ?? ''))).filter(Boolean).sort(),
-    [items]
-  );
+  const dates = useMemo(() => buildPivotDates(items), [items]);
 
-  const rows = useMemo<PivotRow[]>(() => {
-    const byLabel = new Map<string, PivotRow>();
-    for (const item of items) {
-      if (!item.dateLabel) continue;
-      let row = byLabel.get(item.label);
-      if (!row) {
-        row = { label: item.label, cells: new Map(), total: 0 };
-        byLabel.set(item.label, row);
-      }
-      row.cells.set(item.dateLabel, item);
-      const v = metricValue(item);
-      if (v !== null) row.total += v;
-    }
-    return Array.from(byLabel.values()).sort((a, b) => b.total - a.total);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, effectiveMetricId]);
+  const rows = useMemo<PivotRow[]>(
+    () => buildPivotRows(items, effectiveMetricId),
+    [items, effectiveMetricId]
+  );
 
   // Нормализация ПО ПЕРИОДАМ: ориентир (знаменатель) — по столбцу каждой даты
   // (доля от суммы/макс/… по всем категориям внутри периода). Обобщает 1-D.
-  const dateRefs = useMemo(() => {
-    if (!isNormalized) return null;
-    const m = new Map<string, number | null>();
-    for (const date of dates) {
-      const col = rows.map(r => metricValue(r.cells.get(date)));
-      m.set(date, columnReference(col, normCfg!.base));
-    }
-    return m;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isNormalized, dates, rows, effectiveMetricId]);
+  const dateRefs = useMemo(
+    () => (isNormalized ? buildDateRefs(rows, dates, effectiveMetricId, normCfg!.base) : null),
+    [isNormalized, dates, rows, effectiveMetricId, normCfg]
+  );
 
   // Общий итог метрики — знаменатель Σ-столбца (доля строки в общем итоге).
-  const grandTotal = useMemo(() => rows.reduce((s, r) => s + r.total, 0), [rows]);
+  const grandTotal = useMemo(() => pivotGrandTotal(rows), [rows]);
 
   // Значение ячейки для показа/окраски/чарта: абсолют или доля (по периоду).
-  const cellRatio = (item: BreakdownItem | undefined): number | null => {
-    const abs = metricValue(item);
-    if (!isNormalized || abs === null) return abs;
-    return normalizeValue(abs, dateRefs?.get(item?.dateLabel ?? '') ?? null);
-  };
+  const cellRatio = (item: BreakdownItem | undefined): number | null =>
+    cellRatioOf(item, effectiveMetricId, dateRefs);
 
   // Колесо мыши → горизонтальный скролл (вертикального колеса на широком
   // 2D-чарте/таблице нет, листать иначе неудобно). Нативный листенер с
