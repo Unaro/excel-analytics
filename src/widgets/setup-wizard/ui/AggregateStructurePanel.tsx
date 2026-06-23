@@ -15,6 +15,7 @@ import {
   type AggregateMatrix,
   type AggregateLayoutConfig,
   type AggregateTemplateSpec,
+  type CalculatedTemplateSpec,
   type AggregateColumn,
   type ColumnRole,
   type EmptyConfig,
@@ -58,8 +59,25 @@ interface DraftTemplate {
   normalizeBy: '' | 'total' | 'max' | 'min' | 'mean';
 }
 
+/** Расчётный показатель: многополевая формула над ИМЕНАМИ колонок. */
+interface DraftCalcTemplate {
+  id: string;
+  name: string;
+  /** Многополевая формула, напр. `SUM(a)/SUM(b)`. */
+  formula: string;
+  /** Привязка алиаса формулы → имя колонки (логический показатель). */
+  operands: Record<string, string>;
+  displayFormat: string;
+  decimalPlaces: number;
+  unit: string;
+  normalizeBy: '' | 'total' | 'max' | 'min' | 'mean';
+}
+
 /** Дефолтная формула шаблона — сумма одного поля. */
 const DEFAULT_FORMULA = 'SUM(value)';
+
+/** Дефолтная формула расчётного показателя — отношение двух полей. */
+const DEFAULT_CALC_FORMULA = 'SUM(a)/SUM(b)';
 
 /** Быстрый выбор агрегации — пишет `FN(value)`. */
 const AGG_FUNCS = ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'MEDIAN'] as const;
@@ -252,6 +270,32 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       prev.map(t => (t.id === id ? { ...t, columns: t.columns.filter(c => c !== full) } : t))
     );
 
+  // ── Расчётные показатели: многополевая формула над ИМЕНАМИ колонок,
+  // раскрывается по группам (см. planAggregateGroups).
+  const [calcTemplates, setCalcTemplates] = useState<DraftCalcTemplate[]>([]);
+  const [newCalcName, setNewCalcName] = useState('');
+  const addCalcTemplate = () => {
+    const name = newCalcName.trim();
+    if (!name) return;
+    const id = `calc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    setCalcTemplates(prev => [
+      ...prev,
+      { id, name, formula: DEFAULT_CALC_FORMULA, operands: {}, displayFormat: 'percent', decimalPlaces: 1, unit: '', normalizeBy: '' },
+    ]);
+    setNewCalcName('');
+  };
+  const patchCalcTemplate = (id: string, patch: Partial<DraftCalcTemplate>) =>
+    setCalcTemplates(prev => prev.map(t => (t.id === id ? { ...t, ...patch } : t)));
+  const removeCalcTemplate = (id: string) =>
+    setCalcTemplates(prev => prev.filter(t => t.id !== id));
+
+  // Имена колонок-показателей (для выбора операндов расчётного показателя).
+  const columnNames = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of metricColumns) if (c.name) s.add(c.name);
+    return Array.from(s).sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [metricColumns]);
+
   // fullName → имя шаблона для импорта (только колонки включённых групп,
   // привязанные к непустому шаблону). Непривязанные падают на имя колонки.
   const metricTemplateNames = useMemo(() => {
@@ -287,6 +331,30 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
     return specs;
   }, [templates]);
 
+  // Спеки расчётных показателей: имя + многополевая формула + все алиасы
+  // привязаны к именам колонок. Неполные (без привязки алиаса) — пропускаем.
+  const calculatedTemplateSpecs = useMemo<CalculatedTemplateSpec[]>(() => {
+    const out: CalculatedTemplateSpec[] = [];
+    for (const t of calcTemplates) {
+      const name = t.name.trim();
+      if (!name) continue;
+      const aliases = extractVariables(t.formula);
+      if (aliases.length < 1) continue;
+      const operands = aliases.map(a => ({ alias: a, columnName: t.operands[a] }));
+      if (operands.some(o => !o.columnName)) continue; // не все алиасы привязаны
+      out.push({
+        name,
+        formula: t.formula.trim(),
+        operands,
+        displayFormat: t.displayFormat,
+        decimalPlaces: t.decimalPlaces,
+        unit: t.unit.trim() || undefined,
+        normalizeBy: t.normalizeBy || undefined,
+      });
+    }
+    return out;
+  }, [calcTemplates]);
+
   // Сообщаем разметку наверх — для импорта.
   useEffect(() => {
     onLayoutChange?.({
@@ -297,8 +365,9 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
       metricTemplateNames,
       importUnassignedMetrics: importUnassigned,
       metricTemplateSpecs,
+      calculatedTemplateSpecs,
     });
-  }, [headerRows, keyColumns, emptyCfg, excludedGroups, metricTemplateNames, importUnassigned, metricTemplateSpecs, onLayoutChange]);
+  }, [headerRows, keyColumns, emptyCfg, excludedGroups, metricTemplateNames, importUnassigned, metricTemplateSpecs, calculatedTemplateSpecs, onLayoutChange]);
 
   const toggleKey = (index: number) =>
     setKeyColumns(prev =>
@@ -782,6 +851,165 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                       </p>
                     )}
                   </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Расчётные показатели — многополевая формула по именам колонок */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Расчётные показатели
+          </div>
+          <span className="text-[11px] text-slate-400">{calcTemplates.length}</span>
+        </div>
+        <p className="text-[11px] text-slate-400">
+          Показатель из нескольких колонок, напр. <code>SUM(a)/SUM(b)</code>.
+          Привяжите алиасы к именам колонок — метрика создастся в КАЖДОЙ группе,
+          где есть все эти колонки (напр. «Заполненность» для ДОО и Школ сразу).
+        </p>
+
+        <div className="flex gap-2">
+          <Input
+            value={newCalcName}
+            onChange={e => setNewCalcName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                addCalcTemplate();
+              }
+            }}
+            placeholder="Имя расчётного показателя"
+            className="h-9 max-w-xs"
+          />
+          <button
+            type="button"
+            onClick={addCalcTemplate}
+            disabled={!newCalcName.trim()}
+            className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Plus size={15} /> Создать расчётный
+          </button>
+        </div>
+
+        {calcTemplates.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {calcTemplates.map(t => {
+              const aliases = extractVariables(t.formula);
+              const allBound = aliases.length > 0 && aliases.every(a => t.operands[a]);
+              return (
+                <div
+                  key={t.id}
+                  className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={t.name}
+                      onChange={e => patchCalcTemplate(t.id, { name: e.target.value })}
+                      className="flex-1 h-8 px-2 text-sm font-medium rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                    <span
+                      className={cn('text-[11px] shrink-0', allBound ? 'text-emerald-500' : 'text-amber-500')}
+                      title={allBound ? 'Все алиасы привязаны' : 'Привяжите все алиасы'}
+                    >
+                      {allBound ? '✓ готов' : 'не привязан'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeCalcTemplate(t.id)}
+                      title="Удалить расчётный показатель"
+                      className="text-slate-300 hover:text-rose-500 shrink-0"
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+
+                  <input
+                    value={t.formula}
+                    onChange={e => patchCalcTemplate(t.id, { formula: e.target.value })}
+                    spellCheck={false}
+                    placeholder="SUM(a)/SUM(b)"
+                    className="w-full h-7 px-2 text-[12px] font-mono rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+
+                  {/* Привязка алиасов формулы к именам колонок */}
+                  {aliases.length === 0 ? (
+                    <p className="text-[10px] text-rose-500">
+                      В формуле нет полей. Используйте алиасы, напр. <code>SUM(a)/SUM(b)</code>.
+                    </p>
+                  ) : (
+                    <div className="space-y-1">
+                      {aliases.map(a => (
+                        <div key={a} className="flex items-center gap-2">
+                          <code className="text-[11px] w-8 shrink-0 text-indigo-600 dark:text-indigo-300">{a}</code>
+                          <span className="text-slate-300 shrink-0">→</span>
+                          <Select
+                            className="h-7 text-[11px] px-2 py-0 flex-1 min-w-0"
+                            value={t.operands[a] ?? ''}
+                            onChange={e =>
+                              patchCalcTemplate(t.id, { operands: { ...t.operands, [a]: e.target.value } })
+                            }
+                          >
+                            <SelectOption value="">— колонка —</SelectOption>
+                            {columnNames.map(n => (
+                              <SelectOption key={n} value={n}>{n}</SelectOption>
+                            ))}
+                          </Select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <Select
+                      className="h-7 text-[11px] px-2 py-0"
+                      value={t.displayFormat}
+                      onChange={e => patchCalcTemplate(t.id, { displayFormat: e.target.value })}
+                    >
+                      {FORMAT_OPTIONS.map(o => (
+                        <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
+                      ))}
+                    </Select>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={10}
+                        value={t.decimalPlaces}
+                        title="Знаков после запятой"
+                        onChange={e => {
+                          const n = parseInt(e.target.value, 10);
+                          patchCalcTemplate(t.id, { decimalPlaces: isNaN(n) ? 0 : Math.min(10, Math.max(0, n)) });
+                        }}
+                        className="h-7 w-14 px-2 text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                      <input
+                        value={t.unit}
+                        onChange={e => patchCalcTemplate(t.id, { unit: e.target.value })}
+                        placeholder="ед."
+                        maxLength={10}
+                        className="h-7 flex-1 min-w-0 px-2 text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  </div>
+
+                  <label className="block text-[10px] font-medium text-slate-500">
+                    Показывать как
+                    <Select
+                      className="h-7 text-[11px] px-2 py-0 mt-0.5"
+                      value={t.normalizeBy}
+                      onChange={e =>
+                        patchCalcTemplate(t.id, { normalizeBy: e.target.value as DraftCalcTemplate['normalizeBy'] })
+                      }
+                    >
+                      {NORMALIZE_OPTIONS.map(o => (
+                        <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
+                      ))}
+                    </Select>
+                  </label>
                 </div>
               );
             })}

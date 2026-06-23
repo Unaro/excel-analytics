@@ -55,6 +55,7 @@ export type {
   ProposedGroup,
   AggregateLayoutConfig,
   AggregateTemplateSpec,
+  CalculatedTemplateSpec,
   FlattenResult,
   AggregateNode,
 } from './lib/aggregate-layout';
