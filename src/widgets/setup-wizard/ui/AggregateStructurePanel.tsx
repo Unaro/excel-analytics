@@ -78,8 +78,10 @@ interface DraftCalcTemplate {
 /** Дефолтная формула шаблона — сумма одного поля. */
 const DEFAULT_FORMULA = 'SUM(value)';
 
-/** Дефолтная формула расчётного показателя — отношение двух полей. */
-const DEFAULT_CALC_FORMULA = 'SUM(a)/SUM(b)';
+/** Дефолтная формула расчётного показателя — отношение двух операндов.
+ *  Голые алиасы: операнд-метрика берётся значением, операнд-поле авто-суммируется
+ *  (на метрику SUM(...) применять нельзя). */
+const DEFAULT_CALC_FORMULA = 'a/b';
 
 /** Быстрый выбор агрегации — пишет `FN(value)`. */
 const AGG_FUNCS = ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'MEDIAN'] as const;
@@ -793,20 +795,22 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                           ))}
                         </Select>
                       </label>
-                      <label
-                        className="flex items-start gap-1.5 text-[10px] text-slate-500"
-                        title="Не выводить этот показатель как метрику — использовать только как операнд расчётных показателей (связь колонок групп по имени)."
-                      >
-                        <input
-                          type="checkbox"
-                          checked={t.serviceOnly}
-                          onChange={e => patchTemplate(t.id, { serviceOnly: e.target.checked })}
-                          className="mt-0.5"
-                        />
-                        <span>Служебный — только для связи расчётных (не создавать метрику)</span>
-                      </label>
                     </div>
                   </details>
+
+                  {/* Служебный шаблон — всегда виден (не прячем в детали). */}
+                  <label
+                    className="flex items-start gap-1.5 text-[11px] text-slate-600 dark:text-slate-300"
+                    title="Не выводить этот показатель как метрику — использовать только как операнд расчётных показателей (связь колонок групп по имени)."
+                  >
+                    <input
+                      type="checkbox"
+                      checked={t.serviceOnly}
+                      onChange={e => patchTemplate(t.id, { serviceOnly: e.target.checked })}
+                      className="mt-0.5"
+                    />
+                    <span>Служебный — только для расчётных (не создавать метрику)</span>
+                  </label>
 
                   <div className="relative">
                     <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -884,9 +888,11 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
           <span className="text-[11px] text-slate-400">{calcTemplates.length}</span>
         </div>
         <p className="text-[11px] text-slate-400">
-          Показатель из нескольких колонок, напр. <code>SUM(a)/SUM(b)</code>.
-          Привяжите алиасы к именам колонок — метрика создастся в КАЖДОЙ группе,
-          где есть все эти колонки (напр. «Заполненность» для ДОО и Школ сразу).
+          Показатель из нескольких других, напр. <code>a/b</code>. Привяжите
+          алиасы к ПОКАЗАТЕЛЯМ (шаблонам/колонкам) — метрика создастся в КАЖДОЙ
+          группе, где есть все операнды (напр. «Заполненность» для ДОО и Школ).
+          Операнд-показатель берётся значением метрики; служебный (или сырая
+          колонка) — суммируется. На метрику <code>SUM(...)</code> не применяйте.
         </p>
 
         <div className="flex gap-2">

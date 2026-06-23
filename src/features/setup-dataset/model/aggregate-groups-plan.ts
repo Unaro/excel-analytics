@@ -26,12 +26,22 @@ export interface PlannedFieldBinding {
   columnName: string;
 }
 
+/** Привязка алиаса к ДРУГОЙ метрике той же группы (по имени её шаблона). */
+export interface PlannedMetricBinding {
+  alias: string;
+  /** Имя шаблона метрики-операнда в этой же группе (резолв в id при применении). */
+  metricTemplateName: string;
+}
+
 export interface PlannedMetric {
   /** Логический показатель = имя шаблона. */
   templateName: string;
   /** Имя метрики, если отличается от имени шаблона (иначе не задаём). */
   customName?: string;
+  /** Привязки алиасов к колонкам (поля; движок авто-суммирует). */
   fieldBindings: PlannedFieldBinding[];
+  /** Привязки алиасов к другим метрикам группы (значение метрики как есть). */
+  metricBindings: PlannedMetricBinding[];
   order: number;
 }
 
@@ -41,12 +51,18 @@ export interface PlannedGroup {
   metrics: PlannedMetric[];
 }
 
+/** Зависимость формулы шаблона: алиас + вид (поле или метрика). */
+export interface PlannedDependency {
+  alias: string;
+  kind: 'field' | 'metric';
+}
+
 /** Уникальный (по логическому имени) шаблон, нужный плану. */
 export interface PlannedTemplate {
   name: string;
   formula: string;
-  /** Алиасы полей формулы (per-column — один; расчётный — по числу операндов). */
-  aliases: string[];
+  /** Зависимости формулы (per-column — одно поле; расчётный — по операндам). */
+  dependencies: PlannedDependency[];
   displayFormat: string;
   decimalPlaces: number;
   unit?: string;
@@ -116,20 +132,24 @@ export function planAggregateGroups(
     templatesByName.set(name, {
       name,
       formula: spec?.formula ?? DEFAULT_FORMULA,
-      aliases: [aliasFor(name)],
+      dependencies: [{ alias: aliasFor(name), kind: 'field' }],
       displayFormat: spec?.displayFormat ?? DEFAULT_FORMAT,
       decimalPlaces: spec?.decimalPlaces ?? DEFAULT_DECIMALS,
       unit: spec?.unit,
       normalizeBy: spec?.normalizeBy,
     });
   };
-  // Расчётный шаблон: многополевая формула, алиасы = операнды.
+  // Расчётный шаблон: операнд служебного показателя → поле (авто-SUM),
+  // обычного → метрика (значение метрики переиспользуется).
   const ensureCalcTemplate = (spec: CalculatedTemplateSpec): void => {
     if (templatesByName.has(spec.name)) return;
     templatesByName.set(spec.name, {
       name: spec.name,
       formula: spec.formula,
-      aliases: spec.operands.map(o => o.alias),
+      dependencies: spec.operands.map(o => ({
+        alias: o.alias,
+        kind: serviceOnly.has(o.indicatorName) ? 'field' : 'metric',
+      })),
       displayFormat: spec.displayFormat,
       decimalPlaces: spec.decimalPlaces,
       unit: spec.unit,
@@ -165,23 +185,35 @@ export function planAggregateGroups(
           templateName,
           customName: display && display !== templateName ? display : undefined,
           fieldBindings: [{ fieldAlias: aliasFor(templateName), columnName: col.fullName }],
+          metricBindings: [],
         };
       });
 
-    // Расчётные метрики: раскрытие по группе — нужны ВСЕ операнды (по имени
-    // логического показателя) в этой группе; иначе показатель не создаётся.
+    // Показатели, материализованные как per-column метрики в этой группе
+    // (на них расчётные ссылаются как на МЕТРИКУ, а не на колонку).
+    const materialized = new Set(perColumn.map(m => m.templateName));
+
+    // Расчётные метрики: раскрытие по группе. Операнд резолвится в колонку
+    // (служебный/несматериализованный → fieldBinding, авто-SUM) ИЛИ в метрику
+    // группы (обычный показатель → metricBinding, значение метрики как есть).
     const calculated: Omit<PlannedMetric, 'order'>[] = [];
     for (const spec of calculatedSpecs ?? []) {
-      const bindings: PlannedFieldBinding[] = [];
+      const fieldBindings: PlannedFieldBinding[] = [];
+      const metricBindings: PlannedMetricBinding[] = [];
       let resolved = true;
       for (const op of spec.operands) {
+        const isMetric = !serviceOnly.has(op.indicatorName) && materialized.has(op.indicatorName);
+        if (isMetric) {
+          metricBindings.push({ alias: op.alias, metricTemplateName: op.indicatorName });
+          continue;
+        }
         const c = indicatorToCol.get(op.indicatorName);
         if (!c) { resolved = false; break; }
-        bindings.push({ fieldAlias: op.alias, columnName: c.fullName });
+        fieldBindings.push({ fieldAlias: op.alias, columnName: c.fullName });
       }
       if (!resolved) continue; // в этой группе нет всех операндов
       ensureCalcTemplate(spec);
-      calculated.push({ templateName: spec.name, fieldBindings: bindings });
+      calculated.push({ templateName: spec.name, fieldBindings, metricBindings });
     }
 
     const metrics: PlannedMetric[] = [...perColumn, ...calculated].map((m, i) => ({

@@ -102,7 +102,7 @@ function createAggregateGroups(
       : templateStore.addTemplate({
           name: t.name,
           formula: t.formula,
-          dependencies: t.aliases.map(alias => ({ type: 'field' as const, alias })),
+          dependencies: t.dependencies.map(d => ({ type: d.kind, alias: d.alias })),
           displayFormat: t.displayFormat as DisplayFormat,
           decimalPlaces: t.decimalPlaces,
           unit: t.unit,
@@ -112,19 +112,30 @@ function createAggregateGroups(
   }
 
   for (const g of plan.groups) {
-    const metrics = g.metrics.map(m => ({
-      id: nanoid(),
-      templateId: templateIdByName.get(m.templateName)!,
-      customName: m.customName,
-      fieldBindings: m.fieldBindings.map(fb => ({
-        id: nanoid(),
-        fieldAlias: fb.fieldAlias,
-        columnName: fb.columnName,
-      })),
-      metricBindings: [],
-      enabled: true,
-      order: m.order,
-    }));
+    // id метрик назначаем по ходу: расчётные ссылаются на per-column метрики
+    // ЭТОЙ группы по имени шаблона → резолвим в id (метрики идут раньше в плане).
+    const metricIdByTemplate = new Map<string, string>();
+    const metrics = g.metrics.map(m => {
+      const id = nanoid();
+      if (!metricIdByTemplate.has(m.templateName)) metricIdByTemplate.set(m.templateName, id);
+      return {
+        id,
+        templateId: templateIdByName.get(m.templateName)!,
+        customName: m.customName,
+        fieldBindings: m.fieldBindings.map(fb => ({
+          id: nanoid(),
+          fieldAlias: fb.fieldAlias,
+          columnName: fb.columnName,
+        })),
+        metricBindings: m.metricBindings.map(mb => ({
+          id: nanoid(),
+          metricAlias: mb.alias,
+          metricId: metricIdByTemplate.get(mb.metricTemplateName) ?? '',
+        })),
+        enabled: true,
+        order: m.order,
+      };
+    });
     groupStore.addGroup({ name: g.name, fieldMappings: [], metrics, order: g.order }, datasetId);
   }
   return plan.groups.length;
