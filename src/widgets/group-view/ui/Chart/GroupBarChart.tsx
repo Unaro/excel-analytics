@@ -2,7 +2,7 @@
 import { memo, useMemo } from 'react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Rectangle, ReferenceLine, Label,
+  Rectangle,
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
@@ -10,7 +10,7 @@ import type { VirtualMetric } from '@/shared/lib/validators';
 import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
-import { ThresholdLabel } from '@/shared/ui/threshold-marker';
+import { renderThresholdReferenceLines } from '@/shared/ui/threshold-marker';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
 import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
 import { ChartTooltip } from '@/shared/ui/chart-tooltip';
@@ -83,27 +83,7 @@ export const GroupBarChart = memo(function GroupBarChart({
               }}
               cursor={{ fill: 'var(--tooltip-cursor)', opacity: 0.1 }}
             />
-            {groupedThresholds.map((group, gi) => (
-              <ReferenceLine
-                key={`threshold-${gi}`}
-                y={group.y}
-                stroke={group.primaryColor}
-                strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
-                strokeWidth={group.isOverlap ? 2 : 1.5}
-                opacity={0.7}
-                ifOverflow="extendDomain"
-              >
-                <Label
-                  content={(props) => (
-                    <ThresholdLabel
-                      viewBox={props.viewBox as { x: number; y: number; width: number; height: number }}
-                      value={group.labelValue}
-                      group={group}
-                    />
-                  )}
-                />
-              </ReferenceLine>
-            ))}
+            {renderThresholdReferenceLines(groupedThresholds)}
             {metricKeys.map((key, idx) => {
               const vm = metricConfigs?.find((v) => v.id === key);
               const rules = vm?.colorConfig?.rules;

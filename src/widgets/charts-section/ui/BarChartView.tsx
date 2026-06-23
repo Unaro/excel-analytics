@@ -2,12 +2,12 @@
 import { memo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  ResponsiveContainer, ReferenceLine, Label, Rectangle,
+  ResponsiveContainer, Rectangle,
 } from 'recharts';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
-import { ThresholdLabel } from '@/shared/ui/threshold-marker';
+import { renderThresholdReferenceLines } from '@/shared/ui/threshold-marker';
 import type { ChartComponentProps } from '../model/types';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
 import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
@@ -72,27 +72,7 @@ export const BarChartView = memo(function BarChartView({
           }}
           cursor={{ fill: 'var(--tooltip-cursor, rgba(0,0,0,0.05))', opacity: 0.1 }}
         />
-        {groupedThresholds.map((group, gi) => (
-          <ReferenceLine
-            key={`threshold-${gi}`}
-            y={group.y}
-            stroke={group.primaryColor}
-            strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
-            strokeWidth={group.isOverlap ? 2 : 1.5}
-            opacity={0.7}
-            ifOverflow="extendDomain"
-          >
-            <Label
-              content={(props) => (
-                <ThresholdLabel
-                  viewBox={props.viewBox as { x: number; y: number; width: number; height: number }}
-                  value={group.labelValue}
-                  group={group}
-                />
-              )}
-            />
-          </ReferenceLine>
-        ))}
+        {renderThresholdReferenceLines(groupedThresholds)}
         {activeMetricIds.map((metricId, index) => {
           const vm = virtualMetrics.find(v => v.id === metricId);
           const rules = vm?.colorConfig?.rules;

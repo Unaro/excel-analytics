@@ -17,7 +17,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ReferenceLine, Label,
+  Legend,
 } from 'recharts';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
 import { Search, AlertTriangle, ChevronRight, TrendingUp } from 'lucide-react';
@@ -42,7 +42,7 @@ import {
   type PivotRow,
 } from './pivot';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
-import { ThresholdLabel } from '@/shared/ui/threshold-marker';
+import { renderThresholdReferenceLines } from '@/shared/ui/threshold-marker';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
 import type { VirtualMetric } from '@/shared/lib/validators';
 
@@ -348,27 +348,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               }}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            {thresholds.map((group, gi) => (
-              <ReferenceLine
-                key={`threshold-${gi}`}
-                y={group.y}
-                stroke={group.primaryColor}
-                strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
-                strokeWidth={group.isOverlap ? 2 : 1.5}
-                opacity={0.7}
-                ifOverflow="extendDomain"
-              >
-                <Label
-                  content={(props) => (
-                    <ThresholdLabel
-                      viewBox={props.viewBox as { x: number; y: number; width: number; height: number }}
-                      value={group.labelValue}
-                      group={group}
-                    />
-                  )}
-                />
-              </ReferenceLine>
-            ))}
+            {renderThresholdReferenceLines(thresholds)}
             {chartLabels.map((label, i) => (
               <Line
                 key={label}
