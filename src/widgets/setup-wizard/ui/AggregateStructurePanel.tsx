@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { Layers, GitBranch, ListTree, Plus, X, Search, Sigma } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { Input } from '@/shared/ui/input';
-import { Select, SelectOption } from '@/shared/ui/select';
+import { Select, SelectOption, SelectGroup } from '@/shared/ui/select';
 import { extractVariables } from '@/shared/lib/utils/formula';
 import {
   detectHeaderRows,
@@ -293,14 +293,21 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
   const removeCalcTemplate = (id: string) =>
     setCalcTemplates(prev => prev.filter(t => t.id !== id));
 
-  // Имена логических показателей для операндов расчётных: имена per-column
-  // шаблонов (объединяют разные колонки групп) ∪ имена самих колонок.
-  const indicatorNames = useMemo(() => {
+  // Операнды расчётных: показатели (per-column шаблоны) и колонки — РАЗДЕЛЬНО
+  // (искать свой шаблон среди сотни колонок неудобно).
+  const templateIndicatorNames = useMemo(
+    () =>
+      Array.from(new Set(templates.map(t => t.name.trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, 'ru')
+      ),
+    [templates]
+  );
+  const columnIndicatorNames = useMemo(() => {
+    const tset = new Set(templateIndicatorNames);
     const s = new Set<string>();
-    for (const t of templates) if (t.name.trim()) s.add(t.name.trim());
-    for (const c of metricColumns) if (c.name) s.add(c.name);
+    for (const c of metricColumns) if (c.name && !tset.has(c.name)) s.add(c.name);
     return Array.from(s).sort((a, b) => a.localeCompare(b, 'ru'));
-  }, [templates, metricColumns]);
+  }, [metricColumns, templateIndicatorNames]);
 
   // fullName → имя шаблона для импорта (только колонки включённых групп,
   // привязанные к непустому шаблону). Непривязанные падают на имя колонки.
@@ -977,9 +984,20 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                             }
                           >
                             <SelectOption value="">— показатель —</SelectOption>
-                            {indicatorNames.map(n => (
-                              <SelectOption key={n} value={n}>{n}</SelectOption>
-                            ))}
+                            {templateIndicatorNames.length > 0 && (
+                              <SelectGroup label="Показатели (шаблоны)">
+                                {templateIndicatorNames.map(n => (
+                                  <SelectOption key={`t:${n}`} value={n}>{n}</SelectOption>
+                                ))}
+                              </SelectGroup>
+                            )}
+                            {columnIndicatorNames.length > 0 && (
+                              <SelectGroup label="Колонки">
+                                {columnIndicatorNames.map(n => (
+                                  <SelectOption key={`c:${n}`} value={n}>{n}</SelectOption>
+                                ))}
+                              </SelectGroup>
+                            )}
                           </Select>
                         </div>
                       ))}
