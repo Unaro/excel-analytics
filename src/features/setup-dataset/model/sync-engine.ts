@@ -67,7 +67,12 @@ import { planAggregateGroups } from './aggregate-groups-plan';
  * 9 метрик дают 9 шаблонов, а не 135, и на дашборде это 9 колонок × 15 строк.
  * Снятые в панели группы пропускаются.
  */
-function createAggregateGroups(
+/**
+ * Создаёт группы/шаблоны/метрики из колонок. Используется и агрегатным импортом
+ * (колонки с шапкой-группами), и сырым (синтетические колонки: groupName = группа
+ * пользователя, fullName = имя колонки). См. architecture/unified-import.md.
+ */
+export function createAggregateGroups(
   datasetId: string,
   columns: AggregateColumn[],
   excludeGroups?: string[],

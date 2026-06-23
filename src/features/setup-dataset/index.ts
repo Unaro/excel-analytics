@@ -9,6 +9,7 @@ export {
   syncFromFile,
   syncFromPostgres,
   refreshPgDataset,
+  createAggregateGroups,
 } from './model/sync-engine';
 export { removeDatasetCompletely } from './model/remove-dataset';
 export {
