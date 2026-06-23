@@ -21,6 +21,7 @@ import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/enti
 import { nodePathKey } from '@/shared/lib/types/aggregate';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
+import { buildNormalizedChartConfigs } from '@/shared/lib/utils/chart-format';
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -216,12 +217,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   // доли-детей (без «Итого»), поэтому колоночный percent тут корректен (и ось,
   // и тултип идут в масштабе %). В таблице формат остаётся абсолютным (Итого).
   const chartMetricConfigs = useMemo(
-    () =>
-      normalizeByVmId.size === 0
-        ? virtualMetrics
-        : virtualMetrics.map(vm =>
-            normalizeByVmId.has(vm.id) ? { ...vm, displayFormat: 'percent' as const } : vm
-          ),
+    () => buildNormalizedChartConfigs(virtualMetrics, normalizeByVmId),
     [virtualMetrics, normalizeByVmId]
   );
 

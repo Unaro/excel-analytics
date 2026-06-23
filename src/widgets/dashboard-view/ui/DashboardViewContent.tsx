@@ -18,6 +18,7 @@ import { useDashboardComputation } from '../model';
 import { useDashboardViewState } from '../model';
 import { flattenDashboardResult } from '@/entities/metric';
 import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
+import { buildNormalizedChartConfigs } from '@/shared/lib/utils/chart-format';
 import { Loader2, CalendarClock } from 'lucide-react';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
@@ -163,12 +164,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   // Для чартов нормализованные метрики показываем процентом (ось+тултип в
   // масштабе %); в таблице формат остаётся абсолютным.
   const chartMetricConfigs = useMemo(
-    () =>
-      normalizeByVmId.size === 0
-        ? dashboardVirtualMetrics
-        : dashboardVirtualMetrics.map(vm =>
-            normalizeByVmId.has(vm.id) ? { ...vm, displayFormat: 'percent' as const } : vm
-          ),
+    () => buildNormalizedChartConfigs(dashboardVirtualMetrics, normalizeByVmId),
     [dashboardVirtualMetrics, normalizeByVmId]
   );
 

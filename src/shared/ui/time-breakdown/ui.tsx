@@ -27,6 +27,7 @@ import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { CATEGORY_SERIES_COLORS as SERIES_COLORS } from '@/shared/lib/utils/chart-palette';
+import { effectiveChartFormat } from '@/shared/lib/utils/chart-format';
 import { ChartTooltip } from '@/shared/ui/chart-tooltip';
 import { checkRule, COLOR_STYLES, toDisplayScale, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { formatValue } from '@/shared/lib/computation/lib/utils';
@@ -109,7 +110,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const normCfg = normalizeByVmId?.get(effectiveMetricId);
   const isNormalized = !!normCfg;
   const normDecimals = normCfg?.decimalPlaces ?? currentMetric?.decimalPlaces ?? 1;
-  const effectiveFormat = isNormalized ? 'percent' : currentMetric?.displayFormat;
+  const effectiveFormat = effectiveChartFormat(currentMetric?.displayFormat, isNormalized);
 
   const [searchQuery, setSearchQuery] = useState('');
   // null — авто-режим top-N; Set — явный выбор пользователя
