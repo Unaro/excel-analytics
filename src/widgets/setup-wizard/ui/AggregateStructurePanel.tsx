@@ -6,6 +6,7 @@ import { cn } from '@/shared/lib/utils';
 import { Input } from '@/shared/ui/input';
 import { Select, SelectOption, SelectGroup } from '@/shared/ui/select';
 import { extractVariables } from '@/shared/lib/utils/formula';
+import { TemplateFormatFields } from './TemplateFormatFields';
 import {
   detectHeaderRows,
   detectKeyColumns,
@@ -82,9 +83,6 @@ const DEFAULT_FORMULA = 'SUM(value)';
  *  Голые алиасы: операнд-метрика берётся значением, операнд-поле авто-суммируется
  *  (на метрику SUM(...) применять нельзя). */
 const DEFAULT_CALC_FORMULA = 'a/b';
-
-/** Быстрый выбор агрегации — пишет `FN(value)`. */
-const AGG_FUNCS = ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'MEDIAN'] as const;
 
 /** Курируемые кросс-столбцовые трансформации (доля от ориентира). */
 const NORMALIZE_OPTIONS: { value: DraftTemplate['normalizeBy']; label: string }[] = [
@@ -651,7 +649,6 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                 ? unassignedColumns.filter(c => c.fullName.toLowerCase().includes(q))
                 : unassignedColumns;
               const shown = matches.slice(0, 40);
-              const formulaInfo = analyzeFormula(t.formula);
               return (
                 <div
                   key={t.id}
@@ -715,93 +712,17 @@ export function AggregateStructurePanel({ matrix, onLayoutChange }: AggregateStr
                         {t.formula}
                       </span>
                     </summary>
-                    <div className="px-2.5 pb-2.5 pt-1 space-y-2">
-                      <div className="flex flex-wrap gap-1">
-                        {AGG_FUNCS.map(fn => {
-                          const active = t.formula.trim() === `${fn}(value)`;
-                          return (
-                            <button
-                              key={fn}
-                              type="button"
-                              onClick={() => patchTemplate(t.id, { formula: `${fn}(value)` })}
-                              className={cn(
-                                'px-2 py-0.5 rounded text-[11px] font-medium border transition-colors',
-                                active
-                                  ? 'bg-indigo-600 text-white border-indigo-600'
-                                  : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400'
-                              )}
-                            >
-                              {fn}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <input
-                        value={t.formula}
-                        onChange={e => patchTemplate(t.id, { formula: e.target.value })}
-                        spellCheck={false}
-                        className={cn(
-                          'w-full h-7 px-2 text-[12px] font-mono rounded border bg-white dark:bg-slate-950 outline-none focus:ring-1',
-                          formulaInfo.valid
-                            ? 'border-slate-200 dark:border-slate-700 focus:ring-indigo-500'
-                            : 'border-rose-300 dark:border-rose-800 focus:ring-rose-500'
-                        )}
+                    <div className="px-2.5 pb-2.5 pt-1">
+                      <TemplateFormatFields
+                        value={{
+                          formula: t.formula,
+                          displayFormat: t.displayFormat,
+                          decimalPlaces: t.decimalPlaces,
+                          unit: t.unit,
+                          normalizeBy: t.normalizeBy,
+                        }}
+                        onChange={patch => patchTemplate(t.id, patch)}
                       />
-                      {formulaInfo.valid ? (
-                        <p className="text-[10px] text-slate-400">
-                          Каждая колонка привяжется к полю <code>{formulaInfo.alias}</code>.
-                        </p>
-                      ) : (
-                        <p className="text-[10px] text-rose-500">
-                          {formulaInfo.error}. При импорте будет использован <code>SUM(value)</code>.
-                        </p>
-                      )}
-                      <div className="grid grid-cols-2 gap-2">
-                        <Select
-                          className="h-7 text-[11px] px-2 py-0"
-                          value={t.displayFormat}
-                          onChange={e => patchTemplate(t.id, { displayFormat: e.target.value })}
-                        >
-                          {FORMAT_OPTIONS.map(o => (
-                            <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
-                          ))}
-                        </Select>
-                        <div className="flex gap-2">
-                          <input
-                            type="number"
-                            min={0}
-                            max={10}
-                            value={t.decimalPlaces}
-                            title="Знаков после запятой"
-                            onChange={e => {
-                              const n = parseInt(e.target.value, 10);
-                              patchTemplate(t.id, { decimalPlaces: isNaN(n) ? 0 : Math.min(10, Math.max(0, n)) });
-                            }}
-                            className="h-7 w-14 px-2 text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
-                          />
-                          <input
-                            value={t.unit}
-                            onChange={e => patchTemplate(t.id, { unit: e.target.value })}
-                            placeholder="ед."
-                            maxLength={10}
-                            className="h-7 flex-1 min-w-0 px-2 text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
-                          />
-                        </div>
-                      </div>
-                      <label className="block text-[10px] font-medium text-slate-500">
-                        Показывать как
-                        <Select
-                          className="h-7 text-[11px] px-2 py-0 mt-0.5"
-                          value={t.normalizeBy}
-                          onChange={e =>
-                            patchTemplate(t.id, { normalizeBy: e.target.value as DraftTemplate['normalizeBy'] })
-                          }
-                        >
-                          {NORMALIZE_OPTIONS.map(o => (
-                            <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
-                          ))}
-                        </Select>
-                      </label>
                     </div>
                   </details>
 
