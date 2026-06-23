@@ -9,7 +9,7 @@ import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
-import { formatRu } from '@/shared/lib/utils/format';
+import { renderThresholdRadars } from '@/shared/ui/threshold-marker';
 import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
 import { ChartTooltip } from '@/shared/ui/chart-tooltip';
 
@@ -78,25 +78,7 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                 координатой → дубль ключей `tick-<radius>`. Зум задаёт domain
                 (масштаб полигона), а точные значения видны в тултипе. */}
             <PolarRadiusAxis domain={radarDomain} tick={false} axisLine={false} />
-            {groupedThresholds.map((group, gi) => {
-              const thresholdKey = `__threshold_${gi}`;
-              return (
-                <Radar
-                  key={`threshold-${gi}`}
-                  name={`Порог: ${formatRu(group.y)}`}
-                  dataKey={thresholdKey}
-                  stroke={group.primaryColor}
-                  strokeWidth={group.isOverlap ? 2.5 : 2}
-                  strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
-                  fill={group.primaryColor}
-                  fillOpacity={0.04}
-                  isAnimationActive={false}
-                  legendType="none"
-                  dot={false}
-                  opacity={0.85}
-                />
-              );
-            })}
+            {renderThresholdRadars(groupedThresholds)}
             {metricKeys.map((key, idx) => {
               const vm = metricConfigs?.find(v => v.id === key);
               const rules = vm?.colorConfig?.rules;

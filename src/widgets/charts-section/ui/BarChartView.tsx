@@ -8,6 +8,7 @@ import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 import { renderThresholdReferenceLines } from '@/shared/ui/threshold-marker';
+import { ChartTooltip } from '@/shared/ui/chart-tooltip';
 import type { ChartComponentProps } from '../model/types';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
 import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
@@ -41,34 +42,19 @@ export const BarChartView = memo(function BarChartView({
           content={(props) => {
             const { active, payload, label } = props;
             if (!active || !payload?.length) return null;
-            const filtered = payload.filter((p) => {
-              const key = String(p.dataKey);
-              return !key.startsWith('__threshold_');
-            });
-            return (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-lg shadow-xl text-sm">
-                <p className="font-bold text-slate-900 dark:text-white mb-2">{label}</p>
-                {filtered.map((entry, i) => {
-                  const vm = virtualMetrics.find(v => v.id === entry.dataKey);
-                  return (
-                    <div key={i} className="flex items-center gap-2">
-                      <div
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: entry.color ?? '#6366f1' }}
-                      />
-                      <span className="text-slate-500 dark:text-slate-400 text-xs">
-                        {metricNames[String(entry.dataKey)]}:
-                      </span>
-                      <span className="font-mono font-medium text-slate-900 dark:text-slate-200 ml-auto">
-                        {typeof entry.value === 'number'
-                          ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
-                          : String(entry.value ?? '—')}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            );
+            const rows = payload
+              .filter((p) => !String(p.dataKey).startsWith('__threshold_'))
+              .map((entry) => {
+                const vm = virtualMetrics.find(v => v.id === entry.dataKey);
+                return {
+                  color: entry.color ?? '#6366f1',
+                  name: metricNames[String(entry.dataKey)],
+                  value: typeof entry.value === 'number'
+                    ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
+                    : String(entry.value ?? '—'),
+                };
+              });
+            return <ChartTooltip title={label} rows={rows} />;
           }}
           cursor={{ fill: 'var(--tooltip-cursor, rgba(0,0,0,0.05))', opacity: 0.1 }}
         />
