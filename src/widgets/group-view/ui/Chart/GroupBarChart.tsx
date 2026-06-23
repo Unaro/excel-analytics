@@ -12,8 +12,7 @@ import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
-
-const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
+import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
 
 interface GroupBarChartProps {
   data: Array<{ name: string; [key: string]: string | number }>;

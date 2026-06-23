@@ -10,8 +10,7 @@ import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping'
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { ChartComponentProps } from '../model/types';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
-
-const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
+import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
 
 export const BarChartView = memo(function BarChartView({
   data, activeMetricIds, metricNames, axisColor, virtualMetrics,

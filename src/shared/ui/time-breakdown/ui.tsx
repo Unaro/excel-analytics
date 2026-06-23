@@ -26,6 +26,7 @@ import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { CATEGORY_SERIES_COLORS as SERIES_COLORS } from '@/shared/lib/utils/chart-palette';
 import { checkRule, COLOR_STYLES, toDisplayScale, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { formatValue } from '@/shared/lib/computation/lib/utils';
 import { type NormalizeConfig } from '@/shared/lib/utils/normalize';
@@ -45,12 +46,6 @@ import type { VirtualMetric } from '@/shared/lib/validators';
 
 /** Серий на чарте по умолчанию (top по сумме выбранной метрики). */
 const DEFAULT_SERIES_LIMIT = 8;
-
-const SERIES_COLORS = [
-  '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#14b8a6',
-  '#a855f7', '#64748b',
-];
 
 export interface TimeBreakdownSectionProps {
   /** Элементы breakdown с заполненным dateLabel (категория × время). */

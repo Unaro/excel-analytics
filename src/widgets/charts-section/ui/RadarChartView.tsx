@@ -9,8 +9,7 @@ import type { ChartComponentProps } from '../model/types';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
 import { formatRu } from '@/shared/lib/utils/format';
-
-const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
+import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
 
 export const RadarChartView = memo(function RadarChartView({
   data, activeMetricIds, metricNames, axisColor, virtualMetrics,

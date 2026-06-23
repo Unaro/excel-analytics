@@ -10,8 +10,7 @@ import type { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
 import { formatRu } from '@/shared/lib/utils/format';
-
-const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
+import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
 
 interface GroupRadarChartProps {
   data: Array<{ name: string; [key: string]: string | number }>;
