@@ -16,11 +16,11 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend,
 } from 'recharts';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
-import { Search, AlertTriangle, ChevronRight, TrendingUp } from 'lucide-react';
+import { Search, AlertTriangle, ChevronRight, TrendingUp, BarChart3, LineChart as LineChartIcon } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
@@ -115,6 +115,10 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const [searchQuery, setSearchQuery] = useState('');
   // null — авто-режим top-N; Set — явный выбор пользователя
   const [selectedLabels, setSelectedLabels] = useState<Set<string> | null>(null);
+  // Тип 2-D-чарта — собственный для 2-D (оси иные, чем у 1-D): линии или
+  // сгруппированные столбцы по периодам. Локальное состояние (как metricId/
+  // searchQuery); персист — в Фазе 3 вместе с палитрой и сохранением вида.
+  const [chartKind, setChartKind] = useState<'line' | 'bar'>('line');
 
   // Чарт и pivot-таблица — одна ось дат: их горизонтальные скроллы связаны,
   // чтобы листать вместе (а не наводиться на каждый скроллбар отдельно).
@@ -290,6 +294,26 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* Тип 2-D-чарта: линии / сгруппированные столбцы по периодам. */}
+          <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            {(['line', 'bar'] as const).map(k => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setChartKind(k)}
+                title={k === 'line' ? 'Линии' : 'Столбцы'}
+                aria-pressed={chartKind === k}
+                className={cn(
+                  'px-2.5 h-9 flex items-center transition-colors',
+                  chartKind === k
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white dark:bg-slate-950 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900'
+                )}
+              >
+                {k === 'line' ? <LineChartIcon size={14} /> : <BarChart3 size={14} />}
+              </button>
+            ))}
+          </div>
           {metricOptions.length > 1 && (
             <Select
               className="w-52 h-9 text-sm"
@@ -314,9 +338,11 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
         </div>
       </div>
 
-      {/* Линейный чарт: динамика выбранной метрики по сериям.
+      {/* Чарт: динамика выбранной метрики по сериям (линии или столбцы).
           При многих интервалах — горизонтальный скролл внутри бокса,
-          чтобы точки/подписи не сжимались, а страница не растягивалась. */}
+          чтобы точки/подписи не сжимались, а страница не растягивалась.
+          Оси/тултип/пороги общие для обоих типов (вынесены в переменные —
+          recharts распознаёт их по типу элемента, не по месту). */}
       <div className="px-4 pt-4">
         <ScrollableChart
           ref={chartScrollRef}
@@ -325,43 +351,71 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
           slotWidth={56}
           height={304}
         >
-          <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" />
-            <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              stroke="#94a3b8"
-              tickFormatter={(v: number) => formatCompactNumber(v)}
-            />
-            <Tooltip
-              content={(props) => {
-                const { active, payload, label } = props;
-                if (!active || !payload || !payload.length) return null;
-                const rows = payload.map((entry) => ({
-                  color: entry.color ?? '#6366f1',
-                  name: display(String(entry.dataKey ?? '')),
-                  value: typeof entry.value === 'number'
-                    ? formatDisplayValue(entry.value, effectiveFormat, isNormalized ? undefined : currentMetric?.unit)
-                    : '—',
-                }));
-                return <ChartTooltip title={label} rows={rows} />;
-              }}
-            />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            {renderThresholdReferenceLines(thresholds)}
-            {chartLabels.map((label, i) => (
-              <Line
-                key={label}
-                type="monotone"
-                dataKey={label}
-                name={display(label)}
-                stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                strokeWidth={2}
-                dot={dates.length <= 31}
-                connectNulls
+          {(() => {
+            const grid = <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" />;
+            const xAxis = <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />;
+            const yAxis = (
+              <YAxis
+                tick={{ fontSize: 11 }}
+                stroke="#94a3b8"
+                tickFormatter={(v: number) => formatCompactNumber(v)}
               />
-            ))}
-          </LineChart>
+            );
+            const tooltip = (
+              <Tooltip
+                content={(props) => {
+                  const { active, payload, label } = props;
+                  if (!active || !payload || !payload.length) return null;
+                  const rows = payload.map((entry) => ({
+                    color: entry.color ?? '#6366f1',
+                    name: display(String(entry.dataKey ?? '')),
+                    value: typeof entry.value === 'number'
+                      ? formatDisplayValue(entry.value, effectiveFormat, isNormalized ? undefined : currentMetric?.unit)
+                      : '—',
+                  }));
+                  return <ChartTooltip title={label} rows={rows} />;
+                }}
+              />
+            );
+            const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
+            const margin = { top: 8, right: 16, bottom: 4, left: 8 };
+
+            if (chartKind === 'bar') {
+              return (
+                <BarChart data={chartData} margin={margin}>
+                  {grid}{xAxis}{yAxis}{tooltip}{legend}
+                  {renderThresholdReferenceLines(thresholds)}
+                  {chartLabels.map((label, i) => (
+                    <Bar
+                      key={label}
+                      dataKey={label}
+                      name={display(label)}
+                      fill={SERIES_COLORS[i % SERIES_COLORS.length]}
+                    />
+                  ))}
+                </BarChart>
+              );
+            }
+
+            return (
+              <LineChart data={chartData} margin={margin}>
+                {grid}{xAxis}{yAxis}{tooltip}{legend}
+                {renderThresholdReferenceLines(thresholds)}
+                {chartLabels.map((label, i) => (
+                  <Line
+                    key={label}
+                    type="monotone"
+                    dataKey={label}
+                    name={display(label)}
+                    stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+                    strokeWidth={2}
+                    dot={dates.length <= 31}
+                    connectNulls
+                  />
+                ))}
+              </LineChart>
+            );
+          })()}
         </ScrollableChart>
       </div>
 
