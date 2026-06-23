@@ -12,7 +12,7 @@ import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { renderThresholdReferenceLines } from '@/shared/ui/threshold-marker';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
-import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
+import { METRIC_SERIES_COLORS } from '@/shared/lib/utils/chart-palette';
 import { ChartTooltip } from '@/shared/ui/chart-tooltip';
 
 interface GroupBarChartProps {
@@ -23,6 +23,8 @@ interface GroupBarChartProps {
   metricConfigs?: VirtualMetric[];
   /** Код → имя (словарь): для подписей оси/тултипа. Позиция — по сырому name. */
   resolveLabel?: (label: string) => string;
+  /** Палитра цветов метрик-серий. По умолчанию — METRIC_SERIES_COLORS. */
+  palette?: string[];
 }
 
 export const GroupBarChart = memo(function GroupBarChart({
@@ -32,6 +34,7 @@ export const GroupBarChart = memo(function GroupBarChart({
   title,
   metricConfigs,
   resolveLabel,
+  palette = METRIC_SERIES_COLORS,
 }: GroupBarChartProps) {
   const displayLabel = (v: unknown) =>
     resolveLabel ? resolveLabel(String(v)) : String(v);
@@ -87,7 +90,7 @@ export const GroupBarChart = memo(function GroupBarChart({
             {metricKeys.map((key, idx) => {
               const vm = metricConfigs?.find((v) => v.id === key);
               const rules = vm?.colorConfig?.rules;
-              const defaultColor = COLORS[idx % COLORS.length];
+              const defaultColor = palette[idx % palette.length];
               const style = vm?.chartStyle;
 
               // Метрика-линия: гладкая/ломаная (type) + сплошная/пунктир (dash).

@@ -22,6 +22,9 @@ import { nodePathKey } from '@/shared/lib/types/aggregate';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
 import { buildNormalizedChartConfigs } from '@/shared/lib/utils/chart-format';
+import { metricPalette, categoryPalette } from '@/shared/lib/utils/chart-palette';
+import { PalettePicker } from '@/shared/ui/palette-picker';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -71,6 +74,12 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   const groupMetricIds = useMemo(() => {
     return group?.metrics.map(m => m.id) ?? [];
   }, [group]);
+
+  // Палитра группы (paletteId) красит серии чартов: 1-D — метрики, 2-D —
+  // категории. Дефолт сохраняет текущие цвета (см. metricPalette/categoryPalette).
+  const updateGroup = useIndicatorGroupStore(s => s.updateGroup);
+  const palette1D = useMemo(() => metricPalette(group?.paletteId), [group?.paletteId]);
+  const paletteCat = useMemo(() => categoryPalette(group?.paletteId), [group?.paletteId]);
 
   // metricId группы → templateId: ячейки таблицы берут CF из шаблона.
   const metricTemplateIds = useMemo(
@@ -304,6 +313,10 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
               </Select>
             </div>
           )}
+          <PalettePicker
+            value={group.paletteId}
+            onChange={id => updateGroup(groupId, { paletteId: id })}
+          />
           <ChartTypeSelector
             selected={chartTypes}
             onChange={handleChartTypesChange}
@@ -341,6 +354,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           onRowClick={drillDown}
           resolveLabel={resolveLabel}
           normalizeByVmId={normalizeByVmId}
+          palette={paletteCat}
         />
       )}
 
@@ -354,6 +368,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           activeMetricIds={activeMetricIds}
           chartTypes={chartTypes}
           resolveLabel={resolveLabel}
+          palette={palette1D}
         />
       )}
 

@@ -76,6 +76,8 @@ export interface TimeBreakdownSectionProps {
    * доля строки (итог строки ÷ общий итог). Нет записи = абсолютные значения.
    */
   normalizeByVmId?: Map<string, NormalizeConfig>;
+  /** Палитра цветов категорий-серий (из group.paletteId). Дефолт — CATEGORY_SERIES_COLORS. */
+  palette?: string[];
 }
 
 export const TimeBreakdownSection = memo(function TimeBreakdownSection({
@@ -88,6 +90,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   onRowClick,
   resolveLabel,
   normalizeByVmId,
+  palette = SERIES_COLORS,
 }: TimeBreakdownSectionProps) {
   const display = useMemo(
     () => resolveLabel ?? ((label: string) => label),
@@ -396,7 +399,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                       key={label}
                       dataKey={label}
                       name={display(label)}
-                      fill={SERIES_COLORS[i % SERIES_COLORS.length]}
+                      fill={palette[i % palette.length]}
                     />
                   ))}
                 </BarChart>
@@ -413,7 +416,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                     type={lineCurve}
                     dataKey={label}
                     name={display(label)}
-                    stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+                    stroke={palette[i % palette.length]}
                     strokeWidth={2}
                     strokeDasharray={lineDash}
                     dot={dates.length <= 31}

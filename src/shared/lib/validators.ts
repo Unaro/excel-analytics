@@ -174,6 +174,8 @@ export const IndicatorGroupSchema = z.object({
   }).optional(),
   color: z.string().optional(),
   icon: z.string().optional(),
+  /** Палитра цветов серий чартов группы (id из CHART_PALETTES). Нет/'default' = текущие дефолты. */
+  paletteId: z.string().optional(),
   order: z.number().int(),
   createdAt: z.number(),
   updatedAt: z.number(),
