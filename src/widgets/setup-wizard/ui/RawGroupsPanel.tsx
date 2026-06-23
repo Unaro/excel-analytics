@@ -1,11 +1,21 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plus, X, Search, Layers } from 'lucide-react';
+import { Plus, X, Search, Layers, Sigma } from 'lucide-react';
 import { Input } from '@/shared/ui/input';
 import { toast } from '@/shared/ui/toast';
 import { useColumnConfigStore } from '@/entities/column-config';
-import { createAggregateGroups, type AggregateColumn } from '@/features/setup-dataset';
+import { extractVariables } from '@/shared/lib/utils/formula';
+import {
+  createAggregateGroups,
+  type AggregateColumn,
+  type AggregateTemplateSpec,
+} from '@/features/setup-dataset';
+import {
+  TemplateFormatFields,
+  DEFAULT_TEMPLATE_FORMAT,
+  type TemplateFormatValue,
+} from './TemplateFormatFields';
 
 interface RawGroupsPanelProps {
   datasetId: string;
@@ -40,6 +50,13 @@ export function RawGroupsPanel({ datasetId }: RawGroupsPanelProps) {
   const [groups, setGroups] = useState<DraftGroup[]>([]);
   const [newName, setNewName] = useState('');
   const [searchByGroup, setSearchByGroup] = useState<Record<string, string>>({});
+  // Формула/формат на колонку (= её шаблон). Нет записи → дефолт SUM(value)/число.
+  const [cfgByColumn, setCfgByColumn] = useState<Record<string, TemplateFormatValue>>({});
+  const patchCfg = (col: string, patch: Partial<TemplateFormatValue>) =>
+    setCfgByColumn(prev => ({
+      ...prev,
+      [col]: { ...(prev[col] ?? DEFAULT_TEMPLATE_FORMAT), ...patch },
+    }));
 
   const assigned = useMemo(() => {
     const s = new Set<string>();
@@ -88,10 +105,33 @@ export function RawGroupsPanel({ datasetId }: RawGroupsPanelProps) {
       toast.error('Назначьте колонки хотя бы в одну группу');
       return;
     }
-    const n = createAggregateGroups(datasetId, synth);
+    // Спеки шаблонов (формула/формат) по имени показателя (= displayName колонки).
+    const specByName = new Map<string, AggregateTemplateSpec>();
+    for (const g of groups) {
+      for (const col of g.columns) {
+        const cfg = cfgByColumn[col];
+        if (!cfg) continue; // дефолт → createAggregateGroups сам поставит SUM(value)
+        const name = displayByName.get(col) ?? col;
+        if (specByName.has(name)) continue;
+        const aliases = extractVariables(cfg.formula);
+        specByName.set(name, {
+          name,
+          formula: cfg.formula.trim() || 'SUM(value)',
+          alias: aliases.length === 1 ? aliases[0] : 'value',
+          displayFormat: cfg.displayFormat,
+          decimalPlaces: cfg.decimalPlaces,
+          unit: cfg.unit.trim() || undefined,
+          normalizeBy: cfg.normalizeBy || undefined,
+        });
+      }
+    }
+    const n = createAggregateGroups(
+      datasetId, synth, undefined, undefined, true, Array.from(specByName.values())
+    );
     toast.success(`Создано групп: ${n}. Донастройте в разделе «Группы».`);
     setGroups([]);
     setSearchByGroup({});
+    setCfgByColumn({});
   };
 
   // Нет числовых колонок — группировать нечего (раздел не показываем).
@@ -163,19 +203,44 @@ export function RawGroupsPanel({ datasetId }: RawGroupsPanelProps) {
                 </div>
 
                 {g.columns.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {g.columns.map(col => (
-                      <span
-                        key={col}
-                        title={col}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900"
-                      >
-                        {displayByName.get(col) ?? col}
-                        <button type="button" onClick={() => unassign(g.id, col)} className="hover:text-rose-500">
-                          <X size={12} />
-                        </button>
-                      </span>
-                    ))}
+                  <div className="space-y-1">
+                    {g.columns.map(col => {
+                      const cfg = cfgByColumn[col] ?? DEFAULT_TEMPLATE_FORMAT;
+                      return (
+                        <div
+                          key={col}
+                          className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/40"
+                        >
+                          <div className="flex items-center gap-2 px-2 py-1.5">
+                            <span
+                              className="flex-1 min-w-0 truncate text-[12px] text-slate-700 dark:text-slate-200"
+                              title={col}
+                            >
+                              {displayByName.get(col) ?? col}
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-400 truncate max-w-[110px]">
+                              {cfg.formula}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => unassign(g.id, col)}
+                              title="Убрать из группы"
+                              className="text-slate-300 hover:text-rose-500 shrink-0"
+                            >
+                              <X size={13} />
+                            </button>
+                          </div>
+                          <details>
+                            <summary className="cursor-pointer select-none px-2 py-1 text-[10px] font-medium text-slate-500 flex items-center gap-1">
+                              <Sigma size={11} className="text-indigo-500" /> Формула и формат
+                            </summary>
+                            <div className="px-2 pb-2">
+                              <TemplateFormatFields value={cfg} onChange={patch => patchCfg(col, patch)} />
+                            </div>
+                          </details>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
