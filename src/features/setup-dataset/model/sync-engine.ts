@@ -46,7 +46,7 @@ import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useAggregateNodesStore } from '@/entities/aggregate-nodes';
 import { DatasetRow } from '@/shared/lib/types';
 import type { ColumnClassification } from '@/shared/lib/types';
-import type { AggregateNode, AggregateTemplateSpec } from '@/shared/lib/types/aggregate';
+import type { AggregateNode, AggregateTemplateSpec, CalculatedTemplateSpec } from '@/shared/lib/types/aggregate';
 import type { DisplayFormat } from '@/entities/metric';
 import type { ImportParams } from '../lib/file-preview';
 import { readAggregateMatrix } from '../lib/file-preview';
@@ -73,7 +73,8 @@ function createAggregateGroups(
   excludeGroups?: string[],
   metricTemplateNames?: Record<string, string>,
   importUnassigned: boolean = true,
-  templateSpecs?: AggregateTemplateSpec[]
+  templateSpecs?: AggregateTemplateSpec[],
+  calculatedSpecs?: CalculatedTemplateSpec[]
 ): number {
   // Чистое планирование (какие группы/метрики/шаблоны) — в отдельном модуле
   // (тестируемо без сторов). Здесь — применение плана к сторам.
@@ -82,6 +83,7 @@ function createAggregateGroups(
     metricTemplateNames,
     importUnassigned,
     templateSpecs,
+    calculatedSpecs,
   });
   if (plan.groups.length === 0) return 0;
 
@@ -100,7 +102,7 @@ function createAggregateGroups(
       : templateStore.addTemplate({
           name: t.name,
           formula: t.formula,
-          dependencies: [{ type: 'field', alias: t.alias }],
+          dependencies: t.aliases.map(alias => ({ type: 'field' as const, alias })),
           displayFormat: t.displayFormat as DisplayFormat,
           decimalPlaces: t.decimalPlaces,
           unit: t.unit,
@@ -328,7 +330,8 @@ export async function syncFromFile(
         aggregate?.excludeGroups,
         aggregate?.metricTemplateNames,
         aggregate?.importUnassignedMetrics ?? true,
-        aggregate?.metricTemplateSpecs
+        aggregate?.metricTemplateSpecs,
+        aggregate?.calculatedTemplateSpecs
       );
       logger.info(`[syncFromFile] Создано групп показателей: ${n}`);
     }

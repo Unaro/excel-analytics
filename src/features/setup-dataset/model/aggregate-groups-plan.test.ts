@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { AggregateColumn } from '../lib/aggregate-layout';
-import type { AggregateTemplateSpec } from '@/shared/lib/types/aggregate';
+import type { AggregateTemplateSpec, CalculatedTemplateSpec } from '@/shared/lib/types/aggregate';
 import { planAggregateGroups, NO_GROUP_NAME } from './aggregate-groups-plan';
 
 // ── фикстуры ──────────────────────────────────────────────────
@@ -97,13 +97,13 @@ describe('planAggregateGroups — шаблоны и спеки', () => {
     ...over,
   });
 
-  it('дефолты без спеки: SUM(value)/number/2, alias value', () => {
+  it('дефолты без спеки: SUM(value)/number/2, aliases [value]', () => {
     const plan = planAggregateGroups([col('ДОО', 'Потребность')]);
     expect(plan.templates).toEqual([
       {
         name: 'Потребность',
         formula: 'SUM(value)',
-        alias: 'value',
+        aliases: ['value'],
         displayFormat: 'number',
         decimalPlaces: 2,
         unit: undefined,
@@ -118,7 +118,7 @@ describe('planAggregateGroups — шаблоны и спеки', () => {
     });
     expect(plan.templates[0]).toMatchObject({
       formula: 'AVG(v)',
-      alias: 'v',
+      aliases: ['v'],
       displayFormat: 'decimal',
       decimalPlaces: 1,
       unit: 'м²',
@@ -134,5 +134,64 @@ describe('planAggregateGroups — шаблоны и спеки', () => {
     ]);
     expect(plan.templates).toHaveLength(1);
     expect(plan.groups).toHaveLength(2);
+  });
+});
+
+describe('planAggregateGroups — расчётные показатели (Фаза 1b)', () => {
+  const fill: CalculatedTemplateSpec = {
+    name: 'Заполненность',
+    formula: 'SUM(a)/SUM(b)',
+    operands: [
+      { alias: 'a', columnName: 'Мощность' },
+      { alias: 'b', columnName: 'Потребность' },
+    ],
+    displayFormat: 'percent',
+    decimalPlaces: 1,
+  };
+
+  it('раскрывается в каждой группе, где есть все операнды', () => {
+    const cols = [
+      col('ДОО', 'Мощность'), col('ДОО', 'Потребность'),
+      col('Школы', 'Мощность'), col('Школы', 'Потребность'),
+    ];
+    const plan = planAggregateGroups(cols, { calculatedSpecs: [fill] });
+    // в каждой группе: 2 per-column + 1 расчётная
+    for (const g of plan.groups) {
+      const calc = g.metrics.find(m => m.templateName === 'Заполненность')!;
+      expect(calc).toBeDefined();
+      expect(calc.fieldBindings).toEqual([
+        { fieldAlias: 'a', columnName: `${g.name} · Мощность` },
+        { fieldAlias: 'b', columnName: `${g.name} · Потребность` },
+      ]);
+      expect(calc.order).toBe(2); // после двух per-column
+    }
+    // один общий шаблон с двумя алиасами
+    const t = plan.templates.find(t => t.name === 'Заполненность')!;
+    expect(t.aliases).toEqual(['a', 'b']);
+    expect(t.formula).toBe('SUM(a)/SUM(b)');
+    expect(t.displayFormat).toBe('percent');
+  });
+
+  it('группа без всех операндов — расчётная НЕ создаётся', () => {
+    const cols = [
+      col('ДОО', 'Мощность'), col('ДОО', 'Потребность'),
+      col('Школы', 'Мощность'), // нет «Потребность»
+    ];
+    const plan = planAggregateGroups(cols, { calculatedSpecs: [fill] });
+    const doo = plan.groups.find(g => g.name === 'ДОО')!;
+    const shk = plan.groups.find(g => g.name === 'Школы')!;
+    expect(doo.metrics.some(m => m.templateName === 'Заполненность')).toBe(true);
+    expect(shk.metrics.some(m => m.templateName === 'Заполненность')).toBe(false);
+  });
+
+  it('группа ТОЛЬКО из расчётной (per-column выключены) всё равно создаётся', () => {
+    const cols = [col('ДОО', 'Мощность'), col('ДОО', 'Потребность')];
+    const plan = planAggregateGroups(cols, {
+      importUnassigned: false, // per-column отсечены (нет metricTemplateNames)
+      calculatedSpecs: [fill],
+    });
+    expect(plan.groups).toHaveLength(1);
+    expect(plan.groups[0].metrics.map(m => m.templateName)).toEqual(['Заполненность']);
+    expect(plan.groups[0].metrics[0].order).toBe(0);
   });
 });

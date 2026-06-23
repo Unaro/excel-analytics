@@ -45,6 +45,34 @@ export interface AggregateTemplateSpec {
   normalizeBy?: string;
 }
 
+/** Привязка алиаса многополевой формулы к ИМЕНИ колонки (логическому показателю). */
+export interface CalculatedTemplateOperand {
+  /** Алиас в формуле (латиница: a, b). */
+  alias: string;
+  /** Имя колонки (= логический показатель), напр. «Мощность». В группе берётся
+   *  колонка с этим именем (её fullName уходит в привязку). */
+  columnName: string;
+}
+
+/**
+ * Расчётный показатель: многополевая формула (`SUM(a)/SUM(b)`) над ИМЕНАМИ
+ * колонок. Раскрывается ПО ГРУППАМ: в каждой группе-заголовке, где есть все
+ * колонки-операнды, создаётся ОДНА метрика с привязкой алиасов к колонкам этой
+ * группы (см. planAggregateGroups). Фаза 1b единого импорта.
+ */
+export interface CalculatedTemplateSpec {
+  /** Имя логического показателя (= имя шаблона), напр. «Заполненность». */
+  name: string;
+  /** Многополевая формула, напр. `SUM(a)/SUM(b)`. */
+  formula: string;
+  /** Привязка алиасов формулы к именам колонок-операндов. */
+  operands: CalculatedTemplateOperand[];
+  displayFormat: string;
+  decimalPlaces: number;
+  unit?: string;
+  normalizeBy?: string;
+}
+
 /**
  * Подтверждённая пользователем разметка файла-агрегата (сплющивание + узлы).
  * Сериализуема — хранится на датасете (для замены файла) и проходит через
@@ -75,6 +103,11 @@ export interface AggregateLayoutConfig {
    * → дефолт `SUM(value)`, формат `number`.
    */
   metricTemplateSpecs?: AggregateTemplateSpec[];
+  /**
+   * Расчётные показатели (многополевые формулы над именами колонок). Каждый
+   * раскрывается по группам-заголовкам, где есть все колонки-операнды. Фаза 1b.
+   */
+  calculatedTemplateSpecs?: CalculatedTemplateSpec[];
 }
 
 /** Стабильный ключ узла из пути. Разделитель U+0001 — чтобы ['a','b'] и

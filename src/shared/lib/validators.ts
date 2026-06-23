@@ -293,6 +293,21 @@ export const DatasetConfigExportSchema = z.object({
             })
           )
           .optional(),
+        calculatedTemplateSpecs: z
+          .array(
+            z.object({
+              name: z.string(),
+              formula: z.string(),
+              operands: z.array(
+                z.object({ alias: z.string(), columnName: z.string() })
+              ),
+              displayFormat: z.string(),
+              decimalPlaces: z.number(),
+              unit: z.string().optional(),
+              normalizeBy: z.string().optional(),
+            })
+          )
+          .optional(),
       })
       .optional(),
     groupMetricConfigs: z.record(

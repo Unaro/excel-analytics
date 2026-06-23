@@ -9,7 +9,10 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { AggregateColumn } from '../lib/aggregate-layout';
-import type { AggregateTemplateSpec } from '@/shared/lib/types/aggregate';
+import type {
+  AggregateTemplateSpec,
+  CalculatedTemplateSpec,
+} from '@/shared/lib/types/aggregate';
 
 const DEFAULT_FORMULA = 'SUM(value)';
 const DEFAULT_ALIAS = 'value';
@@ -42,7 +45,8 @@ export interface PlannedGroup {
 export interface PlannedTemplate {
   name: string;
   formula: string;
-  alias: string;
+  /** Алиасы полей формулы (per-column — один; расчётный — по числу операндов). */
+  aliases: string[];
   displayFormat: string;
   decimalPlaces: number;
   unit?: string;
@@ -63,6 +67,8 @@ export interface PlanAggregateGroupsOptions {
   importUnassigned?: boolean;
   /** Спеки шаблонов (формула/формат/алиас), заданные при импорте. */
   templateSpecs?: AggregateTemplateSpec[];
+  /** Расчётные показатели (многополевые формулы над именами колонок). */
+  calculatedSpecs?: CalculatedTemplateSpec[];
 }
 
 /**
@@ -79,6 +85,7 @@ export function planAggregateGroups(
     metricTemplateNames,
     importUnassigned = true,
     templateSpecs,
+    calculatedSpecs,
   } = options;
 
   const specByName = new Map<string, AggregateTemplateSpec>();
@@ -96,17 +103,31 @@ export function planAggregateGroups(
 
   const exclude = new Set(excludeGroups ?? []);
   const templatesByName = new Map<string, PlannedTemplate>();
-  const ensureTemplate = (name: string): void => {
+  // Per-column шаблон: одна field-переменная (alias), формула из спеки/дефолт.
+  const ensurePerColumnTemplate = (name: string): void => {
     if (templatesByName.has(name)) return;
     const spec = specByName.get(name);
     templatesByName.set(name, {
       name,
       formula: spec?.formula ?? DEFAULT_FORMULA,
-      alias: aliasFor(name),
+      aliases: [aliasFor(name)],
       displayFormat: spec?.displayFormat ?? DEFAULT_FORMAT,
       decimalPlaces: spec?.decimalPlaces ?? DEFAULT_DECIMALS,
       unit: spec?.unit,
       normalizeBy: spec?.normalizeBy,
+    });
+  };
+  // Расчётный шаблон: многополевая формула, алиасы = операнды.
+  const ensureCalcTemplate = (spec: CalculatedTemplateSpec): void => {
+    if (templatesByName.has(spec.name)) return;
+    templatesByName.set(spec.name, {
+      name: spec.name,
+      formula: spec.formula,
+      aliases: spec.operands.map(o => o.alias),
+      displayFormat: spec.displayFormat,
+      decimalPlaces: spec.decimalPlaces,
+      unit: spec.unit,
+      normalizeBy: spec.normalizeBy,
     });
   };
 
@@ -114,23 +135,47 @@ export function planAggregateGroups(
   let order = 0;
   for (const [groupName, cols] of byGroup) {
     if (exclude.has(groupName)) continue;
-    const metrics: PlannedMetric[] = cols
+
+    // Per-column метрики: колонка = метрика по одновходовой формуле.
+    const perColumn: Omit<PlannedMetric, 'order'>[] = cols
       // Колонки без пользовательского шаблона — только если разрешено.
       .filter(col => importUnassigned || !!metricTemplateNames?.[col.fullName])
-      .map((col, i) => {
+      .map(col => {
         // Логический показатель: пользовательский шаблон, иначе имя колонки.
         const templateName = metricTemplateNames?.[col.fullName] || col.name || col.fullName;
-        ensureTemplate(templateName);
+        ensurePerColumnTemplate(templateName);
         // Имя метрики = имя колонки; если равно имени шаблона — не дублируем.
         const display = col.name || col.fullName;
         return {
           templateName,
           customName: display && display !== templateName ? display : undefined,
           fieldBindings: [{ fieldAlias: aliasFor(templateName), columnName: col.fullName }],
-          order: i,
         };
       });
-    if (metrics.length === 0) continue; // все колонки без шаблона, импорт выключен
+
+    // Расчётные метрики: раскрытие по группе — нужны ВСЕ колонки-операнды
+    // (по имени) в этой группе; иначе показатель в группе не создаётся.
+    const colByName = new Map<string, AggregateColumn>();
+    for (const c of cols) if (!colByName.has(c.name)) colByName.set(c.name, c);
+    const calculated: Omit<PlannedMetric, 'order'>[] = [];
+    for (const spec of calculatedSpecs ?? []) {
+      const bindings: PlannedFieldBinding[] = [];
+      let resolved = true;
+      for (const op of spec.operands) {
+        const c = colByName.get(op.columnName);
+        if (!c) { resolved = false; break; }
+        bindings.push({ fieldAlias: op.alias, columnName: c.fullName });
+      }
+      if (!resolved) continue; // в этой группе нет всех операндов
+      ensureCalcTemplate(spec);
+      calculated.push({ templateName: spec.name, fieldBindings: bindings });
+    }
+
+    const metrics: PlannedMetric[] = [...perColumn, ...calculated].map((m, i) => ({
+      ...m,
+      order: i,
+    }));
+    if (metrics.length === 0) continue; // нечего создавать в группе
     groups.push({ name: groupName, order, metrics });
     order++;
   }
