@@ -379,6 +379,12 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
             );
             const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
             const margin = { top: 8, right: 16, bottom: 4, left: 8 };
+            // Стиль линий 2-D берётся из chartStyle ВЫБРАННОЙ метрики (как в 1-D
+            // GroupBarChart) — так настройки curve/dash на KPI-карточке влияют и
+            // здесь. Все серии-категории этой метрики рисуются единым стилем.
+            // kind (столбец/линия) в 2-D задаёт собственный тоггл chartKind.
+            const lineCurve = currentMetric?.chartStyle?.curve === 'linear' ? 'linear' : 'monotone';
+            const lineDash = currentMetric?.chartStyle?.dash === 'dashed' ? '6 4' : undefined;
 
             if (chartKind === 'bar') {
               return (
@@ -404,11 +410,12 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                 {chartLabels.map((label, i) => (
                   <Line
                     key={label}
-                    type="monotone"
+                    type={lineCurve}
                     dataKey={label}
                     name={display(label)}
                     stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
                     strokeWidth={2}
+                    strokeDasharray={lineDash}
                     dot={dates.length <= 31}
                     connectNulls
                   />
