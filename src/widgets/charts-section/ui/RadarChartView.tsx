@@ -10,10 +10,11 @@ import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping'
 import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
 import { renderThresholdRadars } from '@/shared/ui/threshold-marker';
 import { ChartTooltip } from '@/shared/ui/chart-tooltip';
-import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
+import { METRIC_SERIES_COLORS } from '@/shared/lib/utils/chart-palette';
 
 export const RadarChartView = memo(function RadarChartView({
   data, activeMetricIds, metricNames, axisColor, virtualMetrics,
+  palette = METRIC_SERIES_COLORS,
 }: ChartComponentProps) {
   const { groupedThresholds } = useThresholdGrouping(virtualMetrics, activeMetricIds);
 
@@ -39,7 +40,7 @@ export const RadarChartView = memo(function RadarChartView({
         {activeMetricIds.map((metricId, index) => {
           const vm = virtualMetrics.find(v => v.id === metricId);
           const rules = vm?.colorConfig?.rules;
-          const color = COLORS[index % COLORS.length];
+          const color = palette[index % palette.length];
           return (
             <Radar
               key={metricId}

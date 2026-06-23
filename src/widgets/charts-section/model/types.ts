@@ -8,4 +8,6 @@ export interface ChartComponentProps {
   axisColor: string;
   virtualMetrics: VirtualMetric[];
   isTimeSeries?: boolean;
+  /** Палитра цветов метрик-серий. По умолчанию — METRIC_SERIES_COLORS. */
+  palette?: string[];
 }

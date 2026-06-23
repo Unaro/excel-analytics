@@ -186,6 +186,8 @@ export interface Dashboard {
   // Настройки
   isPublic: boolean;
   refreshInterval?: number;  // Автообновление всего дашборда
+  /** Палитра цветов серий чартов дашборда (id из CHART_PALETTES). Нет/'default' = текущие дефолты. */
+  paletteId?: string;
 
   // Метаданные
   createdAt: number;

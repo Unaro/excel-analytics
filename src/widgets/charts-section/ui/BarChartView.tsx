@@ -11,10 +11,11 @@ import { renderThresholdReferenceLines } from '@/shared/ui/threshold-marker';
 import { ChartTooltip } from '@/shared/ui/chart-tooltip';
 import type { ChartComponentProps } from '../model/types';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
-import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
+import { METRIC_SERIES_COLORS } from '@/shared/lib/utils/chart-palette';
 
 export const BarChartView = memo(function BarChartView({
   data, activeMetricIds, metricNames, axisColor, virtualMetrics,
+  palette = METRIC_SERIES_COLORS,
 }: ChartComponentProps) {
   const { groupedThresholds } = useThresholdGrouping(virtualMetrics, activeMetricIds);
 
@@ -62,7 +63,7 @@ export const BarChartView = memo(function BarChartView({
         {activeMetricIds.map((metricId, index) => {
           const vm = virtualMetrics.find(v => v.id === metricId);
           const rules = vm?.colorConfig?.rules;
-          const defaultColor = COLORS[index % COLORS.length];
+          const defaultColor = palette[index % palette.length];
           return (
             <Bar
               key={metricId}
