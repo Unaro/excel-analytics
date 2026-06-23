@@ -27,6 +27,7 @@ import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { CATEGORY_SERIES_COLORS as SERIES_COLORS } from '@/shared/lib/utils/chart-palette';
+import { ChartTooltip } from '@/shared/ui/chart-tooltip';
 import { checkRule, COLOR_STYLES, toDisplayScale, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { formatValue } from '@/shared/lib/computation/lib/utils';
 import { type NormalizeConfig } from '@/shared/lib/utils/normalize';
@@ -332,26 +333,17 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               tickFormatter={(v: number) => formatCompactNumber(v)}
             />
             <Tooltip
-              // Кастомный контент — иначе recharts рисует светлую плашку в тёмной
-              // теме (var(--tooltip-bg) нигде не задана). Тема — через dark:-классы.
               content={(props) => {
                 const { active, payload, label } = props;
                 if (!active || !payload || !payload.length) return null;
-                return (
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
-                    <div className="font-bold text-slate-900 dark:text-white mb-2">{label}</div>
-                    {payload.map((entry, i) => (
-                      <div key={i} className="flex justify-between gap-3">
-                        <span style={{ color: entry.color ?? '#6366f1' }}>{display(String(entry.dataKey ?? ''))}</span>
-                        <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
-                          {typeof entry.value === 'number'
-                            ? formatDisplayValue(entry.value, effectiveFormat, isNormalized ? undefined : currentMetric?.unit)
-                            : '—'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                );
+                const rows = payload.map((entry) => ({
+                  color: entry.color ?? '#6366f1',
+                  name: display(String(entry.dataKey ?? '')),
+                  value: typeof entry.value === 'number'
+                    ? formatDisplayValue(entry.value, effectiveFormat, isNormalized ? undefined : currentMetric?.unit)
+                    : '—',
+                }));
+                return <ChartTooltip title={label} rows={rows} />;
               }}
             />
             <Legend wrapperStyle={{ fontSize: 11 }} />

@@ -13,6 +13,7 @@ import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { ThresholdLabel } from '@/shared/ui/threshold-marker';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
 import { METRIC_SERIES_COLORS as COLORS } from '@/shared/lib/utils/chart-palette';
+import { ChartTooltip } from '@/shared/ui/chart-tooltip';
 
 interface GroupBarChartProps {
   data: Array<{ name: string; [key: string]: string | number }>;
@@ -68,26 +69,17 @@ export const GroupBarChart = memo(function GroupBarChart({
               content={(props) => {
                 const { active, payload, label } = props;
                 if (!active || !payload || !payload.length) return null;
-                return (
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
-                    <div className="font-bold text-slate-900 dark:text-white mb-2">{displayLabel(label)}</div>
-                    {payload.map((entry, i) => {
-                      const vm = metricConfigs?.find(v => v.id === entry.dataKey);
-                      return (
-                        <div key={i} className="flex justify-between gap-3">
-                          <span style={{ color: entry.color ?? '#6366f1' }}>
-                            {metricNames[String(entry.dataKey)]}
-                          </span>
-                          <span className="font-mono font-bold">
-                            {typeof entry.value === 'number'
-                              ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
-                              : String(entry.value ?? '—')}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
+                const rows = payload.map((entry) => {
+                  const vm = metricConfigs?.find(v => v.id === entry.dataKey);
+                  return {
+                    color: entry.color ?? '#6366f1',
+                    name: metricNames[String(entry.dataKey)],
+                    value: typeof entry.value === 'number'
+                      ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
+                      : String(entry.value ?? '—'),
+                  };
+                });
+                return <ChartTooltip title={displayLabel(label)} rows={rows} />;
               }}
               cursor={{ fill: 'var(--tooltip-cursor)', opacity: 0.1 }}
             />
