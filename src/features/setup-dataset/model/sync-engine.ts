@@ -57,6 +57,7 @@ import {
   type AggregateLayoutConfig,
   type AggregateColumn,
 } from '../lib/aggregate-layout';
+import { planAggregateGroups } from './aggregate-groups-plan';
 
 /**
  * Создаёт группы показателей из колонок-метрик агрегата: по одной группе на
@@ -74,80 +75,57 @@ function createAggregateGroups(
   importUnassigned: boolean = true,
   templateSpecs?: AggregateTemplateSpec[]
 ): number {
-  const byGroup = new Map<string, AggregateColumn[]>();
-  for (const col of columns) {
-    if (col.role !== 'metric') continue;
-    const key = col.groupName || '(без группы)';
-    if (!byGroup.has(key)) byGroup.set(key, []);
-    byGroup.get(key)!.push(col);
-  }
-  if (byGroup.size === 0) return 0;
+  // Чистое планирование (какие группы/метрики/шаблоны) — в отдельном модуле
+  // (тестируемо без сторов). Здесь — применение плана к сторам.
+  const plan = planAggregateGroups(columns, {
+    excludeGroups,
+    metricTemplateNames,
+    importUnassigned,
+    templateSpecs,
+  });
+  if (plan.groups.length === 0) return 0;
 
-  const exclude = new Set(excludeGroups ?? []);
   const templateStore = useMetricTemplateStore.getState();
   const groupStore = useIndicatorGroupStore.getState();
 
-  // Спецификации шаблонов (формула + формат), заданные пользователем при импорте.
-  // Нет спеки для имени → дефолт SUM(value)/number (как раньше).
-  const specByName = new Map<string, AggregateTemplateSpec>();
-  for (const s of templateSpecs ?? []) specByName.set(s.name, s);
-  const aliasFor = (name: string): string => specByName.get(name)?.alias ?? 'value';
-
-  // Общий шаблон на ЛОГИЧЕСКИЙ показатель (имя метрики). Переиспользуем
-  // существующий с тем же именем+формулой (в т.ч. между импортами).
+  // Шаблон на логический показатель: переиспуем существующий с тем же
+  // именем+формулой (в т.ч. между импортами), иначе создаём.
   const templateIdByName = new Map<string, string>();
-  const templateFor = (name: string): string => {
-    const cached = templateIdByName.get(name);
-    if (cached) return cached;
-    const spec = specByName.get(name);
-    const formula = spec?.formula ?? 'SUM(value)';
+  for (const t of plan.templates) {
     const existing = templateStore.templates.find(
-      t => t.name === name && t.formula === formula
+      x => x.name === t.name && x.formula === t.formula
     );
     const id = existing
       ? existing.id
       : templateStore.addTemplate({
-          name,
-          formula,
-          dependencies: [{ type: 'field', alias: aliasFor(name) }],
-          displayFormat: (spec?.displayFormat as DisplayFormat) ?? 'number',
-          decimalPlaces: spec?.decimalPlaces ?? 2,
-          unit: spec?.unit,
-          normalizeBy: spec?.normalizeBy as 'total' | 'max' | 'min' | 'mean' | undefined,
+          name: t.name,
+          formula: t.formula,
+          dependencies: [{ type: 'field', alias: t.alias }],
+          displayFormat: t.displayFormat as DisplayFormat,
+          decimalPlaces: t.decimalPlaces,
+          unit: t.unit,
+          normalizeBy: t.normalizeBy as 'total' | 'max' | 'min' | 'mean' | undefined,
         });
-    templateIdByName.set(name, id);
-    return id;
-  };
-
-  let created = 0;
-  for (const [groupName, cols] of byGroup) {
-    if (exclude.has(groupName)) continue;
-    const metrics = cols
-      // Колонки без пользовательского шаблона импортируем, только если разрешено.
-      .filter(col => importUnassigned || !!metricTemplateNames?.[col.fullName])
-      .map((col, i) => {
-        // Логический показатель (= имя шаблона): пользовательский или имя колонки.
-        const templateName = metricTemplateNames?.[col.fullName] || col.name || col.fullName;
-        // Имя метрики = имя самой колонки (читаемо); шаблон лишь даёт формулу.
-        // Если совпадает с именем шаблона — не дублируем (иначе «X(X)»).
-        const display = col.name || col.fullName;
-        return {
-          id: nanoid(),
-          templateId: templateFor(templateName),
-          customName: display && display !== templateName ? display : undefined,
-          // Привязка алиаса формулы шаблона к УНИКАЛЬНОМУ внутреннему имени
-          // колонки (с префиксом группы). Одновходовая формула — один алиас.
-          fieldBindings: [{ id: nanoid(), fieldAlias: aliasFor(templateName), columnName: col.fullName }],
-          metricBindings: [],
-          enabled: true,
-          order: i,
-        };
-      });
-    if (metrics.length === 0) continue; // все колонки без шаблона, а импорт выключен
-    groupStore.addGroup({ name: groupName, fieldMappings: [], metrics, order: created }, datasetId);
-    created++;
+    templateIdByName.set(t.name, id);
   }
-  return created;
+
+  for (const g of plan.groups) {
+    const metrics = g.metrics.map(m => ({
+      id: nanoid(),
+      templateId: templateIdByName.get(m.templateName)!,
+      customName: m.customName,
+      fieldBindings: m.fieldBindings.map(fb => ({
+        id: nanoid(),
+        fieldAlias: fb.fieldAlias,
+        columnName: fb.columnName,
+      })),
+      metricBindings: [],
+      enabled: true,
+      order: m.order,
+    }));
+    groupStore.addGroup({ name: g.name, fieldMappings: [], metrics, order: g.order }, datasetId);
+  }
+  return plan.groups.length;
 }
 
 /** Артефакты сплющивания агрегата для импорта в DuckDB. */
