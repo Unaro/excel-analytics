@@ -242,6 +242,11 @@ export function compileQuery(
   const formulas = new Map<string, CompiledFormulaMeta>();
   const aggregateMetadata = new Map<string, MetricAggregationMeta>();
   const calculatedInSqlAliases = new Set<string>();
+  // finalAlias всех прямо-эмитнутых (fast-path) метрик: SUM/AVG/… по колонке.
+  // Их значение лежит в base-CTE под этим алиасом и проносится в calc-CTE, но в
+  // `formulas` их нет (fast-path делает continue), поэтому metric-зависимость
+  // расчётной метрики на них иначе не резолвится в SQL (Unresolved symbol).
+  const emittedMetricFinalAliases = new Set<string>();
 
   const baseSelectParts: string[] = [];
 
@@ -384,11 +389,18 @@ export function compileQuery(
         const metricAliasSet = new Set(
           metric.metricBindings.map((mb) => mb.metricAlias)
         );
+        // Расчётная метрика (формула над операндами-показателями: метрики и/или
+        // несколько полей) задаёт агрегат неявно — операнды пишутся голыми
+        // (`a/b`), а не `SUM(a)/SUM(b)` (UI операндов не даёт писать функцию).
+        // Для неё голую колонку авто-оборачиваем в дефолтный агрегат, даже если
+        // глобально включён requireExplicit (он для вручную набранных формул).
+        const isCalculated =
+          metric.metricBindings.length > 0 || metric.fieldBindings.length > 1;
         const pre = preprocessAggregateFormula(
           tpl.formula,
           fieldBindingMap,
           metricAliasSet,
-          formulaOptions
+          isCalculated ? { ...formulaOptions, requireExplicit: false } : formulaOptions
         );
         if (!pre.success) {
           logger.warn(
@@ -412,6 +424,7 @@ export function compileQuery(
           });
 
           emitAggregateSelect(fd.columnName, fn, finalAlias);
+          emittedMetricFinalAliases.add(finalAlias);
           continue;
         }
 
@@ -484,12 +497,17 @@ export function compileQuery(
                   wrapWithCoalesce(quote(depCalc.finalAlias))
               );
           } else {
-              // Зависимость от aggregate-метрики — ищем в formulas
+              // Зависимость от формульной (через CTE) метрики — ищем в formulas.
               const aggMeta = Array.from(formulas.values()).find(
                   (f) => f.metricId === md.metricId && f.groupId === calc.groupId
               );
+              const aggFinalAlias = `${calc.groupId}__${md.metricId}`;
               if (aggMeta) {
-                  const aggFinalAlias = `base_${calc.groupId}__${md.metricId}`.replace('base_', '');
+                  localMetricAliases.set(md.alias, wrapWithCoalesce(quote(aggFinalAlias)));
+              } else if (emittedMetricFinalAliases.has(aggFinalAlias)) {
+                  // Зависимость от fast-path метрики (SUM/AVG по колонке): её
+                  // значение проносится в calc-CTE под finalAlias. Иначе алиас
+                  // остался бы неразрешённым → срыв всей SQL-компиляции.
                   localMetricAliases.set(md.alias, wrapWithCoalesce(quote(aggFinalAlias)));
               }
           }
