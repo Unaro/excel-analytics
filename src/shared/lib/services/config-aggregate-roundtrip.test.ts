@@ -32,6 +32,17 @@ describe('config export/import: aggregateConfig round-trip', () => {
       excludeGroups: ['Служебное'],
       metricTemplateNames: { 'Группа · Потребность': 'Потребность' },
       importUnassignedMetrics: false,
+      metricTemplateSpecs: [
+        {
+          name: 'Потребность',
+          formula: 'AVG(value)',
+          alias: 'value',
+          displayFormat: 'percent',
+          decimalPlaces: 1,
+          unit: 'чел.',
+          normalizeBy: 'total',
+        },
+      ],
     };
 
     const { blob } = buildConfigExportPayload(

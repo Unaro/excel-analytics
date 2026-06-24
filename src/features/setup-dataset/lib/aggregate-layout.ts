@@ -11,11 +11,11 @@
 // План: docs/architecture/aggregate-files.md
 // ─────────────────────────────────────────────────────────────
 
-import type { AggregateNode, EmptyConfig, AggregateLayoutConfig } from '@/shared/lib/types/aggregate';
+import type { AggregateNode, EmptyConfig, AggregateLayoutConfig, AggregateTemplateSpec, CalculatedTemplateSpec } from '@/shared/lib/types/aggregate';
 
 // Контракты разметки живут в shared (нужны и entity-стору датасета для замены
 // файла, и экспорту/импорту конфигов). Здесь — ре-экспорт как public API фичи.
-export type { EmptyConfig, AggregateLayoutConfig };
+export type { EmptyConfig, AggregateLayoutConfig, AggregateTemplateSpec, CalculatedTemplateSpec };
 
 /** Роль колонки в агрегате. */
 export type ColumnRole = 'key' | 'metric' | 'attribute';

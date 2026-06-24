@@ -1,8 +1,26 @@
 // entities/dataset/model/types.ts
 import type { DatasetRow, ColumnStatistics } from '@/shared/lib/types/dataset';
 import type { AggregateLayoutConfig } from '@/shared/lib/types/aggregate';
+import type { ColumnClassification } from '@/shared/lib/types';
 
 export type DatasetSourceType = 'file' | 'postgres' | null;
+
+/**
+ * Сериализуемые параметры разбора файла (шаг «Импорт»), сохранённые на
+ * датасете, чтобы замена сырого файла шла тем же быстрым путём, что и
+ * первичная загрузка. Структурно повторяет `ImportParams` фичи импорта, но
+ * живёт в entities (граница FSD — без зависимости от features).
+ */
+export interface DatasetImportParams {
+  /** Разделитель колонок (CSV); null — xlsx. */
+  delimiter: string | null;
+  /** Десятичный разделитель чисел. */
+  decimalSeparator: '.' | ',';
+  /** Тип каждой колонки по имени. */
+  columnTypes: Record<string, ColumnClassification>;
+  /** strptime-формат дат для нативного CSV (необязательно). */
+  dateFormat?: string;
+}
 
 /**
  * Метаданные загруженного датасета.
@@ -55,6 +73,13 @@ export interface DatasetEntry {
    * заставлять пользователя размечать заново.
    */
   aggregateConfig?: AggregateLayoutConfig;
+  /**
+   * Параметры разбора сырого файла (delimiter/типы/формат дат). Хранятся, чтобы
+   * замена файла шла тем же нативным CSV-путём, что и первичный импорт, а не
+   * откатывалась на медленный авто-разбор. Для агрегатов не нужны — там разбор
+   * выводится из `aggregateConfig`.
+   */
+  importParams?: DatasetImportParams;
 }
 
 /**

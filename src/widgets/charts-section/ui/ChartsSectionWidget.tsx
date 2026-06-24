@@ -22,6 +22,8 @@ interface ChartsSectionWidgetProps {
   onActiveMetricIdsChange?: (ids: string[]) => void;
   onChartTypesChange?: (types: ChartType[]) => void;
   mode?: ChartMode;
+  /** Палитра цветов метрик-серий (из dashboard.paletteId). */
+  palette?: string[];
 }
 
 const CHART_TYPE_CONFIG: Record<ChartType, { label: string; icon: typeof BarChart3; colorClass: string }> = {
@@ -38,6 +40,7 @@ export function ChartsSectionWidget({
   onActiveMetricIdsChange,
   onChartTypesChange,
   mode = 'multi',
+  palette,
 }: ChartsSectionWidgetProps) {
   const { resolvedTheme } = useTheme();
   const axisColor = resolvedTheme === 'dark' ? '#94a3b8' : '#64748b';
@@ -48,7 +51,7 @@ export function ChartsSectionWidget({
 
   if (breakdown.length === 0 || metricConfigs.length === 0) return null;
 
-  const chartProps = { data: chartData, activeMetricIds, metricNames, axisColor, virtualMetrics: metricConfigs };
+  const chartProps = { data: chartData, activeMetricIds, metricNames, axisColor, virtualMetrics: metricConfigs, palette };
 
   const toggleMetric = (id: string) => {
     if (!onActiveMetricIdsChange) return;

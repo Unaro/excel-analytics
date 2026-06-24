@@ -9,9 +9,9 @@ import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
-import { formatRu } from '@/shared/lib/utils/format';
-
-const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
+import { renderThresholdRadars } from '@/shared/ui/threshold-marker';
+import { METRIC_SERIES_COLORS } from '@/shared/lib/utils/chart-palette';
+import { ChartTooltip } from '@/shared/ui/chart-tooltip';
 
 interface GroupRadarChartProps {
   data: Array<{ name: string; [key: string]: string | number }>;
@@ -21,6 +21,8 @@ interface GroupRadarChartProps {
   metricConfigs?: VirtualMetric[];
   /** Код → имя (словарь): для подписей оси/тултипа. Позиция — по сырому name. */
   resolveLabel?: (label: string) => string;
+  /** Палитра цветов метрик-серий. По умолчанию — METRIC_SERIES_COLORS. */
+  palette?: string[];
 }
 
 export const GroupRadarChart = memo(function GroupRadarChart({
@@ -30,6 +32,7 @@ export const GroupRadarChart = memo(function GroupRadarChart({
   title,
   metricConfigs,
   resolveLabel,
+  palette = METRIC_SERIES_COLORS,
 }: GroupRadarChartProps) {
   const displayLabel = (v: unknown) =>
     resolveLabel ? resolveLabel(String(v)) : String(v);
@@ -78,29 +81,11 @@ export const GroupRadarChart = memo(function GroupRadarChart({
                 координатой → дубль ключей `tick-<radius>`. Зум задаёт domain
                 (масштаб полигона), а точные значения видны в тултипе. */}
             <PolarRadiusAxis domain={radarDomain} tick={false} axisLine={false} />
-            {groupedThresholds.map((group, gi) => {
-              const thresholdKey = `__threshold_${gi}`;
-              return (
-                <Radar
-                  key={`threshold-${gi}`}
-                  name={`Порог: ${formatRu(group.y)}`}
-                  dataKey={thresholdKey}
-                  stroke={group.primaryColor}
-                  strokeWidth={group.isOverlap ? 2.5 : 2}
-                  strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
-                  fill={group.primaryColor}
-                  fillOpacity={0.04}
-                  isAnimationActive={false}
-                  legendType="none"
-                  dot={false}
-                  opacity={0.85}
-                />
-              );
-            })}
+            {renderThresholdRadars(groupedThresholds)}
             {metricKeys.map((key, idx) => {
               const vm = metricConfigs?.find(v => v.id === key);
               const rules = vm?.colorConfig?.rules;
-              const defaultColor = COLORS[idx % COLORS.length];
+              const defaultColor = palette[idx % palette.length];
               return (
                 <Radar
                   key={key}
@@ -137,31 +122,19 @@ export const GroupRadarChart = memo(function GroupRadarChart({
               content={(props) => {
                 const { active, payload, label } = props;
                 if (!active || !payload || !payload.length) return null;
-                const filtered = payload.filter((p) => {
-                  const key = String(p.dataKey);
-                  return !key.startsWith('__threshold_');
-                });
-                if (filtered.length === 0) return null;
-                return (
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
-                    <div className="font-bold text-slate-900 dark:text-white mb-2">{displayLabel(label)}</div>
-                    {filtered.map((entry, i) => {
-                      const vm = metricConfigs?.find(v => v.id === entry.dataKey);
-                      return (
-                        <div key={i} className="flex justify-between gap-3">
-                          <span style={{ color: entry.color ?? '#6366f1' }}>
-                            {metricNames[String(entry.dataKey)]}
-                          </span>
-                          <span className="font-mono font-bold">
-                            {typeof entry.value === 'number'
-                              ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
-                              : String(entry.value ?? '—')}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
+                const rows = payload
+                  .filter((p) => !String(p.dataKey).startsWith('__threshold_'))
+                  .map((entry) => {
+                    const vm = metricConfigs?.find(v => v.id === entry.dataKey);
+                    return {
+                      color: entry.color ?? '#6366f1',
+                      name: metricNames[String(entry.dataKey)],
+                      value: typeof entry.value === 'number'
+                        ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
+                        : String(entry.value ?? '—'),
+                    };
+                  });
+                return <ChartTooltip title={displayLabel(label)} rows={rows} />;
               }}
             />
           </RadarChart>

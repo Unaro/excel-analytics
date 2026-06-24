@@ -11,9 +11,14 @@ interface MetricCellProps {
   metric: VirtualMetric;
   /** Значение введено из узла файла-агрегата — подсвечиваем ячейку. */
   fromNode?: boolean;
+  /**
+   * Формат для масштаба окрашивания/порогов, если он отличается от
+   * `metric.displayFormat` (нормализованное значение — доля, показанная %).
+   */
+  colorFormat?: string;
 }
 
-export function MetricCell({ value, formattedValue, metric, fromNode }: MetricCellProps) {
+export function MetricCell({ value, formattedValue, metric, fromNode, colorFormat }: MetricCellProps) {
 
   const displayValue = formattedValue !== undefined && formattedValue !== '—'
     ? formattedValue
@@ -25,8 +30,9 @@ export function MetricCell({ value, formattedValue, metric, fromNode }: MetricCe
 
   let className = "font-mono font-medium text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded-md transition-colors";
   const rules = metric.colorConfig?.rules || [];
-  // Порог сравнивается в масштабе отображения (для percent — в процентах)
-  const scaled = toDisplayScale(value ?? 0, metric.displayFormat);
+  // Порог сравнивается в масштабе отображения (для percent — в процентах).
+  // colorFormat имеет приоритет: нормализованное значение красим в шкале %.
+  const scaled = toDisplayScale(value ?? 0, colorFormat ?? metric.displayFormat);
   const activeRule = rules.find(rule => checkRule(scaled, rule.operator, rule.value, rule.value2));
 
   if (activeRule) {

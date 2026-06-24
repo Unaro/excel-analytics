@@ -54,7 +54,9 @@ export function SetupWizardContent() {
     if (!wizard.selectedFile) return;
     // Агрегат: передаём подтверждённую разметку → сплющивание в листья.
     const aggregate = wizard.isAggregate ? wizard.aggregateConfig ?? undefined : undefined;
-    const ok = await importFile(wizard.selectedFile, wizard.importParams ?? undefined, aggregate);
+    // Сырые: группы, заданные до импорта (применятся в syncFromFile).
+    const rawGroups = wizard.isAggregate ? undefined : wizard.rawGroupsConfig ?? undefined;
+    const ok = await importFile(wizard.selectedFile, wizard.importParams ?? undefined, aggregate, rawGroups);
     // Успех → сбрасываем выбранный файл; авто-навигация уведёт на «Колонки».
     if (ok) wizard.resetSelectedFile();
   };
@@ -148,6 +150,7 @@ export function SetupWizardContent() {
             onAggregateToggle={wizard.setIsAggregate}
             aggregateMatrix={wizard.aggregateMatrix}
             onAggregateLayoutChange={wizard.setAggregateConfig}
+            onRawGroupsChange={wizard.setRawGroupsConfig}
           />
         )}
         {wizard.step === 'columns' && (

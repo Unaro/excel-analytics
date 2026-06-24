@@ -2,7 +2,7 @@
 import { memo, useMemo } from 'react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Rectangle, ReferenceLine, Label,
+  Rectangle,
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
@@ -10,10 +10,10 @@ import type { VirtualMetric } from '@/shared/lib/validators';
 import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
-import { ThresholdLabel } from '@/shared/ui/threshold-marker';
+import { renderThresholdReferenceLines } from '@/shared/ui/threshold-marker';
 import type { CustomBarShapeProps } from '@/shared/lib/types/recharts';
-
-const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
+import { METRIC_SERIES_COLORS } from '@/shared/lib/utils/chart-palette';
+import { ChartTooltip } from '@/shared/ui/chart-tooltip';
 
 interface GroupBarChartProps {
   data: Array<{ name: string; [key: string]: string | number }>;
@@ -23,6 +23,8 @@ interface GroupBarChartProps {
   metricConfigs?: VirtualMetric[];
   /** Код → имя (словарь): для подписей оси/тултипа. Позиция — по сырому name. */
   resolveLabel?: (label: string) => string;
+  /** Палитра цветов метрик-серий. По умолчанию — METRIC_SERIES_COLORS. */
+  palette?: string[];
 }
 
 export const GroupBarChart = memo(function GroupBarChart({
@@ -32,6 +34,7 @@ export const GroupBarChart = memo(function GroupBarChart({
   title,
   metricConfigs,
   resolveLabel,
+  palette = METRIC_SERIES_COLORS,
 }: GroupBarChartProps) {
   const displayLabel = (v: unknown) =>
     resolveLabel ? resolveLabel(String(v)) : String(v);
@@ -69,54 +72,25 @@ export const GroupBarChart = memo(function GroupBarChart({
               content={(props) => {
                 const { active, payload, label } = props;
                 if (!active || !payload || !payload.length) return null;
-                return (
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 p-3 rounded shadow-xl text-xs">
-                    <div className="font-bold text-slate-900 dark:text-white mb-2">{displayLabel(label)}</div>
-                    {payload.map((entry, i) => {
-                      const vm = metricConfigs?.find(v => v.id === entry.dataKey);
-                      return (
-                        <div key={i} className="flex justify-between gap-3">
-                          <span style={{ color: entry.color ?? '#6366f1' }}>
-                            {metricNames[String(entry.dataKey)]}
-                          </span>
-                          <span className="font-mono font-bold">
-                            {typeof entry.value === 'number'
-                              ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
-                              : String(entry.value ?? '—')}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
+                const rows = payload.map((entry) => {
+                  const vm = metricConfigs?.find(v => v.id === entry.dataKey);
+                  return {
+                    color: entry.color ?? '#6366f1',
+                    name: metricNames[String(entry.dataKey)],
+                    value: typeof entry.value === 'number'
+                      ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
+                      : String(entry.value ?? '—'),
+                  };
+                });
+                return <ChartTooltip title={displayLabel(label)} rows={rows} />;
               }}
               cursor={{ fill: 'var(--tooltip-cursor)', opacity: 0.1 }}
             />
-            {groupedThresholds.map((group, gi) => (
-              <ReferenceLine
-                key={`threshold-${gi}`}
-                y={group.y}
-                stroke={group.primaryColor}
-                strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
-                strokeWidth={group.isOverlap ? 2 : 1.5}
-                opacity={0.7}
-                ifOverflow="extendDomain"
-              >
-                <Label
-                  content={(props) => (
-                    <ThresholdLabel
-                      viewBox={props.viewBox as { x: number; y: number; width: number; height: number }}
-                      value={group.labelValue}
-                      group={group}
-                    />
-                  )}
-                />
-              </ReferenceLine>
-            ))}
+            {renderThresholdReferenceLines(groupedThresholds)}
             {metricKeys.map((key, idx) => {
               const vm = metricConfigs?.find((v) => v.id === key);
               const rules = vm?.colorConfig?.rules;
-              const defaultColor = COLORS[idx % COLORS.length];
+              const defaultColor = palette[idx % palette.length];
               const style = vm?.chartStyle;
 
               // Метрика-линия: гладкая/ломаная (type) + сплошная/пунктир (dash).

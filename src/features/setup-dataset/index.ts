@@ -9,6 +9,7 @@ export {
   syncFromFile,
   syncFromPostgres,
   refreshPgDataset,
+  createAggregateGroups,
 } from './model/sync-engine';
 export { removeDatasetCompletely } from './model/remove-dataset';
 export {
@@ -54,6 +55,8 @@ export type {
   HierarchyPreviewNode,
   ProposedGroup,
   AggregateLayoutConfig,
+  AggregateTemplateSpec,
+  CalculatedTemplateSpec,
   FlattenResult,
   AggregateNode,
 } from './lib/aggregate-layout';

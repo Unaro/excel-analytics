@@ -8,12 +8,13 @@ import { getColorForValue, formatDisplayValue } from '@/shared/lib/utils/metric-
 import type { ChartComponentProps } from '../model/types';
 import { useThresholdGrouping } from '@/shared/lib/hooks/use-threshold-grouping';
 import { autoRadarDomain } from '@/shared/lib/utils/chart-domain';
-import { formatRu } from '@/shared/lib/utils/format';
-
-const COLORS = ['#6366f1', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
+import { renderThresholdRadars } from '@/shared/ui/threshold-marker';
+import { ChartTooltip } from '@/shared/ui/chart-tooltip';
+import { METRIC_SERIES_COLORS } from '@/shared/lib/utils/chart-palette';
 
 export const RadarChartView = memo(function RadarChartView({
   data, activeMetricIds, metricNames, axisColor, virtualMetrics,
+  palette = METRIC_SERIES_COLORS,
 }: ChartComponentProps) {
   const { groupedThresholds } = useThresholdGrouping(virtualMetrics, activeMetricIds);
 
@@ -35,29 +36,11 @@ export const RadarChartView = memo(function RadarChartView({
         <PolarGrid stroke={axisColor} strokeOpacity={0.2} />
         <PolarAngleAxis dataKey="name" tick={{ fontSize: 10, fill: axisColor }} />
         <PolarRadiusAxis angle={30} domain={radarDomain} tick={false} axisLine={false} />
-        {groupedThresholds.map((group, gi) => {
-          const thresholdKey = `__threshold_${gi}`;
-          return (
-            <Radar
-              key={`threshold-${gi}`}
-              name={`Порог: ${formatRu(group.y)}`}
-              dataKey={thresholdKey}
-              stroke={group.primaryColor}
-              strokeWidth={group.isOverlap ? 2.5 : 2}
-              strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
-              fill={group.primaryColor}
-              fillOpacity={0.04}
-              isAnimationActive={false}
-              legendType="none"
-              dot={false}
-              opacity={0.85}
-            />
-          );
-        })}
+        {renderThresholdRadars(groupedThresholds)}
         {activeMetricIds.map((metricId, index) => {
           const vm = virtualMetrics.find(v => v.id === metricId);
           const rules = vm?.colorConfig?.rules;
-          const color = COLORS[index % COLORS.length];
+          const color = palette[index % palette.length];
           return (
             <Radar
               key={metricId}
@@ -92,35 +75,19 @@ export const RadarChartView = memo(function RadarChartView({
           content={(props) => {
             const { active, payload, label } = props;
             if (!active || !payload?.length) return null;
-            const filtered = payload.filter((p) => {
-              const key = String(p.dataKey);
-              return !key.startsWith('__threshold_');
-            });
-            if (filtered.length === 0) return null;
-            return (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 p-3 rounded-lg shadow-xl text-sm">
-                <p className="font-bold text-slate-900 dark:text-white mb-2">{label}</p>
-                {filtered.map((entry, i) => {
-                  const vm = virtualMetrics.find(v => v.id === entry.dataKey);
-                  return (
-                  <div key={i} className="flex items-center gap-2">
-                    <div
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: entry.color ?? '#6366f1' }}
-                    />
-                    <span className="text-slate-500 dark:text-slate-400 text-xs">
-                      {metricNames[String(entry.dataKey)]}:
-                    </span>
-                    <span className="font-mono font-medium text-slate-900 dark:text-slate-200 ml-auto">
-                      {typeof entry.value === 'number'
-                        ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
-                        : String(entry.value ?? '—')}
-                    </span>
-                  </div>
-                  );
-                })}
-              </div>
-            );
+            const rows = payload
+              .filter((p) => !String(p.dataKey).startsWith('__threshold_'))
+              .map((entry) => {
+                const vm = virtualMetrics.find(v => v.id === entry.dataKey);
+                return {
+                  color: entry.color ?? '#6366f1',
+                  name: metricNames[String(entry.dataKey)],
+                  value: typeof entry.value === 'number'
+                    ? formatDisplayValue(entry.value, vm?.displayFormat, vm?.unit)
+                    : String(entry.value ?? '—'),
+                };
+              });
+            return <ChartTooltip title={label} rows={rows} />;
           }}
         />
         <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />

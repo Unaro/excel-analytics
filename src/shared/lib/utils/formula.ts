@@ -1,5 +1,4 @@
 // lib/utils/formula.ts
-import { logger } from '@/shared/lib/logger';
 import { parse, MathNode } from 'mathjs';
 
 interface MathSymbolNode extends MathNode {
@@ -55,8 +54,9 @@ export function extractVariables(formula: string): string[] {
     });
 
     return Array.from(foundDeps);
-  } catch (e) {
-    logger.error('Error parsing formula variables:', e);
+  } catch {
+    // Незавершённая формула при наборе (напр. «a/b*») — нормальное промежуточное
+    // состояние, не ошибка. Тихо возвращаем пустой список переменных.
     return [];
   }
 }

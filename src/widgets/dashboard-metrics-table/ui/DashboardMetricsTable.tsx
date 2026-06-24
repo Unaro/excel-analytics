@@ -95,10 +95,14 @@ export function DashboardMetricsTable({
           <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-100 dark:divide-slate-800/50">
             {groups.map((group) => (
               <tr key={group.groupId} className="hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 group">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-slate-100 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-indigo-50/30 dark:group-hover:bg-slate-900/50 border-r border-gray-100 dark:border-slate-800 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.05)]">
+                {/* Липкая колонка: фон непрозрачный + z-10 (иначе цифры
+                    прокрученных колонок просвечивают сквозь имя при наведении).
+                    Имя обрезаем (truncate) — длинное название не наезжает на цифры. */}
+                <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-100 sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-indigo-50 dark:group-hover:bg-slate-800 border-r border-gray-100 dark:border-slate-800 shadow-[4px_0_10px_-4px_rgba(0,0,0,0.1)] w-[250px] max-w-[250px]">
                   <Link
                     href={getGroupHref(group.groupId)}
-                    className="hover:text-indigo-600 dark:hover:text-indigo-400 underline decoration-dashed underline-offset-4 decoration-slate-300"
+                    title={group.groupName}
+                    className="block truncate hover:text-indigo-600 dark:hover:text-indigo-400 underline decoration-dashed underline-offset-4 decoration-slate-300"
                   >
                     {group.groupName}
                   </Link>
@@ -110,7 +114,7 @@ export function DashboardMetricsTable({
 
                   return (
                     <td key={metricVal.virtualMetricId} className="px-6 py-4 whitespace-nowrap text-sm text-right border-l border-transparent hover:border-slate-100 dark:hover:border-slate-800">
-                      <MetricCell value={metricVal.value} formattedValue={metricVal.formattedValue} metric={metricConfig} fromNode={metricVal.fromNode} />
+                      <MetricCell value={metricVal.value} formattedValue={metricVal.formattedValue} metric={metricConfig} fromNode={metricVal.fromNode} colorFormat={metricVal.colorFormat} />
                     </td>
                   );
                 })}

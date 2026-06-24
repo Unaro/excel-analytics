@@ -19,6 +19,12 @@ import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
 import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/entities/aggregate-nodes';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
+import { useMetricTemplateStore } from '@/entities/metric';
+import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
+import { buildNormalizedChartConfigs } from '@/shared/lib/utils/chart-format';
+import { metricPalette, categoryPalette } from '@/shared/lib/utils/chart-palette';
+import { PalettePicker } from '@/shared/ui/palette-picker';
+import { useIndicatorGroupStore } from '@/entities/indicator-group';
 
 /** Подписи размерностей временно́й группировки. */
 const GRANULARITY_LABELS: Record<DateGranularity, string> = {
@@ -69,6 +75,12 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     return group?.metrics.map(m => m.id) ?? [];
   }, [group]);
 
+  // Палитра группы (paletteId) красит серии чартов: 1-D — метрики, 2-D —
+  // категории. Дефолт сохраняет текущие цвета (см. metricPalette/categoryPalette).
+  const updateGroup = useIndicatorGroupStore(s => s.updateGroup);
+  const palette1D = useMemo(() => metricPalette(group?.paletteId), [group?.paletteId]);
+  const paletteCat = useMemo(() => categoryPalette(group?.paletteId), [group?.paletteId]);
+
   // metricId группы → templateId: ячейки таблицы берут CF из шаблона.
   const metricTemplateIds = useMemo(
     () => Object.fromEntries((group?.metrics ?? []).map(m => [m.id, m.templateId])),
@@ -101,6 +113,24 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     () => summary?.virtualMetrics ?? [],
     [summary]
   );
+
+  // Нормализация столбцов (% от итога/макс/…): конфиг берётся с шаблона метрики.
+  // virtualMetricId → {база, точность}. Применяется только к строкам разбивки
+  // (дети уровня); строка «Итого» остаётся абсолютной (она же — ориентир).
+  const templates = useMetricTemplateStore(s => s.templates);
+  const normalizeByVmId = useMemo(() => {
+    const byTemplate = new Map<string, NormalizeConfig>();
+    for (const t of templates)
+      if (t.normalizeBy) byTemplate.set(t.id, { base: t.normalizeBy, decimalPlaces: t.decimalPlaces });
+    const map = new Map<string, NormalizeConfig>();
+    if (byTemplate.size === 0) return map;
+    for (const vm of summaryVirtualMetrics) {
+      const templateId = metricTemplateIds[vm.sourceMetricId];
+      const cfg = templateId ? byTemplate.get(templateId) : undefined;
+      if (cfg) map.set(vm.virtualMetricId, cfg);
+    }
+    return map;
+  }, [templates, summaryVirtualMetrics, metricTemplateIds]);
 
   // Стиль чарта (столбец/линия) per-metric: храним в group-metric-config по
   // sourceMetricId. Карта для KPI-карточек + сеттер, пишущий в стор.
@@ -184,16 +214,32 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     });
   }, [useEntered, oneDimBreakdown, enteredByLabel]);
 
+  // Нормализация (% от итога/макс/…) — пост-пасс по столбцу детей текущего
+  // уровня, ПОСЛЕ overlay (введённые узлы входят в знаменатель как есть).
+  // Итого не трогаем (effectiveSummaryMetrics остаётся абсолютным).
+  const displayBreakdown = useMemo(
+    () => (effectiveBreakdown ? normalizeVmRows(effectiveBreakdown, normalizeByVmId) : effectiveBreakdown),
+    [effectiveBreakdown, normalizeByVmId]
+  );
+
+  // Для чартов нормализованные метрики показываем процентом: чарт строит только
+  // доли-детей (без «Итого»), поэтому колоночный percent тут корректен (и ось,
+  // и тултип идут в масштабе %). В таблице формат остаётся абсолютным (Итого).
+  const chartMetricConfigs = useMemo(
+    () => buildNormalizedChartConfigs(virtualMetrics, normalizeByVmId),
+    [virtualMetrics, normalizeByVmId]
+  );
+
   // Сортировка чартов идёт по эффективным значениям (введённые тоже участвуют).
   const chartBreakdown = useMemo(() => {
-    const base = effectiveBreakdown ?? [];
+    const base = displayBreakdown ?? [];
     // Сырые (уникальные) label — позиция категории на оси. Резолв словаря НЕ
     // применяем здесь: разные коды могут давать одно имя → дубль категорий →
     // recharts роняет ключи осей. Имя — через tickFormatter/тултип в чартах.
     return sortConfig
       ? sortBreakdown(base, sortConfig.key, sortConfig.direction)
       : base;
-  }, [effectiveBreakdown, sortConfig]);
+  }, [displayBreakdown, sortConfig]);
   const visibleChartBreakdown = useMemo(
     () => chartBreakdown.filter(item => !chartHiddenLabels.has(item.label)),
     [chartBreakdown, chartHiddenLabels]
@@ -267,6 +313,10 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
               </Select>
             </div>
           )}
+          <PalettePicker
+            value={group.paletteId}
+            onChange={id => updateGroup(groupId, { paletteId: id })}
+          />
           <ChartTypeSelector
             selected={chartTypes}
             onChange={handleChartTypesChange}
@@ -303,6 +353,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           truncated={summary?.breakdownTruncated}
           onRowClick={drillDown}
           resolveLabel={resolveLabel}
+          normalizeByVmId={normalizeByVmId}
+          palette={paletteCat}
         />
       )}
 
@@ -312,16 +364,17 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         <GroupChartsPanel
           breakdown={visibleChartBreakdown}
           virtualMetrics={effectiveSummaryMetrics}
-          metricConfigs={virtualMetrics}
+          metricConfigs={chartMetricConfigs}
           activeMetricIds={activeMetricIds}
           chartTypes={chartTypes}
           resolveLabel={resolveLabel}
+          palette={palette1D}
         />
       )}
 
       {!isComputing && !isTwoDimensional && oneDimBreakdown && oneDimBreakdown.length > 0 && (
         <GroupBreakdownTable
-          breakdown={effectiveBreakdown ?? oneDimBreakdown}
+          breakdown={displayBreakdown ?? oneDimBreakdown}
           sortConfig={sortConfig}
           onSortChange={setSortConfig}
           summary={summary}

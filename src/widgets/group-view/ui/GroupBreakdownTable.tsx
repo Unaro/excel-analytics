@@ -274,10 +274,12 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                   </td>
                 )}
                 <td className="px-6 py-3 text-sm font-medium text-slate-900 dark:text-slate-100">
-                  <div className="flex items-center gap-2">
-                    {display(item.label)}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="truncate max-w-[360px]" title={display(item.label)}>
+                      {display(item.label)}
+                    </span>
                     {nextLevel && (
-                      <ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-500 transition-colors" />
+                      <ChevronRight size={14} className="text-slate-300 group-hover:text-indigo-500 transition-colors shrink-0" />
                     )}
                   </div>
                 </td>
@@ -298,6 +300,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                           decimalPlaces={meta.decimalPlaces}
                           unit={meta.unit}
                           fromNode={val.fromNode}
+                          colorFormat={val.colorFormat}
                         />
                       ) : (
                         <span className="text-slate-300 dark:text-slate-600 select-none">−</span>

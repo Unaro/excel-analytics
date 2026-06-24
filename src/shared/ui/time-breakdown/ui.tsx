@@ -16,30 +16,38 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ReferenceLine, Label,
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  Legend,
 } from 'recharts';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
-import { Search, AlertTriangle, ChevronRight, TrendingUp } from 'lucide-react';
+import { Search, AlertTriangle, ChevronRight, TrendingUp, BarChart3, LineChart as LineChartIcon } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
 import { formatCompactNumber } from '@/shared/lib/utils/format';
+import { CATEGORY_SERIES_COLORS as SERIES_COLORS } from '@/shared/lib/utils/chart-palette';
+import { effectiveChartFormat } from '@/shared/lib/utils/chart-format';
+import { ChartTooltip } from '@/shared/ui/chart-tooltip';
 import { checkRule, COLOR_STYLES, toDisplayScale, formatDisplayValue } from '@/shared/lib/utils/metric-colors';
+import { formatValue } from '@/shared/lib/computation/lib/utils';
+import { type NormalizeConfig } from '@/shared/lib/utils/normalize';
+import {
+  buildPivotDates,
+  buildPivotRows,
+  buildDateRefs,
+  pivotGrandTotal,
+  metricValueOf,
+  cellRatioOf,
+  type PivotRow,
+} from './pivot';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
-import { ThresholdLabel } from '@/shared/ui/threshold-marker';
+import { renderThresholdReferenceLines } from '@/shared/ui/threshold-marker';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
 import type { VirtualMetric } from '@/shared/lib/validators';
 
 /** Серий на чарте по умолчанию (top по сумме выбранной метрики). */
 const DEFAULT_SERIES_LIMIT = 8;
-
-const SERIES_COLORS = [
-  '#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
-  '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#14b8a6',
-  '#a855f7', '#64748b',
-];
 
 export interface TimeBreakdownSectionProps {
   /** Элементы breakdown с заполненным dateLabel (категория × время). */
@@ -61,14 +69,15 @@ export interface TimeBreakdownSectionProps {
    * в onRowClick, ключи строк и dataKey чарта уходит исходный label).
    */
   resolveLabel?: (label: string) => string;
-}
-
-interface PivotRow {
-  label: string;
-  /** dateLabel → элемент breakdown */
-  cells: Map<string, BreakdownItem>;
-  /** Сумма выбранной метрики по строке (сортировка и top-N). */
-  total: number;
+  /**
+   * Кросс-столбцовая нормализация (% от итога/макс/…): virtualMetricId →
+   * {база, точность}. В 2-D считается ПО ПЕРИОДАМ: доля от ориентира по столбцу
+   * каждой даты (обобщает 1-D). Ячейки и чарт — в процентах, Σ-столбец — общая
+   * доля строки (итог строки ÷ общий итог). Нет записи = абсолютные значения.
+   */
+  normalizeByVmId?: Map<string, NormalizeConfig>;
+  /** Палитра цветов категорий-серий (из group.paletteId). Дефолт — CATEGORY_SERIES_COLORS. */
+  palette?: string[];
 }
 
 export const TimeBreakdownSection = memo(function TimeBreakdownSection({
@@ -80,6 +89,8 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   truncated,
   onRowClick,
   resolveLabel,
+  normalizeByVmId,
+  palette = SERIES_COLORS,
 }: TimeBreakdownSectionProps) {
   const display = useMemo(
     () => resolveLabel ?? ((label: string) => label),
@@ -96,9 +107,21 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const [metricId, setMetricId] = useState<string>('');
   const effectiveMetricId = metricId || metricOptions[0]?.id || '';
 
+  const currentMetric = metricOptions.find(m => m.id === effectiveMetricId);
+  // Нормализация выбранной метрики (2-D — по периодам, см. dateRefs ниже):
+  // доля показывается процентом, поэтому формат/масштаб → percent.
+  const normCfg = normalizeByVmId?.get(effectiveMetricId);
+  const isNormalized = !!normCfg;
+  const normDecimals = normCfg?.decimalPlaces ?? currentMetric?.decimalPlaces ?? 1;
+  const effectiveFormat = effectiveChartFormat(currentMetric?.displayFormat, isNormalized);
+
   const [searchQuery, setSearchQuery] = useState('');
   // null — авто-режим top-N; Set — явный выбор пользователя
   const [selectedLabels, setSelectedLabels] = useState<Set<string> | null>(null);
+  // Тип 2-D-чарта — собственный для 2-D (оси иные, чем у 1-D): линии или
+  // сгруппированные столбцы по периодам. Локальное состояние (как metricId/
+  // searchQuery); персист — в Фазе 3 вместе с палитрой и сохранением вида.
+  const [chartKind, setChartKind] = useState<'line' | 'bar'>('line');
 
   // Чарт и pivot-таблица — одна ось дат: их горизонтальные скроллы связаны,
   // чтобы листать вместе (а не наводиться на каждый скроллбар отдельно).
@@ -118,37 +141,38 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     requestAnimationFrame(() => { syncingRef.current = false; });
   };
 
-  const metricValue = (item: BreakdownItem | undefined): number | null => {
-    const vm = item?.virtualMetrics.find(v => v.virtualMetricId === effectiveMetricId);
-    return typeof vm?.value === 'number' ? vm.value : null;
-  };
+  const metricValue = (item: BreakdownItem | undefined): number | null =>
+    metricValueOf(item, effectiveMetricId);
   const metricFormatted = (item: BreakdownItem | undefined): string => {
+    if (isNormalized) {
+      const r = cellRatio(item);
+      return r === null ? '—' : formatValue(r, 'percent', normDecimals);
+    }
     const vm = item?.virtualMetrics.find(v => v.virtualMetricId === effectiveMetricId);
     return vm?.formattedValue ?? '—';
   };
 
   // Оси pivot: интервалы хронологически, строки по сумме метрики
-  const dates = useMemo(
-    () => Array.from(new Set(items.map(i => i.dateLabel ?? ''))).filter(Boolean).sort(),
-    [items]
+  const dates = useMemo(() => buildPivotDates(items), [items]);
+
+  const rows = useMemo<PivotRow[]>(
+    () => buildPivotRows(items, effectiveMetricId),
+    [items, effectiveMetricId]
   );
 
-  const rows = useMemo<PivotRow[]>(() => {
-    const byLabel = new Map<string, PivotRow>();
-    for (const item of items) {
-      if (!item.dateLabel) continue;
-      let row = byLabel.get(item.label);
-      if (!row) {
-        row = { label: item.label, cells: new Map(), total: 0 };
-        byLabel.set(item.label, row);
-      }
-      row.cells.set(item.dateLabel, item);
-      const v = metricValue(item);
-      if (v !== null) row.total += v;
-    }
-    return Array.from(byLabel.values()).sort((a, b) => b.total - a.total);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, effectiveMetricId]);
+  // Нормализация ПО ПЕРИОДАМ: ориентир (знаменатель) — по столбцу каждой даты
+  // (доля от суммы/макс/… по всем категориям внутри периода). Обобщает 1-D.
+  const dateRefs = useMemo(
+    () => (isNormalized ? buildDateRefs(rows, dates, effectiveMetricId, normCfg!.base) : null),
+    [isNormalized, dates, rows, effectiveMetricId, normCfg]
+  );
+
+  // Общий итог метрики — знаменатель Σ-столбца (доля строки в общем итоге).
+  const grandTotal = useMemo(() => pivotGrandTotal(rows), [rows]);
+
+  // Значение ячейки для показа/окраски/чарта: абсолют или доля (по периоду).
+  const cellRatio = (item: BreakdownItem | undefined): number | null =>
+    cellRatioOf(item, effectiveMetricId, dateRefs);
 
   // Колесо мыши → горизонтальный скролл (вертикального колеса на широком
   // 2D-чарте/таблице нет, листать иначе неудобно). Нативный листенер с
@@ -186,18 +210,19 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
 
   const chartData = useMemo(() => {
     const rowByLabel = new Map(rows.map(r => [r.label, r]));
-    const fmt = currentMetric?.displayFormat;
     return dates.map(date => {
       const point: Record<string, string | number | null> = { date };
       for (const label of chartLabels) {
         // Масштаб отображения, как и порог-линия (group.y): percent доля → %.
-        const raw = metricValue(rowByLabel.get(label)?.cells.get(date));
-        point[label] = raw === null ? null : toDisplayScale(raw, fmt);
+        // Нормализованная метрика → доля по периоду, формат percent.
+        const cell = rowByLabel.get(label)?.cells.get(date);
+        const v = isNormalized ? cellRatio(cell) : metricValue(cell);
+        point[label] = v === null ? null : toDisplayScale(v, effectiveFormat);
       }
       return point;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dates, rows, chartLabels, effectiveMetricId]);
+  }, [dates, rows, chartLabels, effectiveMetricId, isNormalized]);
 
   const toggleLabel = (label: string) => {
     setSelectedLabels(prev => {
@@ -219,8 +244,6 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     );
   }, [rows, searchQuery, display]);
 
-  const currentMetric = metricOptions.find(m => m.id === effectiveMetricId);
-
   // Пороговые линии условного форматирования выбранной метрики
   // (метаданные метрики должны нести colorConfig)
   const thresholds = useMemo(
@@ -232,10 +255,10 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   /** CSS-классы окраски ячейки по правилам условного форматирования. */
   const cellColorClass = (item: BreakdownItem | undefined): string | null => {
     if (!colorRules || colorRules.length === 0) return null;
-    const v = metricValue(item);
+    const v = cellRatio(item);
     if (v === null) return null;
-    // Порог — в масштабе отображения (для percent в процентах)
-    const scaled = toDisplayScale(v, currentMetric?.displayFormat);
+    // Порог — в масштабе отображения (для percent/нормализации в процентах)
+    const scaled = toDisplayScale(v, effectiveFormat);
     const rule = colorRules.find(r => checkRule(scaled, r.operator, r.value, r.value2));
     return rule ? COLOR_STYLES[rule.color] : null;
   };
@@ -274,6 +297,26 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* Тип 2-D-чарта: линии / сгруппированные столбцы по периодам. */}
+          <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            {(['line', 'bar'] as const).map(k => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setChartKind(k)}
+                title={k === 'line' ? 'Линии' : 'Столбцы'}
+                aria-pressed={chartKind === k}
+                className={cn(
+                  'px-2.5 h-9 flex items-center transition-colors',
+                  chartKind === k
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white dark:bg-slate-950 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900'
+                )}
+              >
+                {k === 'line' ? <LineChartIcon size={14} /> : <BarChart3 size={14} />}
+              </button>
+            ))}
+          </div>
           {metricOptions.length > 1 && (
             <Select
               className="w-52 h-9 text-sm"
@@ -298,9 +341,11 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
         </div>
       </div>
 
-      {/* Линейный чарт: динамика выбранной метрики по сериям.
+      {/* Чарт: динамика выбранной метрики по сериям (линии или столбцы).
           При многих интервалах — горизонтальный скролл внутри бокса,
-          чтобы точки/подписи не сжимались, а страница не растягивалась. */}
+          чтобы точки/подписи не сжимались, а страница не растягивалась.
+          Оси/тултип/пороги общие для обоих типов (вынесены в переменные —
+          recharts распознаёт их по типу элемента, не по месту). */}
       <div className="px-4 pt-4">
         <ScrollableChart
           ref={chartScrollRef}
@@ -309,61 +354,78 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
           slotWidth={56}
           height={304}
         >
-          <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" />
-            <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              stroke="#94a3b8"
-              tickFormatter={(v: number) => formatCompactNumber(v)}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'var(--tooltip-bg, #fff)',
-                borderRadius: 8,
-                fontSize: 12,
-              }}
-              formatter={(value) =>
-                typeof value === 'number'
-                  ? formatDisplayValue(value, currentMetric?.displayFormat, currentMetric?.unit)
-                  : '—'
-              }
-            />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            {thresholds.map((group, gi) => (
-              <ReferenceLine
-                key={`threshold-${gi}`}
-                y={group.y}
-                stroke={group.primaryColor}
-                strokeDasharray={group.isOverlap ? '4 2 1 2' : '6 3'}
-                strokeWidth={group.isOverlap ? 2 : 1.5}
-                opacity={0.7}
-                ifOverflow="extendDomain"
-              >
-                <Label
-                  content={(props) => (
-                    <ThresholdLabel
-                      viewBox={props.viewBox as { x: number; y: number; width: number; height: number }}
-                      value={group.labelValue}
-                      group={group}
-                    />
-                  )}
-                />
-              </ReferenceLine>
-            ))}
-            {chartLabels.map((label, i) => (
-              <Line
-                key={label}
-                type="monotone"
-                dataKey={label}
-                name={display(label)}
-                stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                strokeWidth={2}
-                dot={dates.length <= 31}
-                connectNulls
+          {(() => {
+            const grid = <CartesianGrid strokeDasharray="3 3" stroke="#94a3b833" />;
+            const xAxis = <XAxis dataKey="date" tick={{ fontSize: 11 }} stroke="#94a3b8" />;
+            const yAxis = (
+              <YAxis
+                tick={{ fontSize: 11 }}
+                stroke="#94a3b8"
+                tickFormatter={(v: number) => formatCompactNumber(v)}
               />
-            ))}
-          </LineChart>
+            );
+            const tooltip = (
+              <Tooltip
+                content={(props) => {
+                  const { active, payload, label } = props;
+                  if (!active || !payload || !payload.length) return null;
+                  const rows = payload.map((entry) => ({
+                    color: entry.color ?? '#6366f1',
+                    name: display(String(entry.dataKey ?? '')),
+                    value: typeof entry.value === 'number'
+                      ? formatDisplayValue(entry.value, effectiveFormat, isNormalized ? undefined : currentMetric?.unit)
+                      : '—',
+                  }));
+                  return <ChartTooltip title={label} rows={rows} />;
+                }}
+              />
+            );
+            const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
+            const margin = { top: 8, right: 16, bottom: 4, left: 8 };
+            // Стиль линий 2-D берётся из chartStyle ВЫБРАННОЙ метрики (как в 1-D
+            // GroupBarChart) — так настройки curve/dash на KPI-карточке влияют и
+            // здесь. Все серии-категории этой метрики рисуются единым стилем.
+            // kind (столбец/линия) в 2-D задаёт собственный тоггл chartKind.
+            const lineCurve = currentMetric?.chartStyle?.curve === 'linear' ? 'linear' : 'monotone';
+            const lineDash = currentMetric?.chartStyle?.dash === 'dashed' ? '6 4' : undefined;
+
+            if (chartKind === 'bar') {
+              return (
+                <BarChart data={chartData} margin={margin}>
+                  {grid}{xAxis}{yAxis}{tooltip}{legend}
+                  {renderThresholdReferenceLines(thresholds)}
+                  {chartLabels.map((label, i) => (
+                    <Bar
+                      key={label}
+                      dataKey={label}
+                      name={display(label)}
+                      fill={palette[i % palette.length]}
+                    />
+                  ))}
+                </BarChart>
+              );
+            }
+
+            return (
+              <LineChart data={chartData} margin={margin}>
+                {grid}{xAxis}{yAxis}{tooltip}{legend}
+                {renderThresholdReferenceLines(thresholds)}
+                {chartLabels.map((label, i) => (
+                  <Line
+                    key={label}
+                    type={lineCurve}
+                    dataKey={label}
+                    name={display(label)}
+                    stroke={palette[i % palette.length]}
+                    strokeWidth={2}
+                    strokeDasharray={lineDash}
+                    dot={dates.length <= 31}
+                    connectNulls
+                  />
+                ))}
+              </LineChart>
+            );
+          })()}
         </ScrollableChart>
       </div>
 
@@ -380,7 +442,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               <th className="px-3 py-2 w-8" title="Серии на графике" />
               <th
                 scope="col"
-                className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sticky left-0 bg-slate-50 dark:bg-slate-900"
+                className="px-4 py-2 text-left text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider sticky left-0 z-20 bg-slate-50 dark:bg-slate-900"
               >
                 {dimensionTitle}
               </th>
@@ -396,7 +458,11 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
               <th
                 scope="col"
                 className="px-4 py-2 text-right text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider"
-                title={`Сумма «${currentMetric?.name ?? ''}» по строке`}
+                title={
+                  isNormalized
+                    ? `Доля «${currentMetric?.name ?? ''}» строки в общем итоге`
+                    : `Сумма «${currentMetric?.name ?? ''}» по строке`
+                }
               >
                 Σ
               </th>
@@ -414,15 +480,18 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                     aria-label={`Показать «${row.label}» на графике`}
                   />
                 </td>
+                {/* Липкая колонка: непрозрачный фон + z-10 (иначе ячейки дат
+                    просвечивают/наезжают при горизонтальном скролле), длинная
+                    метка обрезается (truncate + title). */}
                 <td
                   className={cn(
-                    'px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-indigo-50/40 dark:group-hover:bg-indigo-900/10',
+                    'px-4 py-2 text-sm font-medium text-slate-900 dark:text-slate-100 sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-indigo-50 dark:group-hover:bg-slate-800 max-w-[240px]',
                     onRowClick && 'cursor-pointer'
                   )}
                   onClick={() => onRowClick?.(row.label)}
                 >
-                  <span className="flex items-center gap-1">
-                    {display(row.label)}
+                  <span className="flex items-center gap-1 min-w-0">
+                    <span className="truncate" title={display(row.label)}>{display(row.label)}</span>
                     {onRowClick && (
                       <ChevronRight size={13} className="text-slate-300 group-hover:text-indigo-500 transition-colors shrink-0" />
                     )}
@@ -444,7 +513,11 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                   );
                 })}
                 <td className="px-4 py-2 text-sm text-right font-mono font-semibold text-slate-900 dark:text-slate-100">
-                  {formatCompactNumber(row.total)}
+                  {isNormalized
+                    ? grandTotal
+                      ? formatValue(row.total / grandTotal, 'percent', normDecimals)
+                      : '—'
+                    : formatCompactNumber(row.total)}
                 </td>
               </tr>
             ))}

@@ -19,6 +19,8 @@ interface GroupChartsPanelProps {
   /** Код → отображаемое имя (словарь). Только для подписей/тултипов:
    *  позиция категории — по сырому label, иначе дубль имён ломает оси. */
   resolveLabel?: (label: string) => string;
+  /** Палитра цветов метрик-серий (из group.paletteId). */
+  palette?: string[];
 }
 
 /**
@@ -32,6 +34,7 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
   activeMetricIds,
   chartTypes,
   resolveLabel,
+  palette,
 }: GroupChartsPanelProps) {
   const activeMetrics = useMemo(
     () => virtualMetrics.filter(vm => activeMetricIds.includes(vm.virtualMetricId)),
@@ -101,6 +104,7 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
             title="Сравнение по столбцам"
             metricConfigs={metricConfigs}
             resolveLabel={resolveLabel}
+            palette={palette}
           />
         )}
         {chartTypes.includes('radar') && (
@@ -111,6 +115,7 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
             title="Радарная диаграмма"
             metricConfigs={metricConfigs}
             resolveLabel={resolveLabel}
+            palette={palette}
           />
         )}
       </div>

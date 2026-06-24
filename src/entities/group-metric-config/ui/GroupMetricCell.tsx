@@ -19,6 +19,8 @@ interface GroupMetricCellProps {
   templateId?: string;
   /** Значение введено из узла файла-агрегата — подсвечиваем ячейку. */
   fromNode?: boolean;
+  /** Формат для масштаба окрашивания (нормализованное значение → 'percent'). */
+  colorFormat?: string;
 }
 
 /**
@@ -34,6 +36,7 @@ export function GroupMetricCell({
   unit,
   templateId,
   fromNode,
+  colorFormat,
 }: GroupMetricCellProps) {
   // Единый источник CF — шаблон; групповой стор остаётся фолбэком для
   // немигрированных метрик (правила «переедут» при редактировании).
@@ -58,5 +61,5 @@ export function GroupMetricCell({
     [metricId, displayFormat, decimalPlaces, unit, colorConfig]
   );
 
-  return <MetricCell value={value} formattedValue={formattedValue} metric={metric} fromNode={fromNode} />;
+  return <MetricCell value={value} formattedValue={formattedValue} metric={metric} fromNode={fromNode} colorFormat={colorFormat} />;
 }

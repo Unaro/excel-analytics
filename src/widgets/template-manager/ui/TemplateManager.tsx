@@ -2,24 +2,26 @@
 
 import { useState } from 'react';
 import { useMetricTemplateStore } from '@/entities/metric';
-import { Plus, Trash2, Calculator } from 'lucide-react';
+import { Plus, Trash2, Calculator, Pencil } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { toast } from '@/shared/ui/toast';
 import { TemplateForm } from '@/features/metric-template';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
+import type { MetricTemplate } from '@/shared/lib/validators';
 
 export function TemplateManager() {
   const templates = useMetricTemplateStore(s => s.templates);
   const deleteTemplate = useMetricTemplateStore(s => s.deleteTemplate);
   const [isCreating, setIsCreating] = useState(false);
+  const [editTarget, setEditTarget] = useState<MetricTemplate | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Список шаблонов</h2>
-        <Button onClick={() => setIsCreating(true)} size="sm">
+        <Button onClick={() => { setEditTarget(null); setIsCreating(true); }} size="sm">
           <Plus size={16} className="mr-2" /> Создать правило
         </Button>
       </div>
@@ -30,6 +32,21 @@ export function TemplateManager() {
             <h3 className="font-semibold text-slate-900 dark:text-white">Новый шаблон расчета</h3>
           </div>
           <TemplateForm onCancel={() => setIsCreating(false)} onSuccess={() => setIsCreating(false)} />
+        </Card>
+      )}
+
+      {editTarget && (
+        <Card key={editTarget.id} className="p-6 mb-8 border-indigo-100 dark:border-indigo-900/30 animate-in slide-in-from-top-2">
+          <div className="mb-4 pb-2 border-b dark:border-slate-800">
+            <h3 className="font-semibold text-slate-900 dark:text-white">
+              Редактирование шаблона «{editTarget.name}»
+            </h3>
+          </div>
+          <TemplateForm
+            template={editTarget}
+            onCancel={() => setEditTarget(null)}
+            onSuccess={() => setEditTarget(null)}
+          />
         </Card>
       )}
 
@@ -54,11 +71,21 @@ export function TemplateManager() {
               </code>
             </div>
 
-            <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                title="Изменить шаблон"
+                onClick={() => { setIsCreating(false); setEditTarget(template); }}
+              >
+                <Pencil size={14} />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                title="Удалить шаблон"
                 onClick={() => setDeleteTarget({ id: template.id, name: template.name })}
               >
                 <Trash2 size={14} />

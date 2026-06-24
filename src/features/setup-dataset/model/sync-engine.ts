@@ -46,7 +46,8 @@ import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useAggregateNodesStore } from '@/entities/aggregate-nodes';
 import { DatasetRow } from '@/shared/lib/types';
 import type { ColumnClassification } from '@/shared/lib/types';
-import type { AggregateNode } from '@/shared/lib/types/aggregate';
+import type { AggregateNode, AggregateTemplateSpec, CalculatedTemplateSpec, RawGroupsConfig } from '@/shared/lib/types/aggregate';
+import type { DisplayFormat } from '@/entities/metric';
 import type { ImportParams } from '../lib/file-preview';
 import { readAggregateMatrix } from '../lib/file-preview';
 import {
@@ -56,6 +57,7 @@ import {
   type AggregateLayoutConfig,
   type AggregateColumn,
 } from '../lib/aggregate-layout';
+import { planAggregateGroups } from './aggregate-groups-plan';
 
 /**
  * Создаёт группы показателей из колонок-метрик агрегата: по одной группе на
@@ -65,76 +67,83 @@ import {
  * 9 метрик дают 9 шаблонов, а не 135, и на дашборде это 9 колонок × 15 строк.
  * Снятые в панели группы пропускаются.
  */
-function createAggregateGroups(
+/**
+ * Создаёт группы/шаблоны/метрики из колонок. Используется и агрегатным импортом
+ * (колонки с шапкой-группами), и сырым (синтетические колонки: groupName = группа
+ * пользователя, fullName = имя колонки). См. architecture/unified-import.md.
+ */
+export function createAggregateGroups(
   datasetId: string,
   columns: AggregateColumn[],
   excludeGroups?: string[],
   metricTemplateNames?: Record<string, string>,
-  importUnassigned: boolean = true
+  importUnassigned: boolean = true,
+  templateSpecs?: AggregateTemplateSpec[],
+  calculatedSpecs?: CalculatedTemplateSpec[]
 ): number {
-  const byGroup = new Map<string, AggregateColumn[]>();
-  for (const col of columns) {
-    if (col.role !== 'metric') continue;
-    const key = col.groupName || '(без группы)';
-    if (!byGroup.has(key)) byGroup.set(key, []);
-    byGroup.get(key)!.push(col);
-  }
-  if (byGroup.size === 0) return 0;
+  // Чистое планирование (какие группы/метрики/шаблоны) — в отдельном модуле
+  // (тестируемо без сторов). Здесь — применение плана к сторам.
+  const plan = planAggregateGroups(columns, {
+    excludeGroups,
+    metricTemplateNames,
+    importUnassigned,
+    templateSpecs,
+    calculatedSpecs,
+  });
+  if (plan.groups.length === 0) return 0;
 
-  const exclude = new Set(excludeGroups ?? []);
   const templateStore = useMetricTemplateStore.getState();
   const groupStore = useIndicatorGroupStore.getState();
 
-  // Общий шаблон на ЛОГИЧЕСКИЙ показатель (имя метрики). Переиспользуем
-  // существующий с тем же именем+формулой (в т.ч. между импортами).
+  // Шаблон на логический показатель: переиспуем существующий с тем же
+  // именем+формулой (в т.ч. между импортами), иначе создаём.
   const templateIdByName = new Map<string, string>();
-  const templateFor = (name: string): string => {
-    const cached = templateIdByName.get(name);
-    if (cached) return cached;
+  for (const t of plan.templates) {
     const existing = templateStore.templates.find(
-      t => t.name === name && t.formula === 'SUM(value)'
+      x => x.name === t.name && x.formula === t.formula
     );
     const id = existing
       ? existing.id
       : templateStore.addTemplate({
-          name,
-          formula: 'SUM(value)',
-          dependencies: [{ type: 'field', alias: 'value' }],
-          displayFormat: 'number',
-          decimalPlaces: 2,
+          name: t.name,
+          formula: t.formula,
+          dependencies: t.dependencies.map(d => ({ type: d.kind, alias: d.alias })),
+          displayFormat: t.displayFormat as DisplayFormat,
+          decimalPlaces: t.decimalPlaces,
+          unit: t.unit,
+          normalizeBy: t.normalizeBy as 'total' | 'max' | 'min' | 'mean' | undefined,
         });
-    templateIdByName.set(name, id);
-    return id;
-  };
-
-  let created = 0;
-  for (const [groupName, cols] of byGroup) {
-    if (exclude.has(groupName)) continue;
-    const metrics = cols
-      // Колонки без пользовательского шаблона импортируем, только если разрешено.
-      .filter(col => importUnassigned || !!metricTemplateNames?.[col.fullName])
-      .map((col, i) => {
-        // Логический показатель (= имя шаблона): пользовательский или имя колонки.
-        const templateName = metricTemplateNames?.[col.fullName] || col.name || col.fullName;
-        // Имя метрики = имя самой колонки (читаемо); шаблон лишь даёт формулу.
-        // Если совпадает с именем шаблона — не дублируем (иначе «X(X)»).
-        const display = col.name || col.fullName;
-        return {
-          id: nanoid(),
-          templateId: templateFor(templateName),
-          customName: display && display !== templateName ? display : undefined,
-          // Привязка — к УНИКАЛЬНОМУ внутреннему имени колонки (с префиксом группы).
-          fieldBindings: [{ id: nanoid(), fieldAlias: 'value', columnName: col.fullName }],
-          metricBindings: [],
-          enabled: true,
-          order: i,
-        };
-      });
-    if (metrics.length === 0) continue; // все колонки без шаблона, а импорт выключен
-    groupStore.addGroup({ name: groupName, fieldMappings: [], metrics, order: created }, datasetId);
-    created++;
+    templateIdByName.set(t.name, id);
   }
-  return created;
+
+  for (const g of plan.groups) {
+    // id метрик назначаем по ходу: расчётные ссылаются на per-column метрики
+    // ЭТОЙ группы по имени шаблона → резолвим в id (метрики идут раньше в плане).
+    const metricIdByTemplate = new Map<string, string>();
+    const metrics = g.metrics.map(m => {
+      const id = nanoid();
+      if (!metricIdByTemplate.has(m.templateName)) metricIdByTemplate.set(m.templateName, id);
+      return {
+        id,
+        templateId: templateIdByName.get(m.templateName)!,
+        customName: m.customName,
+        fieldBindings: m.fieldBindings.map(fb => ({
+          id: nanoid(),
+          fieldAlias: fb.fieldAlias,
+          columnName: fb.columnName,
+        })),
+        metricBindings: m.metricBindings.map(mb => ({
+          id: nanoid(),
+          metricAlias: mb.alias,
+          metricId: metricIdByTemplate.get(mb.metricTemplateName) ?? '',
+        })),
+        enabled: true,
+        order: m.order,
+      };
+    });
+    groupStore.addGroup({ name: g.name, fieldMappings: [], metrics, order: g.order }, datasetId);
+  }
+  return plan.groups.length;
 }
 
 /** Артефакты сплющивания агрегата для импорта в DuckDB. */
@@ -199,7 +208,8 @@ function buildAggregateImport(
 export async function syncFromFile(
   file: File,
   params?: ImportParams,
-  aggregate?: AggregateLayoutConfig
+  aggregate?: AggregateLayoutConfig,
+  rawGroups?: RawGroupsConfig
 ) {
   const { setSyncing, addDataset, setDatasetRows, switchDataset } =
     useDatasetStore.getState();
@@ -319,6 +329,9 @@ export async function syncFromFile(
       // Разметку агрегата сохраняем на датасете — для замены файла по тем же
       // настройкам (и для экспорта/импорта конфигов).
       aggregateConfig: aggregate,
+      // Параметры разбора сырого файла — чтобы замена шла тем же быстрым
+      // нативным CSV-путём (иначе откат на медленный авто-разбор).
+      importParams: aggregate ? undefined : params,
     });
 
     // Агрегат: ключевые колонки → уровни иерархии (каскад город→зона→объект).
@@ -336,9 +349,26 @@ export async function syncFromFile(
         aggregateColumns,
         aggregate?.excludeGroups,
         aggregate?.metricTemplateNames,
-        aggregate?.importUnassignedMetrics ?? true
+        aggregate?.importUnassignedMetrics ?? true,
+        aggregate?.metricTemplateSpecs,
+        aggregate?.calculatedTemplateSpecs
       );
       logger.info(`[syncFromFile] Создано групп показателей: ${n}`);
+    } else if (rawGroups?.assignments.length) {
+      // Сырые: группы заданы пользователем ДО импорта (синтетические колонки —
+      // groupName = группа, fullName = имя колонки в БД). То же ядро, что у агрегата.
+      const synth: AggregateColumn[] = rawGroups.assignments.map((a, i) => ({
+        index: i,
+        groupName: a.groupName,
+        name: a.columnName,
+        fullName: a.columnName,
+        role: 'metric' as const,
+      }));
+      const n = createAggregateGroups(
+        datasetId, synth, undefined, rawGroups.metricTemplateNames, true,
+        rawGroups.metricTemplateSpecs, rawGroups.calculatedTemplateSpecs
+      );
+      logger.info(`[syncFromFile] Создано групп показателей (сырые): ${n}`);
     }
 
     // Агрегат: введённые значения узлов (overlay «введённое vs вычисленное»).
@@ -567,6 +597,16 @@ export async function replaceDatasetFile(
     const agg = entry.aggregateConfig
       ? buildAggregateImport(buffer, newFile.name, entry.aggregateConfig)
       : null;
+    // Сырые: восстанавливаем параметры разбора из сохранённых на датасете —
+    // тот же быстрый нативный CSV-путь, что и при первичном импорте.
+    const rawParseOptions: ImportParseOptions | undefined = entry.importParams
+      ? {
+          delimiter: entry.importParams.delimiter ?? ',',
+          decimalSeparator: entry.importParams.decimalSeparator,
+          columnTypes: entry.importParams.columnTypes,
+          dateFormat: entry.importParams.dateFormat,
+        }
+      : undefined;
     const {
       configs: newAutoConfigs,
       totalRows,
@@ -577,7 +617,7 @@ export async function replaceDatasetFile(
       agg ? agg.importFileName : newFile.name,
       agg ? agg.importBuffer : buffer,
       undefined,
-      agg ? agg.parseOptions : undefined
+      agg ? agg.parseOptions : rawParseOptions
     );
 
     // 4. Экспорт Arrow buffer для персистентности

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { Check, X } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
@@ -10,10 +10,14 @@ import { toast } from '@/shared/ui/toast';
 import { VisualFormulaBuilder } from './VisualFormulaBuilder';
 import { useFormulaValidation } from '@/entities/formula';
 import type { DisplayFormat } from '@/entities/metric';
+import type { MetricTemplate } from '@/shared/lib/validators';
+import type { NormalizeBase } from '@/shared/lib/utils/normalize';
 
 interface TemplateFormProps {
   onCancel: () => void;
-  onSuccess: (newTemplateId: string) => void;
+  onSuccess: (templateId: string) => void;
+  /** Редактируемый шаблон. Не задан — создание нового. */
+  template?: MetricTemplate;
 }
 
 const FORMAT_LABELS: Record<DisplayFormat, string> = {
@@ -25,6 +29,15 @@ const FORMAT_LABELS: Record<DisplayFormat, string> = {
   scientific: 'Научное (1.2e3)',
 };
 
+/** Курируемые кросс-столбцовые трансформации (доля от ориентира). */
+const NORMALIZE_OPTIONS: { value: '' | NormalizeBase; label: string }[] = [
+  { value: '', label: 'Как есть (абсолютные значения)' },
+  { value: 'total', label: '% от итога столбца' },
+  { value: 'max', label: '% от максимума' },
+  { value: 'mean', label: '% от среднего' },
+  { value: 'min', label: '% от минимума' },
+];
+
 /** Пояснение под выбранным форматом — особенно для двух режимов процента. */
 const FORMAT_HINTS: Partial<Record<DisplayFormat, string>> = {
   percent:
@@ -35,19 +48,47 @@ const FORMAT_HINTS: Partial<Record<DisplayFormat, string>> = {
     'Пороги окрашивания — в процентах (например, >50).',
 };
 
-export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
+export function TemplateForm({ onCancel, onSuccess, template }: TemplateFormProps) {
   const addTemplate = useMetricTemplateStore(s => s.addTemplate);
+  const updateTemplate = useMetricTemplateStore(s => s.updateTemplate);
   const { validate, isValid, error } = useFormulaValidation();
+  const isEditing = !!template;
 
-  const [name, setName] = useState('');
-  const [formula, setFormula] = useState('');
+  const [name, setName] = useState(template?.name ?? '');
+  const [formula, setFormula] = useState(template?.formula ?? '');
   // Формат — источник правды для всех групп и колонок дашборда
-  const [displayFormat, setDisplayFormat] = useState<DisplayFormat>('number');
-  const [decimalPlaces, setDecimalPlaces] = useState(2);
-  const [unit, setUnit] = useState('');
+  const [displayFormat, setDisplayFormat] = useState<DisplayFormat>(template?.displayFormat ?? 'number');
+  const [decimalPlaces, setDecimalPlaces] = useState(template?.decimalPlaces ?? 2);
+  const [unit, setUnit] = useState(template?.unit ?? '');
+  // Кросс-столбцовая нормализация (пост-обработка): % от итога/макс/…
+  // Нормализованные строки показываются процентом независимо от формата ниже
+  // (формат остаётся для абсолютных значений — «Итого», KPI-карточки).
+  const [normalizeBy, setNormalizeBy] = useState<'' | NormalizeBase>(template?.normalizeBy ?? '');
+
+  // При редактировании валидируем исходную формулу на монтировании, иначе
+  // кнопка «Сохранить» останется заблокированной до первого изменения.
+  useEffect(() => {
+    if (template?.formula) validate(template.formula);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = () => {
     if (!name || !formula || !isValid) return;
+
+    if (template) {
+      // Обновление: не трогаем dependencies (привязки метрик/полей сохранены).
+      updateTemplate(template.id, {
+        name,
+        formula,
+        displayFormat,
+        decimalPlaces,
+        unit: unit.trim() || undefined,
+        normalizeBy: normalizeBy || undefined,
+      });
+      toast.success('Шаблон обновлён');
+      onSuccess(template.id);
+      return;
+    }
 
     const newId = addTemplate({
       name,
@@ -56,6 +97,7 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
       decimalPlaces,
       unit: unit.trim() || undefined,
       dependencies: [],
+      normalizeBy: normalizeBy || undefined,
     });
 
     toast.success('Шаблон создан');
@@ -145,16 +187,37 @@ export function TemplateForm({ onCancel, onSuccess }: TemplateFormProps) {
               maxLength={10}
             />
           </div>
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium mb-1.5 text-slate-700 dark:text-slate-300">
+              Показывать как <span className="text-slate-400">(пост-обработка по столбцу)</span>
+            </label>
+            <Select
+              value={normalizeBy}
+              onChange={e => setNormalizeBy(e.target.value as '' | NormalizeBase)}
+            >
+              {NORMALIZE_OPTIONS.map(o => (
+                <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
+              ))}
+            </Select>
+            {normalizeBy && (
+              <p className="text-xs text-slate-400 mt-1.5">
+                Каждая строка делится на ориентир по столбцу текущего вида
+                (в группе — дети уровня, на дашборде — строки-группы) и показывается
+                процентом. Строка «Итого» и KPI-карточки остаются абсолютными
+                (в выбранном выше формате).
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="flex justify-end gap-3 pt-2">
         <Button variant="ghost" onClick={onCancel}>Отмена</Button>
-        <Button 
-          onClick={handleSubmit} 
+        <Button
+          onClick={handleSubmit}
           disabled={!name || !formula || !isValid}
         >
-          Создать
+          {isEditing ? 'Сохранить' : 'Создать'}
         </Button>
       </div>
     </div>

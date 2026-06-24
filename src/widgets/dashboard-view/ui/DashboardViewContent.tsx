@@ -17,6 +17,10 @@ import { useDashboardDatasetSync } from '../model';
 import { useDashboardComputation } from '../model';
 import { useDashboardViewState } from '../model';
 import { flattenDashboardResult } from '@/entities/metric';
+import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
+import { buildNormalizedChartConfigs } from '@/shared/lib/utils/chart-format';
+import { metricPalette, categoryPalette } from '@/shared/lib/utils/chart-palette';
+import { PalettePicker } from '@/shared/ui/palette-picker';
 import { Loader2, CalendarClock } from 'lucide-react';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
@@ -100,6 +104,12 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   // иерархических фильтров. Где у узла есть введённое значение — оно перекрывает
   // вычисленное (форматирование/сортировка/окрашивание работают на нём).
   const datasetId = dashboard?.datasetId;
+
+  // Палитра дашборда (paletteId): красит серии чартов — 1-D метрики и 2-D
+  // группы. Дефолт сохраняет текущие цвета (см. metricPalette/categoryPalette).
+  const updateDashboard = useDashboardStore(s => s.updateDashboard);
+  const palette1D = useMemo(() => metricPalette(dashboard?.paletteId), [dashboard?.paletteId]);
+  const paletteCat = useMemo(() => categoryPalette(dashboard?.paletteId), [dashboard?.paletteId]);
   const aggregateNodes = useAggregateNodesStore(s =>
     datasetId ? s.nodesByDataset[datasetId] : undefined
   );
@@ -144,10 +154,32 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   const dashboardVirtualMetrics = effectiveVirtualMetrics;
   const viewState = useDashboardViewState(dashboardVirtualMetrics);
 
+  // Нормализация (% от итога/макс/…): столбец дашборда = строки-группы. База
+  // выводится из шаблона (normalizeBy на эффективной колонке). Пост-пасс ПОСЛЕ
+  // overlay (введённые узлы входят в знаменатель). На breakdown/динамику и
+  // record-count (DashboardStats) не влияет — только сводки групп в таблице/чартах.
+  const normalizeByVmId = useMemo(() => {
+    const map = new Map<string, NormalizeConfig>();
+    for (const vm of dashboardVirtualMetrics)
+      if (vm.normalizeBy) map.set(vm.id, { base: vm.normalizeBy, decimalPlaces: vm.decimalPlaces });
+    return map;
+  }, [dashboardVirtualMetrics]);
+  const displayResult = useMemo<DashboardComputationResult | null>(() => {
+    if (!effectiveResult || normalizeByVmId.size === 0) return effectiveResult;
+    return { ...effectiveResult, groups: normalizeVmRows(effectiveResult.groups, normalizeByVmId) };
+  }, [effectiveResult, normalizeByVmId]);
+
+  // Для чартов нормализованные метрики показываем процентом (ось+тултип в
+  // масштабе %); в таблице формат остаётся абсолютным.
+  const chartMetricConfigs = useMemo(
+    () => buildNormalizedChartConfigs(dashboardVirtualMetrics, normalizeByVmId),
+    [dashboardVirtualMetrics, normalizeByVmId]
+  );
+
   // Плоские данные для ChartsSectionWidget
   const { breakdown, virtualMetrics } = useMemo(
-    () => flattenDashboardResult(effectiveResult, dashboardVirtualMetrics),
-    [effectiveResult, dashboardVirtualMetrics]
+    () => flattenDashboardResult(displayResult, dashboardVirtualMetrics),
+    [displayResult, dashboardVirtualMetrics]
   );
 
   // Данные секции динамики: серия — группа дашборда, точка — интервал даты.
@@ -224,9 +256,12 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
             />
           </ErrorBoundary>
 
-          {/* Переключатели: введённые значения узлов + временна́я группировка */}
-          {(hasEnteredData || dateColumn) && (
-            <div className="flex items-center justify-end gap-4">
+          {/* Переключатели: палитра + введённые значения узлов + временна́я группировка */}
+          <div className="flex items-center justify-end gap-4">
+              <PalettePicker
+                value={dashboard.paletteId}
+                onChange={id => updateDashboard(dashboardId, { paletteId: id })}
+              />
               {hasEnteredData && (
                 <label
                   className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none"
@@ -268,7 +303,6 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
               </div>
               )}
             </div>
-          )}
 
           {/* Режим динамики: группы × время */}
           {isTimeMode && !isComputing && timeItems.length > 0 && (
@@ -283,24 +317,27 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
                     dateGranularity ? GRANULARITY_LABELS[dateGranularity] : ''
                   }`}
                   truncated={timeTruncated}
+                  normalizeByVmId={normalizeByVmId}
+                  palette={paletteCat}
                 />
               </div>
             </ErrorBoundary>
           )}
 
           {/* Обычный режим: чарты по сводкам групп */}
-          {!isTimeMode && effectiveResult && breakdown.length > 0 && (
+          {!isTimeMode && displayResult && breakdown.length > 0 && (
             <ErrorBoundary label="Графики" onReset={recalculate}>
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <ChartsSectionWidget
                   breakdown={breakdown}
                   virtualMetrics={virtualMetrics}
-                  metricConfigs={dashboardVirtualMetrics}
+                  metricConfigs={chartMetricConfigs}
                   activeMetricIds={viewState.activeMetricIds}
                   chartTypes={viewState.chartTypes}
                   onActiveMetricIdsChange={viewState.setActiveMetricIds}
                   onChartTypesChange={viewState.setChartTypes}
                   mode="single"
+                  palette={palette1D}
                 />
               </div>
             </ErrorBoundary>
@@ -316,7 +353,7 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
           <ErrorBoundary label="Таблица метрик" onReset={recalculate}>
             <DashboardMetricsTable
               dashboardId={dashboardId}
-              groups={effectiveResult?.groups || []}
+              groups={displayResult?.groups || []}
               metrics={dashboardVirtualMetrics}
               loading={isComputing}
               hiddenMetricIds={viewState.hiddenMetricIds}

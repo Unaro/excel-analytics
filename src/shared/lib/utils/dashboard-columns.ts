@@ -78,6 +78,7 @@ export function buildEffectiveColumn(
     displayFormat: template?.displayFormat ?? column.displayFormat ?? 'number',
     decimalPlaces: template?.decimalPlaces ?? column.decimalPlaces ?? 2,
     unit: template?.unit ?? column.unit,
+    normalizeBy: template?.normalizeBy,
   };
 }
 
