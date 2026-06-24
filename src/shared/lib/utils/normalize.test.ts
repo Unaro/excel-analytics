@@ -80,6 +80,16 @@ describe('normalizeVmRows', () => {
     expect(out[0].virtualMetrics[1]).toBe(rows[0].virtualMetrics[1]);
   });
 
+  it('нормализованной метрике ставит colorFormat=percent (окрашивание в шкале %)', () => {
+    // % от максимума может дать >100% → окрашивание должно идти в шкале %,
+    // иначе доля 1.51 попадёт в правило «между 0 и 100», хотя на экране 151%.
+    const cols = [{ virtualMetrics: [vm('a', 151.23)] }, { virtualMetrics: [vm('a', 100)] }];
+    const out = normalizeVmRows(cols, new Map([['a', { base: 'min', decimalPlaces: 2 }]]));
+    expect(out[0].virtualMetrics[0].value).toBeCloseTo(1.5123);
+    expect(out[0].virtualMetrics[0].formattedValue).toBe('151,23%');
+    expect(out[0].virtualMetrics[0].colorFormat).toBe('percent');
+  });
+
   it('пустая карта → возвращает исходные ряды по ссылке', () => {
     expect(normalizeVmRows(rows, new Map())).toBe(rows);
   });

@@ -114,7 +114,7 @@ export function DashboardMetricsTable({
 
                   return (
                     <td key={metricVal.virtualMetricId} className="px-6 py-4 whitespace-nowrap text-sm text-right border-l border-transparent hover:border-slate-100 dark:hover:border-slate-800">
-                      <MetricCell value={metricVal.value} formattedValue={metricVal.formattedValue} metric={metricConfig} fromNode={metricVal.fromNode} />
+                      <MetricCell value={metricVal.value} formattedValue={metricVal.formattedValue} metric={metricConfig} fromNode={metricVal.fromNode} colorFormat={metricVal.colorFormat} />
                     </td>
                   );
                 })}

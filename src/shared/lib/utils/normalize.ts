@@ -97,7 +97,8 @@ export function normalizeVmRows<T extends { virtualMetrics: VirtualMetricValue[]
       changed = true;
       const ratio = ratios[i];
       const dp = configByVmId.get(v.virtualMetricId)?.decimalPlaces ?? 1;
-      return { ...v, value: ratio, formattedValue: formatValue(ratio, 'percent', dp) };
+      // colorFormat='percent': value=доля, но красим в шкале %, как и показываем.
+      return { ...v, value: ratio, formattedValue: formatValue(ratio, 'percent', dp), colorFormat: 'percent' };
     });
     return changed ? { ...r, virtualMetrics: vms } : r;
   });
