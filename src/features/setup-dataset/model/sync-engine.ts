@@ -362,7 +362,7 @@ export async function syncFromFile(
         role: 'metric' as const,
       }));
       const n = createAggregateGroups(
-        datasetId, synth, undefined, undefined, true,
+        datasetId, synth, undefined, rawGroups.metricTemplateNames, true,
         rawGroups.metricTemplateSpecs, rawGroups.calculatedTemplateSpecs
       );
       logger.info(`[syncFromFile] Создано групп показателей (сырые): ${n}`);

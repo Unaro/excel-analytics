@@ -93,7 +93,9 @@ export interface CalculatedTemplateSpec {
 export interface RawGroupsConfig {
   /** Распределение колонок по группам (имя колонки → имя группы). */
   assignments: { columnName: string; groupName: string }[];
-  /** Спеки шаблонов (формула/формат) по имени показателя (= имя колонки). */
+  /** Колонка → имя показателя (переиспользуемого шаблона). Нет записи → имя колонки. */
+  metricTemplateNames?: Record<string, string>;
+  /** Реестр шаблонов-показателей (формула/формат/служебный) по имени показателя. */
   metricTemplateSpecs?: AggregateTemplateSpec[];
   /** Расчётные показатели (раскрываются по группам, как у агрегата). */
   calculatedTemplateSpecs?: CalculatedTemplateSpec[];

@@ -24,7 +24,7 @@ export const DEFAULT_TEMPLATE_FORMAT: TemplateFormatValue = {
 /** Быстрый выбор агрегации — пишет `FN(value)`. */
 const AGG_FUNCS = ['SUM', 'AVG', 'MIN', 'MAX', 'COUNT', 'MEDIAN'] as const;
 
-const FORMAT_OPTIONS: { value: string; label: string }[] = [
+export const FORMAT_OPTIONS: { value: string; label: string }[] = [
   { value: 'number', label: 'Число (1 234)' },
   { value: 'decimal', label: 'Дробное (1 234,56)' },
   { value: 'percent', label: 'Процент: доля → % (0,57 → 57%)' },
@@ -33,7 +33,7 @@ const FORMAT_OPTIONS: { value: string; label: string }[] = [
   { value: 'scientific', label: 'Научное (1.2e3)' },
 ];
 
-const NORMALIZE_OPTIONS: { value: TemplateFormatValue['normalizeBy']; label: string }[] = [
+export const NORMALIZE_OPTIONS: { value: TemplateFormatValue['normalizeBy']; label: string }[] = [
   { value: '', label: 'Как есть' },
   { value: 'total', label: '% от итога' },
   { value: 'max', label: '% от максимума' },
