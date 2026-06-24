@@ -329,6 +329,9 @@ export async function syncFromFile(
       // Разметку агрегата сохраняем на датасете — для замены файла по тем же
       // настройкам (и для экспорта/импорта конфигов).
       aggregateConfig: aggregate,
+      // Параметры разбора сырого файла — чтобы замена шла тем же быстрым
+      // нативным CSV-путём (иначе откат на медленный авто-разбор).
+      importParams: aggregate ? undefined : params,
     });
 
     // Агрегат: ключевые колонки → уровни иерархии (каскад город→зона→объект).
@@ -594,6 +597,16 @@ export async function replaceDatasetFile(
     const agg = entry.aggregateConfig
       ? buildAggregateImport(buffer, newFile.name, entry.aggregateConfig)
       : null;
+    // Сырые: восстанавливаем параметры разбора из сохранённых на датасете —
+    // тот же быстрый нативный CSV-путь, что и при первичном импорте.
+    const rawParseOptions: ImportParseOptions | undefined = entry.importParams
+      ? {
+          delimiter: entry.importParams.delimiter ?? ',',
+          decimalSeparator: entry.importParams.decimalSeparator,
+          columnTypes: entry.importParams.columnTypes,
+          dateFormat: entry.importParams.dateFormat,
+        }
+      : undefined;
     const {
       configs: newAutoConfigs,
       totalRows,
@@ -604,7 +617,7 @@ export async function replaceDatasetFile(
       agg ? agg.importFileName : newFile.name,
       agg ? agg.importBuffer : buffer,
       undefined,
-      agg ? agg.parseOptions : undefined
+      agg ? agg.parseOptions : rawParseOptions
     );
 
     // 4. Экспорт Arrow buffer для персистентности
