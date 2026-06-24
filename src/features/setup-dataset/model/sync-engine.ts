@@ -46,7 +46,7 @@ import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useAggregateNodesStore } from '@/entities/aggregate-nodes';
 import { DatasetRow } from '@/shared/lib/types';
 import type { ColumnClassification } from '@/shared/lib/types';
-import type { AggregateNode, AggregateTemplateSpec, CalculatedTemplateSpec } from '@/shared/lib/types/aggregate';
+import type { AggregateNode, AggregateTemplateSpec, CalculatedTemplateSpec, RawGroupsConfig } from '@/shared/lib/types/aggregate';
 import type { DisplayFormat } from '@/entities/metric';
 import type { ImportParams } from '../lib/file-preview';
 import { readAggregateMatrix } from '../lib/file-preview';
@@ -208,7 +208,8 @@ function buildAggregateImport(
 export async function syncFromFile(
   file: File,
   params?: ImportParams,
-  aggregate?: AggregateLayoutConfig
+  aggregate?: AggregateLayoutConfig,
+  rawGroups?: RawGroupsConfig
 ) {
   const { setSyncing, addDataset, setDatasetRows, switchDataset } =
     useDatasetStore.getState();
@@ -350,6 +351,21 @@ export async function syncFromFile(
         aggregate?.calculatedTemplateSpecs
       );
       logger.info(`[syncFromFile] Создано групп показателей: ${n}`);
+    } else if (rawGroups?.assignments.length) {
+      // Сырые: группы заданы пользователем ДО импорта (синтетические колонки —
+      // groupName = группа, fullName = имя колонки в БД). То же ядро, что у агрегата.
+      const synth: AggregateColumn[] = rawGroups.assignments.map((a, i) => ({
+        index: i,
+        groupName: a.groupName,
+        name: a.columnName,
+        fullName: a.columnName,
+        role: 'metric' as const,
+      }));
+      const n = createAggregateGroups(
+        datasetId, synth, undefined, undefined, true,
+        rawGroups.metricTemplateSpecs, rawGroups.calculatedTemplateSpecs
+      );
+      logger.info(`[syncFromFile] Создано групп показателей (сырые): ${n}`);
     }
 
     // Агрегат: введённые значения узлов (overlay «введённое vs вычисленное»).

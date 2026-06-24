@@ -1,24 +1,27 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus, X, Search, Layers, Sigma } from 'lucide-react';
 import { Input } from '@/shared/ui/input';
-import { toast } from '@/shared/ui/toast';
-import { useColumnConfigStore } from '@/entities/column-config';
 import { extractVariables } from '@/shared/lib/utils/formula';
-import {
-  createAggregateGroups,
-  type AggregateColumn,
-  type AggregateTemplateSpec,
-} from '@/features/setup-dataset';
+import type { AggregateTemplateSpec, RawGroupsConfig } from '@/shared/lib/types/aggregate';
 import {
   TemplateFormatFields,
   DEFAULT_TEMPLATE_FORMAT,
   type TemplateFormatValue,
 } from './TemplateFormatFields';
 
+/** Колонка-кандидат (числовая) для распределения по группам. */
+export interface RawGroupColumn {
+  columnName: string;
+  displayName: string;
+}
+
 interface RawGroupsPanelProps {
-  datasetId: string;
+  /** Числовые колонки превью (кандидаты в метрики). */
+  columns: RawGroupColumn[];
+  /** Эмитит конфиг групп наверх (применяется при импорте). null — групп нет. */
+  onChange: (config: RawGroupsConfig | null) => void;
 }
 
 interface DraftGroup {
@@ -29,23 +32,18 @@ interface DraftGroup {
 }
 
 /**
- * Создание групп показателей при импорте СЫРЫХ данных (Фаза 3 единого импорта).
- * У сырых нет шапки-заголовков, поэтому группы пользователь задаёт вручную и
- * распределяет в них числовые колонки. Применение — общий createAggregateGroups
- * с синтетическими колонками (groupName = группа, fullName = имя колонки).
- * Каждая колонка — максимум в одной группе (как в агрегатной панели).
+ * Создание групп показателей для СЫРЫХ данных — ДО импорта (как агрегатная
+ * разметка). У сырых нет шапки, поэтому группы задаются вручную и в них
+ * распределяются числовые колонки превью. Панель управляемая: эмитит
+ * RawGroupsConfig; применение — в syncFromFile тем же ядром, что у агрегата.
+ * Каждая колонка — максимум в одной группе.
  */
-export function RawGroupsPanel({ datasetId }: RawGroupsPanelProps) {
-  const configs = useColumnConfigStore(s => s.configsByDataset[datasetId]);
-  const numericColumns = useMemo(
-    () => (configs ?? []).filter(c => c.classification === 'numeric'),
-    [configs]
-  );
+export function RawGroupsPanel({ columns, onChange }: RawGroupsPanelProps) {
   const displayByName = useMemo(() => {
     const m = new Map<string, string>();
-    for (const c of numericColumns) m.set(c.columnName, c.displayName || c.columnName);
+    for (const c of columns) m.set(c.columnName, c.displayName || c.columnName);
     return m;
-  }, [numericColumns]);
+  }, [columns]);
 
   const [groups, setGroups] = useState<DraftGroup[]>([]);
   const [newName, setNewName] = useState('');
@@ -64,9 +62,45 @@ export function RawGroupsPanel({ datasetId }: RawGroupsPanelProps) {
     return s;
   }, [groups]);
   const unassigned = useMemo(
-    () => numericColumns.filter(c => !assigned.has(c.columnName)),
-    [numericColumns, assigned]
+    () => columns.filter(c => !assigned.has(c.columnName)),
+    [columns, assigned]
   );
+
+  // Конфиг для импорта: распределение колонок + спеки формата по имени колонки
+  // (= имя показателя; синтетическая колонка в syncFromFile несёт это же имя).
+  const config = useMemo<RawGroupsConfig | null>(() => {
+    const assignments: { columnName: string; groupName: string }[] = [];
+    const specByName = new Map<string, AggregateTemplateSpec>();
+    for (const g of groups) {
+      const gname = g.name.trim();
+      if (!gname) continue;
+      for (const col of g.columns) {
+        assignments.push({ columnName: col, groupName: gname });
+        const cfg = cfgByColumn[col];
+        if (cfg && !specByName.has(col)) {
+          const aliases = extractVariables(cfg.formula);
+          specByName.set(col, {
+            name: col, // = имя показателя (templateName синтетической колонки)
+            formula: cfg.formula.trim() || 'SUM(value)',
+            alias: aliases.length === 1 ? aliases[0] : 'value',
+            displayFormat: cfg.displayFormat,
+            decimalPlaces: cfg.decimalPlaces,
+            unit: cfg.unit.trim() || undefined,
+            normalizeBy: cfg.normalizeBy || undefined,
+          });
+        }
+      }
+    }
+    if (assignments.length === 0) return null;
+    return {
+      assignments,
+      metricTemplateSpecs: specByName.size ? Array.from(specByName.values()) : undefined,
+    };
+  }, [groups, cfgByColumn]);
+
+  useEffect(() => {
+    onChange(config);
+  }, [config, onChange]);
 
   const addGroup = () => {
     const name = newName.trim();
@@ -85,64 +119,19 @@ export function RawGroupsPanel({ datasetId }: RawGroupsPanelProps) {
   const unassign = (id: string, col: string) =>
     setGroups(prev => prev.map(g => (g.id === id ? { ...g, columns: g.columns.filter(c => c !== col) } : g)));
 
-  const handleCreate = () => {
-    const synth: AggregateColumn[] = [];
-    let idx = 0;
-    for (const g of groups) {
-      const name = g.name.trim();
-      if (!name) continue;
-      for (const col of g.columns) {
-        synth.push({
-          index: idx++,
-          groupName: name,
-          name: displayByName.get(col) ?? col,
-          fullName: col, // имя колонки в БД — к нему привяжется метрика
-          role: 'metric',
-        });
-      }
-    }
-    if (synth.length === 0) {
-      toast.error('Назначьте колонки хотя бы в одну группу');
-      return;
-    }
-    // Спеки шаблонов (формула/формат) по имени показателя (= displayName колонки).
-    const specByName = new Map<string, AggregateTemplateSpec>();
-    for (const g of groups) {
-      for (const col of g.columns) {
-        const cfg = cfgByColumn[col];
-        if (!cfg) continue; // дефолт → createAggregateGroups сам поставит SUM(value)
-        const name = displayByName.get(col) ?? col;
-        if (specByName.has(name)) continue;
-        const aliases = extractVariables(cfg.formula);
-        specByName.set(name, {
-          name,
-          formula: cfg.formula.trim() || 'SUM(value)',
-          alias: aliases.length === 1 ? aliases[0] : 'value',
-          displayFormat: cfg.displayFormat,
-          decimalPlaces: cfg.decimalPlaces,
-          unit: cfg.unit.trim() || undefined,
-          normalizeBy: cfg.normalizeBy || undefined,
-        });
-      }
-    }
-    const n = createAggregateGroups(
-      datasetId, synth, undefined, undefined, true, Array.from(specByName.values())
+  if (columns.length === 0) {
+    return (
+      <p className="text-sm text-slate-400">
+        Нет числовых колонок — отметьте нужные колонки типом «Число» выше.
+      </p>
     );
-    toast.success(`Создано групп: ${n}. Донастройте в разделе «Группы».`);
-    setGroups([]);
-    setSearchByGroup({});
-    setCfgByColumn({});
-  };
-
-  // Нет числовых колонок — группировать нечего (раздел не показываем).
-  if (numericColumns.length === 0) return null;
+  }
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-500 dark:text-slate-400">
-        Необязательно: создайте группы показателей прямо сейчас и распределите в них
-        числовые колонки. Каждая колонка станет метрикой (сумма по колонке) —
-        формулы и формат можно донастроить в разделе «Группы».
+      <p className="text-[11px] text-slate-400">
+        Создайте группы и распределите числовые колонки. Каждая колонка станет
+        метрикой; формулу/формат можно задать тут же. Группы создадутся при импорте.
       </p>
 
       <div className="flex gap-2">
@@ -297,18 +286,6 @@ export function RawGroupsPanel({ datasetId }: RawGroupsPanelProps) {
               </div>
             );
           })}
-        </div>
-      )}
-
-      {groups.some(g => g.columns.length > 0) && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={handleCreate}
-            className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-500"
-          >
-            Создать группы
-          </button>
         </div>
       )}
     </div>

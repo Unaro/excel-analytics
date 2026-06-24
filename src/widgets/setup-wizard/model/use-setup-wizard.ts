@@ -17,6 +17,7 @@ import {
   type AggregateLayoutConfig,
 } from '@/features/setup-dataset';
 import type { ColumnClassification } from '@/shared/lib/types';
+import type { RawGroupsConfig } from '@/shared/lib/types/aggregate';
 import { PgStep, SetupStep, SourceType } from './types';
 
 const DEFAULT_DECIMAL: DecimalSeparator = '.';
@@ -58,6 +59,8 @@ export function useSetupWizard() {
   const [isAggregate, setIsAggregate] = useState(false);
   const [aggregateMatrix, setAggregateMatrix] = useState<AggregateMatrix | null>(null);
   const [aggregateConfig, setAggregateConfig] = useState<AggregateLayoutConfig | null>(null);
+  // Группы для СЫРЫХ данных, заданные до импорта (применяются в syncFromFile).
+  const [rawGroupsConfig, setRawGroupsConfig] = useState<RawGroupsConfig | null>(null);
   // Префикс CSV-текста для синхронного перепарсинга при смене разделителя
   // (без повторного чтения файла). Для xlsx — null.
   const csvTextRef = useRef<string | null>(null);
@@ -163,6 +166,7 @@ export function useSetupWizard() {
     setIsAggregate(false);
     setAggregateMatrix(null);
     setAggregateConfig(null);
+    setRawGroupsConfig(null);
     csvTextRef.current = null;
   }, []);
 
@@ -205,6 +209,8 @@ export function useSetupWizard() {
     aggregateMatrix,
     aggregateConfig,
     setAggregateConfig,
+    rawGroupsConfig,
+    setRawGroupsConfig,
     handleFileSelected,
     setDelimiter,
     setDecimalSeparator,

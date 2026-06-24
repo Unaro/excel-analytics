@@ -5,9 +5,10 @@ import { syncFromFile } from './sync-engine';
 import { toast } from '@/shared/ui/toast';
 import type { ImportParams } from '../lib/file-preview';
 import type { AggregateLayoutConfig } from '../lib/aggregate-layout';
+import type { RawGroupsConfig } from '@/shared/lib/types/aggregate';
 
 export interface UseFileImportReturn {
-  importFile: (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig) => Promise<boolean>;
+  importFile: (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig, rawGroups?: RawGroupsConfig) => Promise<boolean>;
   isUploading: boolean;
   error: string | null;
   progress: number;
@@ -21,7 +22,7 @@ export function useFileImport(): UseFileImportReturn {
 
   const uploadInProgressRef = useRef<boolean>(false);
 
-const handleFileUpload = useCallback(async (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig): Promise<boolean> => {
+const handleFileUpload = useCallback(async (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig, rawGroups?: RawGroupsConfig): Promise<boolean> => {
     if (isUploading) return false;
 
     setIsUploading(true);
@@ -31,7 +32,7 @@ const handleFileUpload = useCallback(async (file: File, params?: ImportParams, a
     return new Promise<boolean>((resolve) => {
       setTimeout(async () => {
         try {
-          const res = await syncFromFile(file, params, aggregate);
+          const res = await syncFromFile(file, params, aggregate, rawGroups);
           if (res.success) {
             toast.success(`Датасет "${file.name}" загружен`, { id: toastId });
             resolve(true);

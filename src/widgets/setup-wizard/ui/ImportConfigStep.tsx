@@ -7,7 +7,9 @@ import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
 import type { FilePreview, ImportParams, DecimalSeparator, AggregateMatrix, AggregateLayoutConfig } from '@/features/setup-dataset';
 import type { ColumnClassification } from '@/shared/lib/types';
+import type { RawGroupsConfig } from '@/shared/lib/types/aggregate';
 import { AggregateStructurePanel } from './AggregateStructurePanel';
+import { RawGroupsPanel } from './RawGroupsPanel';
 
 interface ImportConfigStepProps {
   fileName: string;
@@ -25,6 +27,8 @@ interface ImportConfigStepProps {
   onAggregateToggle: (on: boolean) => void;
   aggregateMatrix: AggregateMatrix | null;
   onAggregateLayoutChange: (config: AggregateLayoutConfig) => void;
+  /** Конфиг групп для сырых данных (задаётся до импорта). */
+  onRawGroupsChange: (config: RawGroupsConfig | null) => void;
 }
 
 const NEWLINE_LABEL: Record<string, string> = {
@@ -76,8 +80,13 @@ export function ImportConfigStep({
   onAggregateToggle,
   aggregateMatrix,
   onAggregateLayoutChange,
+  onRawGroupsChange,
 }: ImportConfigStepProps) {
   const showCsvControls = !!preview?.isCsv && !!importParams;
+  // Числовые колонки превью — кандидаты в метрики для группировки сырых данных.
+  const numericColumns = (preview?.headers ?? [])
+    .filter(h => (importParams?.columnTypes[h] ?? 'categorical') === 'numeric')
+    .map(h => ({ columnName: h, displayName: h }));
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -248,6 +257,16 @@ export function ImportConfigStep({
               Показаны первые {preview.rows.length} строк. Полные данные загрузятся при импорте.
             </div>
           )}
+        </div>
+      )}
+
+      {/* Группы показателей (необязательно) — задаём до импорта, как у агрегата. */}
+      {preview && preview.headers.length > 0 && (
+        <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white mb-1">
+            Группы показателей <span className="font-normal text-slate-400">(необязательно)</span>
+          </h3>
+          <RawGroupsPanel columns={numericColumns} onChange={onRawGroupsChange} />
         </div>
       )}
         </>
