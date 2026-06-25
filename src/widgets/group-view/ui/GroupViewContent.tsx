@@ -17,7 +17,8 @@ import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
-import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/entities/aggregate-nodes';
+import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
+import { extractVariables } from '@/shared/lib/utils/formula';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
@@ -161,14 +162,38 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   }, [aggregateNodes]);
   // metricId → имя колонки метрики (для lookup введённого значения).
   // VirtualMetricValue.sourceMetricId = id метрики группы.
+  // Расчётные (формула над операндами) исключаем — их считает enteredCalc.
+  const isCalcMetric = (m: { fieldBindings: unknown[]; metricBindings: unknown[] }) =>
+    m.metricBindings.length > 0 || m.fieldBindings.length > 1;
   const columnByMetricId = useMemo(() => {
     const map: Record<string, string> = {};
     for (const m of group?.metrics ?? []) {
+      if (isCalcMetric(m)) continue;
       const col = m.fieldBindings[0]?.columnName;
       if (col) map[m.id] = col;
     }
     return map;
   }, [group]);
+  // Реестр расчётных: метрика → формула + привязка операндов к колонкам.
+  const calcSpecByMetricId = useMemo(() => {
+    const map: Record<string, EnteredCalcSpec> = {};
+    for (const m of group?.metrics ?? []) {
+      if (!isCalcMetric(m)) continue;
+      const tpl = templates.find(t => t.id === m.templateId);
+      if (!tpl?.formula) continue;
+      const operandColumns: Record<string, string> = {};
+      for (const fb of m.fieldBindings) operandColumns[fb.fieldAlias] = fb.columnName;
+      for (const mb of m.metricBindings) {
+        const col = columnByMetricId[mb.metricId];
+        if (col) operandColumns[mb.metricAlias] = col;
+      }
+      const vars = extractVariables(tpl.formula);
+      if (vars.length > 0 && vars.every(v => v in operandColumns)) {
+        map[m.id] = { formula: tpl.formula, operandColumns };
+      }
+    }
+    return map;
+  }, [group, templates, columnByMetricId]);
   const pathValues = useMemo(() => path.map(f => f.value), [path]);
   // Введённое значение узла для строки разбивки: rawLabel → vmId → число|null.
   const enteredByLabel = useMemo(() => {
@@ -178,19 +203,25 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
       if (item.dateLabel !== undefined) continue;
       const values = nodeMap.get(nodePathKey([...pathValues, item.label]));
       if (!values) continue;
-      const byVm = enteredVmValues(values, summaryVirtualMetrics, columnByMetricId);
+      const byVm = {
+        ...enteredVmValues(values, summaryVirtualMetrics, columnByMetricId),
+        ...enteredCalcVmValues(values, summaryVirtualMetrics, calcSpecByMetricId),
+      };
       if (Object.keys(byVm).length) out.set(item.label, byVm);
     }
     return out.size ? out : undefined;
-  }, [nodeMap, breakdown, pathValues, summaryVirtualMetrics, columnByMetricId]);
+  }, [nodeMap, breakdown, pathValues, summaryVirtualMetrics, columnByMetricId, calcSpecByMetricId]);
   // Введённое значение текущего узла (строка «Итого»).
   const enteredSummary = useMemo(() => {
     if (nodeMap.size === 0 || pathValues.length === 0) return undefined;
     const values = nodeMap.get(nodePathKey(pathValues));
     if (!values) return undefined;
-    const byVm = enteredVmValues(values, summaryVirtualMetrics, columnByMetricId);
+    const byVm = {
+      ...enteredVmValues(values, summaryVirtualMetrics, columnByMetricId),
+      ...enteredCalcVmValues(values, summaryVirtualMetrics, calcSpecByMetricId),
+    };
     return Object.keys(byVm).length ? byVm : undefined;
-  }, [nodeMap, pathValues, summaryVirtualMetrics, columnByMetricId]);
+  }, [nodeMap, pathValues, summaryVirtualMetrics, columnByMetricId, calcSpecByMetricId]);
 
   // Переключатель: считать введённые значения узлов как эффективные (тогда они
   // форматируются/сортируются/окрашиваются наравне с вычисленными) либо
