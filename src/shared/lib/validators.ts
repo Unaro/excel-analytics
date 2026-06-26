@@ -3,6 +3,14 @@
  */
 import { z } from 'zod';
 
+/**
+ * Макс. длина отображаемых имён (группы, шаблоны, метрики, колонки). Имена,
+ * приходящие из агрегат-импорта, генерируются из заголовков файла и могут быть
+ * длинными (составные «группа · показатель») — потому лимит щедрый, иначе
+ * валидный экспорт не проходит обратный импорт.
+ */
+const NAME_MAX = 255;
+
 // Базовые типы
 /** Строка импортированных данных: имя колонки → произвольное значение. */
 export const ExcelRowSchema = z.record(z.string(), z.unknown());
@@ -37,7 +45,7 @@ export const ColorConfigSchema = z.object({
  */
 export const VirtualMetricSchema = z.object({
   id: z.string().min(1),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(NAME_MAX),
   unit: z.string().max(10).optional(),
   displayFormat: z.enum(['number', 'decimal', 'percent', 'percent_raw', 'currency', 'scientific']),
   decimalPlaces: z.number().int().min(0).max(10),
@@ -70,7 +78,7 @@ export const DashboardColumnSchema = z.object({
   order: z.number().int(),
   colorConfig: ColorConfigSchema.optional(),
   // legacy (до перехода на колонку-шаблон) — терпим при чтении:
-  name: z.string().max(100).optional(),
+  name: z.string().max(NAME_MAX).optional(),
   unit: z.string().max(10).optional(),
   displayFormat: z.enum(['number', 'decimal', 'percent', 'percent_raw', 'currency', 'scientific']).optional(),
   decimalPlaces: z.number().int().min(0).max(10).optional(),
@@ -116,7 +124,7 @@ export const GroupMetricSchema = z.object({
  */
 export const MetricTemplateSchema = z.object({
   id: z.string().min(1),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(NAME_MAX),
   description: z.string().optional(),
   formula: z.string().min(1),
   dependencies: z.array(z.object({
@@ -155,7 +163,7 @@ export const MetricTemplateSchema = z.object({
 export const IndicatorGroupSchema = z.object({
   id: z.string().min(1),
   datasetId: z.string().optional(),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(NAME_MAX),
   description: z.string().optional(),
   fieldMappings: z.array(FieldBindingSchema),
   metrics: z.array(GroupMetricSchema),
