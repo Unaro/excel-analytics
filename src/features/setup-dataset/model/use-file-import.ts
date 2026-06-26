@@ -9,7 +9,7 @@ import type { RawGroupsConfig } from '@/shared/lib/types/aggregate';
 
 export interface UseFileImportReturn {
   /** Импортирует файл; возвращает datasetId созданного датасета или null при ошибке. */
-  importFile: (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig, rawGroups?: RawGroupsConfig) => Promise<string | null>;
+  importFile: (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig, rawGroups?: RawGroupsConfig, opts?: { skipAutoGroups?: boolean }) => Promise<string | null>;
   isUploading: boolean;
   error: string | null;
   progress: number;
@@ -23,7 +23,7 @@ export function useFileImport(): UseFileImportReturn {
 
   const uploadInProgressRef = useRef<boolean>(false);
 
-const handleFileUpload = useCallback(async (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig, rawGroups?: RawGroupsConfig): Promise<string | null> => {
+const handleFileUpload = useCallback(async (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig, rawGroups?: RawGroupsConfig, opts?: { skipAutoGroups?: boolean }): Promise<string | null> => {
     if (isUploading) return null;
 
     setIsUploading(true);
@@ -33,7 +33,7 @@ const handleFileUpload = useCallback(async (file: File, params?: ImportParams, a
     return new Promise<string | null>((resolve) => {
       setTimeout(async () => {
         try {
-          const res = await syncFromFile(file, params, aggregate, rawGroups);
+          const res = await syncFromFile(file, params, aggregate, rawGroups, opts);
           if (res.success) {
             toast.success(`Датасет "${file.name}" загружен`, { id: toastId });
             resolve(res.datasetId ?? null);

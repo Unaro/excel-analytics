@@ -62,11 +62,14 @@ export function SetupWizardContent() {
       const aggregate = wizard.isAggregate
         ? wizard.readyConfig.data.aggregateConfig ?? undefined
         : undefined;
+      // skipAutoGroups: группы/шаблоны принесёт сам конфиг — не плодим авто-набор
+      // (иначе шаблоны-метрики и правила задвоятся).
       const datasetId = await importFile(
         wizard.selectedFile,
         wizard.importParams ?? undefined,
         aggregate,
-        undefined
+        undefined,
+        { skipAutoGroups: true }
       );
       if (datasetId) {
         const filtered = filterConfigBySelection(wizard.readyConfig, wizard.configSelection);

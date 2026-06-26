@@ -216,7 +216,8 @@ export async function syncFromFile(
   file: File,
   params?: ImportParams,
   aggregate?: AggregateLayoutConfig,
-  rawGroups?: RawGroupsConfig
+  rawGroups?: RawGroupsConfig,
+  opts?: { skipAutoGroups?: boolean }
 ) {
   const { setSyncing, addDataset, setDatasetRows, switchDataset } =
     useDatasetStore.getState();
@@ -350,7 +351,9 @@ export async function syncFromFile(
     }
 
     // Агрегат: метрики шапки → группы показателей (SUM по колонке).
-    if (aggregateColumns) {
+    // skipAutoGroups: импорт «готовой конфигурации» сам принесёт группы/шаблоны —
+    // не создаём авто-набор, иначе шаблоны (глобальный реестр) задвоятся.
+    if (aggregateColumns && !opts?.skipAutoGroups) {
       const n = createAggregateGroups(
         datasetId,
         aggregateColumns,
