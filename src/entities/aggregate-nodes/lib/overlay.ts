@@ -9,19 +9,30 @@ import type { AggregateNode } from '@/shared/lib/types/aggregate';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
 import { safeEvaluate } from '@/shared/lib/math/safe-math';
 
+/** Свёрнутое значение узла по одной колонке. */
+export interface RolledCell {
+  /** Итоговое: own ?? childrenSum (его берёт overlay). */
+  value: number | null;
+  /** Записанное в файле значение узла (может быть null). */
+  own: number | null;
+  /** Сумма rolled-up значений прямых детей (может быть null, если детей нет). */
+  childrenSum: number | null;
+}
+
 /**
- * Rolled-up значения узлов с fallback вниз: для каждого узла по каждой колонке —
- * его СОБСТВЕННОЕ введённое значение, а если оно пусто (null), то СУММА rolled-up
- * значений прямых детей (которые сами добирают значение со своих детей, и т.д.).
- * Так пустой уровень получает число, просуммированное снизу.
+ * Rolled-up значения узлов с fallback вниз и разложением own/childrenSum.
+ *
+ * Для каждого узла по каждой колонке: СОБСТВЕННОЕ значение (`own`) в приоритете,
+ * а если оно пусто (null) — СУММА rolled-up значений прямых детей (`childrenSum`),
+ * которые сами добирают со своих детей (рекурсивно вниз). `value = own ?? sum`.
  *
  * `0` — реальное значение (не пусто): fallback срабатывает только на null/пусто.
- * Возвращает карту nodePathKey → {колонка: значение|null}; ключи как у входных
- * узлов, поэтому overlay-поиск по пути не меняется.
+ * `childrenSum` отдаётся отдельно, чтобы UI мог показать расхождение
+ * «записано в файле vs сумма по детям». Ключи — nodePathKey (как у узлов).
  */
-export function rollupNodeValues(
+export function rollupNodes(
   nodes: ReadonlyArray<AggregateNode>
-): Map<string, Record<string, number | null>> {
+): Map<string, Record<string, RolledCell>> {
   const byKey = new Map<string, AggregateNode>();
   for (const n of nodes) byKey.set(nodePathKey(n.path), n);
 
@@ -39,24 +50,41 @@ export function rollupNodeValues(
   // Снизу вверх: глубокие уровни (бо́льший level) считаем первыми — к моменту
   // обработки родителя его дети уже свёрнуты.
   const order = [...nodes].sort((a, b) => b.level - a.level);
-  const rolled = new Map<string, Record<string, number | null>>();
+  const rolled = new Map<string, Record<string, RolledCell>>();
   for (const n of order) {
     const key = nodePathKey(n.path);
     const children = childKeys.get(key) ?? [];
-    const out: Record<string, number | null> = {};
+    const out: Record<string, RolledCell> = {};
     for (const [col, own] of Object.entries(n.values)) {
-      if (own != null) { out[col] = own; continue; }
       let sum = 0;
       let any = false;
       for (const ck of children) {
-        const cv = rolled.get(ck)?.[col];
+        const cv = rolled.get(ck)?.[col]?.value;
         if (cv != null) { sum += cv; any = true; }
       }
-      out[col] = any ? sum : null;
+      const childrenSum = any ? sum : null;
+      out[col] = { value: own != null ? own : childrenSum, own, childrenSum };
     }
     rolled.set(key, out);
   }
   return rolled;
+}
+
+/**
+ * Свёрнутые значения узлов (только итог `value`) — для overlay-подстановки.
+ * Тонкая обёртка над `rollupNodes`. Ключи — nodePathKey, поиск по пути.
+ */
+export function rollupNodeValues(
+  nodes: ReadonlyArray<AggregateNode>
+): Map<string, Record<string, number | null>> {
+  const rich = rollupNodes(nodes);
+  const out = new Map<string, Record<string, number | null>>();
+  for (const [key, cells] of rich) {
+    const v: Record<string, number | null> = {};
+    for (const [col, cell] of Object.entries(cells)) v[col] = cell.value;
+    out.set(key, v);
+  }
+  return out;
 }
 
 /**

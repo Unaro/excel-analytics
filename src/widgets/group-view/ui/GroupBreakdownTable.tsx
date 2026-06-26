@@ -33,6 +33,27 @@ function EnteredDelta({ entered, computed }: { entered: number | null; computed:
   );
 }
 
+/**
+ * Расхождение «записано в файле (own) vs сумма по детям (childrenSum)».
+ * Δ = сумма детей − записанное: >0 — в файле занижено, <0 — завышено.
+ * Индикатор качества данных файла-агрегата (рендерится только при расхождении).
+ */
+function ChildrenSumDelta({ own, childrenSum }: { own: number; childrenSum: number }) {
+  const delta = childrenSum - own;
+  return (
+    <div
+      className="text-[10px] leading-tight mt-0.5"
+      title="Сумма по дочерним уровням не сходится с записанным в файле значением узла"
+    >
+      <span className="text-slate-400">Σдети: </span>
+      <span className="font-mono text-slate-600 dark:text-slate-300">{formatRu(childrenSum)}</span>
+      <span className={cn('ml-1 font-mono', delta > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400')}>
+        Δ{delta > 0 ? '+' : ''}{formatRu(delta)}
+      </span>
+    </div>
+  );
+}
+
 interface GroupBreakdownTableProps {
   breakdown: BreakdownItem[];
   summary: GroupComputationResult | null;
@@ -71,6 +92,14 @@ interface GroupBreakdownTableProps {
   enteredByLabel?: Map<string, Record<string, number | null>>;
   /** Введённые значения для строки «Итого» (текущий узел). */
   enteredSummary?: Record<string, number | null>;
+  /**
+   * Расхождение «записано в файле vs сумма по детям» (только где реально
+   * расходятся): rawLabel → vmId → {own, childrenSum}. Индикатор качества данных
+   * — показывается всегда (не зависит от тумблера «считать введённые»).
+   */
+  childrenDeltaByLabel?: Map<string, Record<string, { own: number; childrenSum: number }>>;
+  /** Расхождение для строки «Итого» (текущий узел). */
+  childrenDeltaSummary?: Record<string, { own: number; childrenSum: number }>;
 }
 
 export const GroupBreakdownTable = memo(function GroupBreakdownTable({
@@ -92,6 +121,8 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
   onToggleChartLabel,
   enteredByLabel,
   enteredSummary,
+  childrenDeltaByLabel,
+  childrenDeltaSummary,
 }: GroupBreakdownTableProps) {
   const showVisibilityToggle = !!onToggleChartLabel;
   const [searchQuery, setSearchQuery] = useState('');
@@ -309,6 +340,10 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                         entered={enteredByLabel?.get(item.label)?.[vm.virtualMetricId] ?? null}
                         computed={val?.value ?? null}
                       />
+                      {(() => {
+                        const d = childrenDeltaByLabel?.get(item.label)?.[vm.virtualMetricId];
+                        return d ? <ChildrenSumDelta own={d.own} childrenSum={d.childrenSum} /> : null;
+                      })()}
                     </td>
                   );
                 })}
@@ -349,6 +384,10 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                         entered={enteredSummary?.[vm.virtualMetricId] ?? null}
                         computed={vm.value}
                       />
+                      {(() => {
+                        const d = childrenDeltaSummary?.[vm.virtualMetricId];
+                        return d ? <ChildrenSumDelta own={d.own} childrenSum={d.childrenSum} /> : null;
+                      })()}
                     </td>
                   );
                 })}

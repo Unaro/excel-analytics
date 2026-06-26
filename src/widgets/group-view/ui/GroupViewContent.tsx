@@ -17,7 +17,7 @@ import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
-import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, rollupNodeValues, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
+import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, rollupNodes, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
 import { extractVariables } from '@/shared/lib/utils/formula';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
 import { useMetricTemplateStore } from '@/entities/metric';
@@ -155,8 +155,19 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   const aggregateNodes = useAggregateNodesStore(s =>
     datasetId ? s.nodesByDataset[datasetId] : undefined
   );
-  // Rolled-up значения: своё значение узла, иначе сумма детей (рекурсивно вниз).
-  const nodeMap = useMemo(() => rollupNodeValues(aggregateNodes ?? []), [aggregateNodes]);
+  // Rolled-up узлы (own + childrenSum); своё значение в приоритете, иначе сумма
+  // детей. nodeMap = итог (value) для overlay; nodeRich несёт own/childrenSum
+  // для показа расхождения «записано в файле vs сумма по детям».
+  const nodeRich = useMemo(() => rollupNodes(aggregateNodes ?? []), [aggregateNodes]);
+  const nodeMap = useMemo(() => {
+    const out = new Map<string, Record<string, number | null>>();
+    for (const [key, cells] of nodeRich) {
+      const v: Record<string, number | null> = {};
+      for (const [col, cell] of Object.entries(cells)) v[col] = cell.value;
+      out.set(key, v);
+    }
+    return out;
+  }, [nodeRich]);
   // metricId → имя колонки метрики (для lookup введённого значения).
   // VirtualMetricValue.sourceMetricId = id метрики группы.
   // Расчётные (формула над операндами) исключаем — их считает enteredCalc.
@@ -219,6 +230,40 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     };
     return Object.keys(byVm).length ? byVm : undefined;
   }, [nodeMap, pathValues, summaryVirtualMetrics, columnByMetricId, calcSpecByMetricId]);
+
+  // Расхождение «записано в файле (own) vs сумма по детям (childrenSum)» для
+  // простых метрик — индикатор качества данных. Только где оба заданы и реально
+  // расходятся. Расчётные не сравниваем (они не суммируются).
+  const childrenDeltaForNode = useMemo(() => {
+    const EPS = 1e-9;
+    return (pathKey: string): Record<string, { own: number; childrenSum: number }> | undefined => {
+      const cells = nodeRich.get(pathKey);
+      if (!cells) return undefined;
+      const rec: Record<string, { own: number; childrenSum: number }> = {};
+      for (const vm of summaryVirtualMetrics) {
+        const col = vm.sourceMetricId ? columnByMetricId[vm.sourceMetricId] : undefined;
+        const cell = col ? cells[col] : undefined;
+        if (cell && cell.own != null && cell.childrenSum != null && Math.abs(cell.own - cell.childrenSum) > EPS) {
+          rec[vm.virtualMetricId] = { own: cell.own, childrenSum: cell.childrenSum };
+        }
+      }
+      return Object.keys(rec).length ? rec : undefined;
+    };
+  }, [nodeRich, summaryVirtualMetrics, columnByMetricId]);
+  const childrenDeltaByLabel = useMemo(() => {
+    if (nodeRich.size === 0) return undefined;
+    const out = new Map<string, Record<string, { own: number; childrenSum: number }>>();
+    for (const item of breakdown ?? []) {
+      if (item.dateLabel !== undefined) continue;
+      const rec = childrenDeltaForNode(nodePathKey([...pathValues, item.label]));
+      if (rec) out.set(item.label, rec);
+    }
+    return out.size ? out : undefined;
+  }, [nodeRich, breakdown, pathValues, childrenDeltaForNode]);
+  const childrenDeltaSummary = useMemo(
+    () => (pathValues.length ? childrenDeltaForNode(nodePathKey(pathValues)) : undefined),
+    [pathValues, childrenDeltaForNode]
+  );
 
   // Переключатель: считать введённые значения узлов как эффективные (тогда они
   // форматируются/сортируются/окрашиваются наравне с вычисленными) либо
@@ -424,6 +469,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           onToggleChartLabel={chartTypes.length > 0 ? toggleChartLabel : undefined}
           enteredByLabel={useEntered ? undefined : enteredByLabel}
           enteredSummary={useEntered ? undefined : enteredSummary}
+          childrenDeltaByLabel={childrenDeltaByLabel}
+          childrenDeltaSummary={childrenDeltaSummary}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { enteredVmValues, mergeEnteredVms, enteredCalcVmValues, rollupNodeValues, type EnteredCalcSpec } from './overlay';
+import { enteredVmValues, mergeEnteredVms, enteredCalcVmValues, rollupNodeValues, rollupNodes, type EnteredCalcSpec } from './overlay';
 import type { VirtualMetricValue } from '@/shared/lib/types/computation';
 import type { AggregateNode } from '@/shared/lib/types/aggregate';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
@@ -103,5 +103,17 @@ describe('rollupNodeValues: fallback-сумма детей при пустом �
     const nodes = [node(['Г'], 0, { potr: null })];
     const rolled = rollupNodeValues(nodes);
     expect(rolled.get(nodePathKey(['Г']))!.potr).toBeNull();
+  });
+
+  it('rollupNodes отдаёт own и childrenSum раздельно (для показа расхождения)', () => {
+    const nodes = [
+      node(['Г'], 0, { potr: 100 }),         // записано 100
+      node(['Г', 'Р1'], 1, { potr: 30 }),
+      node(['Г', 'Р2'], 1, { potr: 50 }),    // сумма детей 80 ≠ 100
+    ];
+    const cell = rollupNodes(nodes).get(nodePathKey(['Г']))!.potr;
+    expect(cell.own).toBe(100);
+    expect(cell.childrenSum).toBe(80);
+    expect(cell.value).toBe(100); // own в приоритете
   });
 });
