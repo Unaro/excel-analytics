@@ -18,7 +18,8 @@ import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
-import type { MetricChartStyle } from '@/shared/lib/types/chart';
+import type { MetricChartStyle, ChartType } from '@/shared/lib/types/chart';
+import { resolveChartView } from '@/shared/lib/types/chart';
 import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, rollupNodes, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
 import { extractVariables } from '@/shared/lib/utils/formula';
 import { safeEvaluate } from '@/shared/lib/math/safe-math';
@@ -69,22 +70,34 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
 
   const {
     activeMetricIds,
-    chartTypes,
     sortConfig,
     setSortConfig,
     handleToggleMetric,
-    handleChartTypesChange,
   } = useGroupViewState(virtualMetrics);
 
   const groupMetricIds = useMemo(() => {
     return group?.metrics.map(m => m.id) ?? [];
   }, [group]);
 
-  // Палитра группы (paletteId) красит серии чартов: 1-D — метрики, 2-D —
-  // категории. Дефолт сохраняет текущие цвета (см. metricPalette/categoryPalette).
+  // Единый вид чартов группы (типы 1-D, вид 2-D, лимит серий, палитра) —
+  // персистится на группе (chartView). resolveChartView подставляет дефолты и
+  // fallback paletteId со старых групп. Все изменения пишем через updateGroup.
   const updateGroup = useIndicatorGroupStore(s => s.updateGroup);
-  const palette1D = useMemo(() => metricPalette(group?.paletteId), [group?.paletteId]);
-  const paletteCat = useMemo(() => categoryPalette(group?.paletteId), [group?.paletteId]);
+  const view = useMemo(() => resolveChartView(group), [group]);
+  const chartTypes = view.chartTypes;
+  const patchChartView = useCallback(
+    (patch: Partial<NonNullable<typeof group>['chartView']>) =>
+      updateGroup(groupId, { chartView: { ...group?.chartView, ...patch } }),
+    [groupId, group?.chartView, updateGroup]
+  );
+  const handleChartTypesChange = useCallback(
+    (types: ChartType[]) => patchChartView({ chartTypes: types }),
+    [patchChartView]
+  );
+  // Палитра группы красит серии чартов: 1-D — метрики, 2-D — категории.
+  // Дефолт сохраняет текущие цвета (см. metricPalette/categoryPalette).
+  const palette1D = useMemo(() => metricPalette(view.paletteId), [view.paletteId]);
+  const paletteCat = useMemo(() => categoryPalette(view.paletteId), [view.paletteId]);
 
   // metricId группы → templateId: ячейки таблицы берут CF из шаблона.
   const metricTemplateIds = useMemo(
@@ -459,8 +472,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
             </div>
           )}
           <PalettePicker
-            value={group.paletteId}
-            onChange={id => updateGroup(groupId, { paletteId: id })}
+            value={view.paletteId}
+            onChange={id => patchChartView({ paletteId: id })}
           />
           <ChartTypeSelector
             selected={chartTypes}
@@ -500,6 +513,9 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           resolveLabel={resolveLabel}
           normalizeByVmId={normalizeByVmId}
           palette={paletteCat}
+          twoDKind={view.twoDKind}
+          onTwoDKindChange={kind => patchChartView({ twoDKind: kind })}
+          seriesLimit={view.seriesLimit}
         />
       )}
 

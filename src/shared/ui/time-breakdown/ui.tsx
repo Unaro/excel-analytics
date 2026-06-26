@@ -78,6 +78,14 @@ export interface TimeBreakdownSectionProps {
   normalizeByVmId?: Map<string, NormalizeConfig>;
   /** Палитра цветов категорий-серий (из group.paletteId). Дефолт — CATEGORY_SERIES_COLORS. */
   palette?: string[];
+  /**
+   * Вид 2-D-чарта (линии/столбцы) — управляемо-опционально: на странице группы
+   * персистится (chartView.twoDKind + onTwoDKindChange), на дашборде не задано →
+   * локальный стейт (эфемерно). Аналогично seriesLimit (top-N серий).
+   */
+  twoDKind?: 'line' | 'bar';
+  onTwoDKindChange?: (kind: 'line' | 'bar') => void;
+  seriesLimit?: number;
 }
 
 export const TimeBreakdownSection = memo(function TimeBreakdownSection({
@@ -91,6 +99,9 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   resolveLabel,
   normalizeByVmId,
   palette = SERIES_COLORS,
+  twoDKind,
+  onTwoDKindChange,
+  seriesLimit,
 }: TimeBreakdownSectionProps) {
   const display = useMemo(
     () => resolveLabel ?? ((label: string) => label),
@@ -118,10 +129,14 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const [searchQuery, setSearchQuery] = useState('');
   // null — авто-режим top-N; Set — явный выбор пользователя
   const [selectedLabels, setSelectedLabels] = useState<Set<string> | null>(null);
-  // Тип 2-D-чарта — собственный для 2-D (оси иные, чем у 1-D): линии или
-  // сгруппированные столбцы по периодам. Локальное состояние (как metricId/
-  // searchQuery); персист — в Фазе 3 вместе с палитрой и сохранением вида.
-  const [chartKind, setChartKind] = useState<'line' | 'bar'>('line');
+  // Тип 2-D-чарта (линии / столбцы по периодам). Управляемо-опционально: если
+  // заданы twoDKind+onTwoDKindChange (страница группы) — контролируется и
+  // персистится снаружи; иначе локальный стейт (дашборд — эфемерно).
+  const [localChartKind, setLocalChartKind] = useState<'line' | 'bar'>('line');
+  const chartKind = twoDKind ?? localChartKind;
+  const setChartKind = onTwoDKindChange ?? setLocalChartKind;
+  // Сколько серий показывать по умолчанию (top-N по сумме метрики).
+  const effectiveSeriesLimit = seriesLimit ?? DEFAULT_SERIES_LIMIT;
 
   // Чарт и pivot-таблица — одна ось дат: их горизонтальные скроллы связаны,
   // чтобы листать вместе (а не наводиться на каждый скроллбар отдельно).
@@ -203,8 +218,8 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     if (selectedLabels) {
       return rows.filter(r => selectedLabels.has(r.label)).map(r => r.label);
     }
-    return rows.slice(0, DEFAULT_SERIES_LIMIT).map(r => r.label);
-  }, [rows, selectedLabels]);
+    return rows.slice(0, effectiveSeriesLimit).map(r => r.label);
+  }, [rows, selectedLabels, effectiveSeriesLimit]);
 
   const chartLabelSet = useMemo(() => new Set(chartLabels), [chartLabels]);
 
@@ -285,8 +300,8 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {rows.length} элементов · {dates.length} интервалов · на графике{' '}
             {chartLabels.length}
-            {selectedLabels === null && rows.length > DEFAULT_SERIES_LIMIT && (
-              <> (top-{DEFAULT_SERIES_LIMIT}, состав — флажками в таблице)</>
+            {selectedLabels === null && rows.length > effectiveSeriesLimit && (
+              <> (top-{effectiveSeriesLimit}, состав — флажками в таблице)</>
             )}
           </p>
           {truncated && (

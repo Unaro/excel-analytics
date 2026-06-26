@@ -34,3 +34,60 @@ export interface MetricChartStyle {
 
 /** Стиль по умолчанию — столбец (обратная совместимость). */
 export const DEFAULT_METRIC_CHART_STYLE: MetricChartStyle = { kind: 'bar' };
+
+// ─────────────────────────────────────────────────────────────
+// Единый View-config: сериализуемые настройки ВИДА чартов группы, которые
+// читают оба пути (1-D метрики-серии и 2-D категории×время). Хранится на
+// IndicatorGroup.chartView. Все поля опциональны → старые группы читаются с
+// дефолтами (back-compat). chartStyle метрик НЕ здесь — он per-metric в
+// group-metric-config. См. docs/architecture/unified-view-config.md (Фаза 2).
+// ─────────────────────────────────────────────────────────────
+
+export interface ChartViewConfig {
+  /** 1-D: какие типы чартов показывать (bar | radar, на будущее area/…). */
+  chartTypes?: ChartType[];
+  /** 2-D: вид по периодам — линии или сгруппированные столбцы. */
+  twoDKind?: 'line' | 'bar';
+  /** 2-D: сколько серий (top-N) на чарте по умолчанию. */
+  seriesLimit?: number;
+  /** Палитра серий (id из CHART_PALETTES). Новый home для paletteId. */
+  paletteId?: string;
+}
+
+/** Дефолты вида чартов (как было до персиста). */
+export const DEFAULT_CHART_VIEW = {
+  chartTypes: ['bar', 'radar'] as ChartType[],
+  twoDKind: 'line' as const,
+  seriesLimit: 8,
+};
+
+/** Источник настроек: группа с новым chartView и legacy-полем paletteId. */
+export interface ChartViewSource {
+  chartView?: ChartViewConfig;
+  /** @deprecated читается как fallback для групп без chartView.paletteId. */
+  paletteId?: string;
+}
+
+/** Вид с заполненными дефолтами (paletteId может быть undefined → дефолт палитры). */
+export interface ResolvedChartView {
+  chartTypes: ChartType[];
+  twoDKind: 'line' | 'bar';
+  seriesLimit: number;
+  paletteId?: string;
+}
+
+/**
+ * Эффективный вид чартов группы: значения из `chartView` или дефолты. paletteId
+ * берётся из `chartView.paletteId`, иначе из legacy `group.paletteId` (старые
+ * группы не теряют выбранную палитру). Пустой `chartTypes: []` — осознанный
+ * выбор «без чартов», дефолт подставляется только при отсутствии (undefined).
+ */
+export function resolveChartView(src: ChartViewSource | null | undefined): ResolvedChartView {
+  const cv = src?.chartView;
+  return {
+    chartTypes: cv?.chartTypes ?? DEFAULT_CHART_VIEW.chartTypes,
+    twoDKind: cv?.twoDKind ?? DEFAULT_CHART_VIEW.twoDKind,
+    seriesLimit: cv?.seriesLimit ?? DEFAULT_CHART_VIEW.seriesLimit,
+    paletteId: cv?.paletteId ?? src?.paletteId,
+  };
+}

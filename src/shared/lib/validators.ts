@@ -182,8 +182,19 @@ export const IndicatorGroupSchema = z.object({
   }).optional(),
   color: z.string().optional(),
   icon: z.string().optional(),
-  /** Палитра цветов серий чартов группы (id из CHART_PALETTES). Нет/'default' = текущие дефолты. */
+  /** @deprecated палитра серий — переехала в chartView.paletteId; читается как fallback. */
   paletteId: z.string().optional(),
+  /**
+   * Единые настройки ВИДА чартов группы (типы 1-D, вид 2-D, лимит серий,
+   * палитра). Читают оба пути (1-D/2-D). Все поля опциональны → старые группы
+   * с дефолтами. См. docs/architecture/unified-view-config.md (Фаза 2).
+   */
+  chartView: z.object({
+    chartTypes: z.array(z.enum(['bar', 'radar'])).optional(),
+    twoDKind: z.enum(['line', 'bar']).optional(),
+    seriesLimit: z.number().int().positive().optional(),
+    paletteId: z.string().optional(),
+  }).optional(),
   /**
    * Условия отображения элементов уровня (как условное форматирование, но для
    * видимости): строка разбивки показывается, если её метрики удовлетворяют ВСЕМ

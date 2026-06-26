@@ -1,7 +1,16 @@
 # Единый View-config: сведение 1-D и 2-D визуализаций
 
-Дизайн-документ. Статус: **черновик на утверждение** (код не трогали).
-Дата: 2026-06-23. Контекст: аудит [finos/perspective](https://github.com/perspective-dev/perspective)
+Дизайн-документ. Статус: **Фазы 0–3 реализованы** (2026-06-27).
+- Фаза 1 (общий субстрат: палитра `chart-palette.ts`, `ChartTooltip`,
+  `effectiveChartFormat`, пороги) — в коде, читается обоими путями.
+- Фаза 3 (палитры: `IndicatorGroup` + `PalettePicker` + `CHART_PALETTES`) — в коде.
+- Фаза 2 (единый `ChartViewConfig` на группе: `shared/lib/types/chart.ts`
+  `resolveChartView`, поле `IndicatorGroupSchema.chartView`) — реализована:
+  типы чартов 1-D и вид 2-D (`twoDKind`/`seriesLimit`) теперь персистятся,
+  `paletteId` переехал в `chartView` (legacy-fallback сохранён).
+- Фаза 4 (новые типы чартов — heatmap/treemap) — north star, не начата.
+
+Дата создания: 2026-06-23. Контекст: аудит [finos/perspective](https://github.com/perspective-dev/perspective)
 выявил, что у эталона вид (`View`) — один декларативный объект, а 1-D/2-D —
 лишь разные комбинации осей одного движка. У нас движок данных уже единый,
 а рендер и настройки чартов — два разных кода-пути. Цель документа — описать,
