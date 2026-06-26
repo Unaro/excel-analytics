@@ -176,6 +176,18 @@ export const IndicatorGroupSchema = z.object({
   icon: z.string().optional(),
   /** Палитра цветов серий чартов группы (id из CHART_PALETTES). Нет/'default' = текущие дефолты. */
   paletteId: z.string().optional(),
+  /**
+   * Условия отображения элементов уровня (как условное форматирование, но для
+   * видимости): строка разбивки показывается, если её метрики удовлетворяют ВСЕМ
+   * правилам (AND). Применяется к таблице и чартам. Нет правил → показываем всё.
+   */
+  displayFilters: z.array(z.object({
+    id: z.string(),
+    metricId: z.string(),
+    operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'between']),
+    value: z.number(),
+    value2: z.number().optional(),
+  })).optional(),
   order: z.number().int(),
   createdAt: z.number(),
   updatedAt: z.number(),
@@ -232,6 +244,7 @@ export type HierarchyFilterValue = z.infer<typeof HierarchyFilterValueSchema>;
 export type VirtualMetric = z.infer<typeof VirtualMetricSchema>;
 export type DashboardColumn = z.infer<typeof DashboardColumnSchema>;
 export type IndicatorGroup = z.infer<typeof IndicatorGroupSchema>;
+export type DisplayFilterRule = NonNullable<IndicatorGroup['displayFilters']>[number];
 export type MetricTemplate = z.infer<typeof MetricTemplateSchema>;
 export type GroupMetric = z.infer<typeof GroupMetricSchema>;
 

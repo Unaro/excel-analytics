@@ -8,6 +8,8 @@ import { ChartTypeSelector } from './ChartTypeSelector';
 import { GroupChartsPanel } from './GroupChartsPanel';
 import { GroupNotFound } from './GroupNotFound';
 import { sortBreakdownItems as sortBreakdown } from '../lib/sort-breakdown';
+import { filterBreakdownByRules } from '../lib/filter-breakdown';
+import { DisplayFilterPanel } from './DisplayFilterPanel';
 import { useGroupViewState } from '../model/use-group-view-state';
 import { useGroupPath } from '@/shared/lib/hooks/use-group-path';
 import { useGroupBreakdown } from '../model/use-group-breakdown';
@@ -287,12 +289,30 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     });
   }, [useEntered, oneDimBreakdown, enteredByLabel]);
 
+  // Условия отображения (правила по метрике, хранятся на группе): фильтруем
+  // элементы уровня ДО нормализации (проценты считаются по видимым). Сравнение
+  // в масштабе отображения — формат метрики по id.
+  const formatByMetricId = useMemo(() => {
+    const m: Record<string, string | undefined> = {};
+    for (const vm of virtualMetrics) m[vm.id] = vm.displayFormat;
+    return m;
+  }, [virtualMetrics]);
+  const displayFilters = group?.displayFilters;
+  const filterMetricOptions = useMemo(
+    () => virtualMetrics.map(vm => ({ id: vm.id, name: vm.name })),
+    [virtualMetrics]
+  );
+  const filteredBreakdown = useMemo(
+    () => (effectiveBreakdown ? filterBreakdownByRules(effectiveBreakdown, displayFilters, formatByMetricId) : effectiveBreakdown),
+    [effectiveBreakdown, displayFilters, formatByMetricId]
+  );
+
   // Нормализация (% от итога/макс/…) — пост-пасс по столбцу детей текущего
   // уровня, ПОСЛЕ overlay (введённые узлы входят в знаменатель как есть).
   // Итого не трогаем (effectiveSummaryMetrics остаётся абсолютным).
   const displayBreakdown = useMemo(
-    () => (effectiveBreakdown ? normalizeVmRows(effectiveBreakdown, normalizeByVmId) : effectiveBreakdown),
-    [effectiveBreakdown, normalizeByVmId]
+    () => (filteredBreakdown ? normalizeVmRows(filteredBreakdown, normalizeByVmId) : filteredBreakdown),
+    [filteredBreakdown, normalizeByVmId]
   );
 
   // Для чартов нормализованные метрики показываем процентом: чарт строит только
@@ -346,6 +366,15 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           Визуализации
         </h2>
         <div className="flex items-center gap-3">
+          {!isTwoDimensional && (
+            <DisplayFilterPanel
+              metrics={filterMetricOptions}
+              rules={displayFilters ?? []}
+              onChange={rules => updateGroup(groupId, { displayFilters: rules.length ? rules : undefined })}
+              shown={filteredBreakdown?.length}
+              total={effectiveBreakdown?.length}
+            />
+          )}
           {hasEnteredData && (
             <label
               className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none"
