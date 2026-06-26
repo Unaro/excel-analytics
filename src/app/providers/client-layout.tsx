@@ -4,6 +4,7 @@ import { Sidebar } from '@/widgets/sidebar';
 import { MobileNav } from '@/widgets/mobile-nav';
 import { ThemeProvider } from '@/app/providers';
 import { Toaster } from 'sonner';
+import { useTheme } from 'next-themes';
 import { useEffect, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useShallow } from 'zustand/react/shallow';
@@ -15,6 +16,23 @@ import { duckdbManager } from '@/shared/lib/computation/lib/duckdb/manager';
 
 /** Маршруты, требующие хотя бы один (не-справочный) датасет. */
 const DATA_REQUIRED_PREFIXES = ['/dashboards', '/groups'];
+
+/**
+ * Toaster, синхронизированный с темой приложения (next-themes), а не с ОС.
+ * `select-none` запрещает выделение текста — иначе drag по тексту мешает
+ * свайпу-закрытию уведомления. Должен рендериться ВНУТРИ ThemeProvider.
+ */
+function ThemedToaster() {
+  const { resolvedTheme } = useTheme();
+  return (
+    <Toaster
+      position="top-right"
+      richColors
+      theme={resolvedTheme === 'dark' ? 'dark' : 'light'}
+      toastOptions={{ className: 'select-none' }}
+    />
+  );
+}
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   // Глобальная гидрация Zustand-сторов
@@ -77,7 +95,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
-      <Toaster position="top-right" richColors theme="system" />
+      <ThemedToaster />
     </ThemeProvider>
   );
 }
