@@ -376,6 +376,87 @@ describe('compileQuery: calculated-метрики и CTE', () => {
     expect(posA).toBeLessThan(posB);
   });
 
+  it('расчётная метрика над ПРОСТЫМИ SUM-метриками (fast-path) компилируется в SQL', () => {
+    // Сценарий: профицит = итого/потребность, где итого и потребность —
+    // простые SUM по колонкам (fast-path, НЕ в formulas). Раньше metric-deps
+    // на них не резолвились → «Unresolved symbol» → срыв всей SQL-компиляции.
+    const params = makeParams({
+      groups: [
+        makeGroup({
+          metrics: [
+            makeGroupMetric({
+              id: 'mTotal',
+              templateId: 'tpl-total',
+              fieldBindings: [{ id: 'f1', fieldAlias: 'value', columnName: 'col_total' }],
+            }),
+            makeGroupMetric({
+              id: 'mNeed',
+              templateId: 'tpl-need',
+              fieldBindings: [{ id: 'f2', fieldAlias: 'value', columnName: 'col_need' }],
+            }),
+            makeGroupMetric({
+              id: 'mProfit',
+              templateId: 'tpl-profit',
+              fieldBindings: [],
+              metricBindings: [
+                { id: 'b1', metricAlias: 'a', metricId: 'mTotal' },
+                { id: 'b2', metricAlias: 'b', metricId: 'mNeed' },
+              ],
+            }),
+          ],
+        }),
+      ],
+      metricTemplates: [
+        makeAggregateTemplate({ id: 'tpl-total' }),
+        makeAggregateTemplate({ id: 'tpl-need' }),
+        makeCalculatedTemplate('a / b', { id: 'tpl-profit' }),
+      ],
+    });
+    const { sql, calculatedInSqlAliases } = compileQuery(params, 'duckdb');
+
+    // SQL-путь, не fallback: расчётная метрика в CTE, ссылается на finalAlias
+    // обеих fast-path метрик. Деление с NULLIF-защитой.
+    expect(calculatedInSqlAliases.has('g1__mProfit')).toBe(true);
+    expect(sql).toContain('"g1__mTotal"');
+    expect(sql).toContain('"g1__mNeed"');
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('Falling back ALL calculated metrics')
+    );
+  });
+
+  it('расчётная над полями компилируется даже при requireExplicit (авто-SUM операндов)', () => {
+    // Операнды расчётной пишутся голыми (a/b) — UI не даёт писать SUM(...).
+    // Глобальный requireExplicit (для вручную набранных формул) не должен
+    // ронять такую метрику: голые поля авто-оборачиваются в дефолтный SUM.
+    const params = makeParams({
+      formulaOptions: { defaultAggregate: 'SUM', requireExplicit: true },
+      groups: [
+        makeGroup({
+          metrics: [
+            makeGroupMetric({
+              id: 'mc',
+              templateId: 'tpl-calc',
+              fieldBindings: [
+                { id: 'fb1', fieldAlias: 'a', columnName: 'col_a' },
+                { id: 'fb2', fieldAlias: 'b', columnName: 'col_b' },
+              ],
+            }),
+          ],
+        }),
+      ],
+      metricTemplates: [makeCalculatedTemplate('a / b')],
+    });
+    const { sql, calculatedInSqlAliases, formulas } = compileQuery(params, 'duckdb');
+
+    expect(calculatedInSqlAliases.has('g1__mc')).toBe(true);
+    expect(formulas.get('base_g1__mc')?.formula.replace(/\s/g, '')).toBe(
+      'col_a__SUM/col_b__SUM'
+    );
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('формула не скомпилирована')
+    );
+  });
+
   it('циклическая зависимость не приводит к бесконечному циклу', () => {
     const params = makeParams({
       groups: [

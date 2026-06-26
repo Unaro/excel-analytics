@@ -12,6 +12,7 @@ import { GroupMetricConfigPopover } from '@/features/configure-group-metric';
 import { GroupMetricCell } from '@/entities/group-metric-config';
 import { SortIcon } from '@/shared/ui/sort-icon';
 import { formatRu } from '@/shared/lib/utils/format';
+import { toDisplayScale } from '@/shared/lib/utils/metric-colors';
 import { sortBreakdownItems } from '../lib/sort-breakdown';
 import type { SortConfig } from '../model/types';
 
@@ -29,6 +30,30 @@ function EnteredDelta({ entered, computed }: { entered: number | null; computed:
           Δ{delta! > 0 ? '+' : ''}{formatRu(delta!)}
         </span>
       )}
+    </div>
+  );
+}
+
+/**
+ * Расхождение «по уровню (own) vs по детям (childrenSum)».
+ * Для простой метрики own/childrenSum — значение/сумма колонки; для расчётной —
+ * формула на собственных значениях операндов vs на их суммах по детям (Σa/Σb).
+ * Δ = по детям − по уровню. Формат (percent → %) берётся из метрики.
+ */
+function ChildrenSumDelta({ own, childrenSum, format }: { own: number; childrenSum: number; format?: string }) {
+  const isPct = format === 'percent' || format === 'percent_raw';
+  const fmt = (v: number) => `${formatRu(toDisplayScale(v, format))}${isPct ? '%' : ''}`;
+  const delta = childrenSum - own;
+  return (
+    <div
+      className="text-[10px] leading-tight mt-0.5"
+      title="Значение по дочерним уровням (для расчётной — формула на суммах детей) не сходится со значением этого уровня"
+    >
+      <span className="text-slate-400">Σдети: </span>
+      <span className="font-mono text-slate-600 dark:text-slate-300">{fmt(childrenSum)}</span>
+      <span className={cn('ml-1 font-mono', delta > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400')}>
+        Δ{delta > 0 ? '+' : ''}{fmt(delta)}
+      </span>
     </div>
   );
 }
@@ -71,6 +96,14 @@ interface GroupBreakdownTableProps {
   enteredByLabel?: Map<string, Record<string, number | null>>;
   /** Введённые значения для строки «Итого» (текущий узел). */
   enteredSummary?: Record<string, number | null>;
+  /**
+   * Расхождение «записано в файле vs сумма по детям» (только где реально
+   * расходятся): rawLabel → vmId → {own, childrenSum}. Индикатор качества данных
+   * — показывается всегда (не зависит от тумблера «считать введённые»).
+   */
+  childrenDeltaByLabel?: Map<string, Record<string, { own: number; childrenSum: number }>>;
+  /** Расхождение для строки «Итого» (текущий узел). */
+  childrenDeltaSummary?: Record<string, { own: number; childrenSum: number }>;
 }
 
 export const GroupBreakdownTable = memo(function GroupBreakdownTable({
@@ -92,6 +125,8 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
   onToggleChartLabel,
   enteredByLabel,
   enteredSummary,
+  childrenDeltaByLabel,
+  childrenDeltaSummary,
 }: GroupBreakdownTableProps) {
   const showVisibilityToggle = !!onToggleChartLabel;
   const [searchQuery, setSearchQuery] = useState('');
@@ -309,6 +344,10 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                         entered={enteredByLabel?.get(item.label)?.[vm.virtualMetricId] ?? null}
                         computed={val?.value ?? null}
                       />
+                      {(() => {
+                        const d = childrenDeltaByLabel?.get(item.label)?.[vm.virtualMetricId];
+                        return d ? <ChildrenSumDelta own={d.own} childrenSum={d.childrenSum} format={meta?.displayFormat} /> : null;
+                      })()}
                     </td>
                   );
                 })}
@@ -349,6 +388,10 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                         entered={enteredSummary?.[vm.virtualMetricId] ?? null}
                         computed={vm.value}
                       />
+                      {(() => {
+                        const d = childrenDeltaSummary?.[vm.virtualMetricId];
+                        return d ? <ChildrenSumDelta own={d.own} childrenSum={d.childrenSum} format={meta?.displayFormat} /> : null;
+                      })()}
                     </td>
                   );
                 })}

@@ -3,6 +3,14 @@
  */
 import { z } from 'zod';
 
+/**
+ * Макс. длина отображаемых имён (группы, шаблоны, метрики, колонки). Имена,
+ * приходящие из агрегат-импорта, генерируются из заголовков файла и могут быть
+ * длинными (составные «группа · показатель») — потому лимит щедрый, иначе
+ * валидный экспорт не проходит обратный импорт.
+ */
+const NAME_MAX = 255;
+
 // Базовые типы
 /** Строка импортированных данных: имя колонки → произвольное значение. */
 export const ExcelRowSchema = z.record(z.string(), z.unknown());
@@ -37,7 +45,7 @@ export const ColorConfigSchema = z.object({
  */
 export const VirtualMetricSchema = z.object({
   id: z.string().min(1),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(NAME_MAX),
   unit: z.string().max(10).optional(),
   displayFormat: z.enum(['number', 'decimal', 'percent', 'percent_raw', 'currency', 'scientific']),
   decimalPlaces: z.number().int().min(0).max(10),
@@ -70,7 +78,7 @@ export const DashboardColumnSchema = z.object({
   order: z.number().int(),
   colorConfig: ColorConfigSchema.optional(),
   // legacy (до перехода на колонку-шаблон) — терпим при чтении:
-  name: z.string().max(100).optional(),
+  name: z.string().max(NAME_MAX).optional(),
   unit: z.string().max(10).optional(),
   displayFormat: z.enum(['number', 'decimal', 'percent', 'percent_raw', 'currency', 'scientific']).optional(),
   decimalPlaces: z.number().int().min(0).max(10).optional(),
@@ -116,7 +124,7 @@ export const GroupMetricSchema = z.object({
  */
 export const MetricTemplateSchema = z.object({
   id: z.string().min(1),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(NAME_MAX),
   description: z.string().optional(),
   formula: z.string().min(1),
   dependencies: z.array(z.object({
@@ -155,7 +163,7 @@ export const MetricTemplateSchema = z.object({
 export const IndicatorGroupSchema = z.object({
   id: z.string().min(1),
   datasetId: z.string().optional(),
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(NAME_MAX),
   description: z.string().optional(),
   fieldMappings: z.array(FieldBindingSchema),
   metrics: z.array(GroupMetricSchema),
@@ -176,6 +184,24 @@ export const IndicatorGroupSchema = z.object({
   icon: z.string().optional(),
   /** Палитра цветов серий чартов группы (id из CHART_PALETTES). Нет/'default' = текущие дефолты. */
   paletteId: z.string().optional(),
+  /**
+   * Условия отображения элементов уровня (как условное форматирование, но для
+   * видимости): строка разбивки показывается, если её метрики удовлетворяют ВСЕМ
+   * правилам (AND). Применяется к таблице и чартам. Нет правил → показываем всё.
+   */
+  displayFilters: z.array(z.object({
+    id: z.string(),
+    metricId: z.string(),
+    operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'between']),
+    value: z.number(),
+    value2: z.number().optional(),
+    /**
+     * Сравнение «метрика vs метрика» в одной строке: если задано, правая часть
+     * берётся из этой метрики строки (а не из `value`/`value2`). Напр.
+     * «Итоговое ≠ Потребность». Сравнение — с допуском по float.
+     */
+    compareMetricId: z.string().optional(),
+  })).optional(),
   order: z.number().int(),
   createdAt: z.number(),
   updatedAt: z.number(),
@@ -232,6 +258,7 @@ export type HierarchyFilterValue = z.infer<typeof HierarchyFilterValueSchema>;
 export type VirtualMetric = z.infer<typeof VirtualMetricSchema>;
 export type DashboardColumn = z.infer<typeof DashboardColumnSchema>;
 export type IndicatorGroup = z.infer<typeof IndicatorGroupSchema>;
+export type DisplayFilterRule = NonNullable<IndicatorGroup['displayFilters']>[number];
 export type MetricTemplate = z.infer<typeof MetricTemplateSchema>;
 export type GroupMetric = z.infer<typeof GroupMetricSchema>;
 

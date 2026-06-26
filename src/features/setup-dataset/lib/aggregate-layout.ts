@@ -445,9 +445,15 @@ export function toAggregateCsv(result: FlattenResult): string {
   const isMetric = result.columns.map(c => c.role === 'metric');
   const lines: string[] = [result.headers.map(csvField).join(',')];
   for (const row of result.rows) {
-    const out = row.map((raw, pos) =>
-      csvField(isMetric[pos] ? canonicalNumber(raw ?? '') : (raw ?? ''))
-    );
+    const out = row.map((raw, pos) => {
+      if (!isMetric[pos]) return csvField(raw ?? '');
+      // Метрику приводим к чистому числу (RU-запятая→точка, пробелы-разряды) ИЛИ
+      // пустоте: нечисловой токен («—», «н/д», текст) → '' (NULL), иначе ОДНА
+      // такая ячейка делает всю колонку VARCHAR → SUM(TRY_CAST(... AS DOUBLE))
+      // схлопывается в NULL и метрики/расчётные по листьям обнуляются.
+      const n = parseMetricValue(raw ?? '');
+      return n === null ? '' : String(n);
+    });
     lines.push(out.join(','));
   }
   return lines.join('\n');

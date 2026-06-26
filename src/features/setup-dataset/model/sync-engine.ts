@@ -132,11 +132,18 @@ export function createAggregateGroups(
           fieldAlias: fb.fieldAlias,
           columnName: fb.columnName,
         })),
-        metricBindings: m.metricBindings.map(mb => ({
-          id: nanoid(),
-          metricAlias: mb.alias,
-          metricId: metricIdByTemplate.get(mb.metricTemplateName) ?? '',
-        })),
+        metricBindings: m.metricBindings.map(mb => {
+          const metricId = metricIdByTemplate.get(mb.metricTemplateName) ?? '';
+          if (!metricId) {
+            logger.warn(
+              `[createAggregateGroups] Группа «${g.name}»: операнд «${mb.alias}» расчётной ` +
+              `«${m.templateName}» ссылается на показатель «${mb.metricTemplateName}», ` +
+              `которого нет среди метрик группы (метрики: ${[...metricIdByTemplate.keys()].join(', ')}). ` +
+              `Привязка пустая → расчёт даст 0/—.`
+            );
+          }
+          return { id: nanoid(), metricAlias: mb.alias, metricId };
+        }),
         enabled: true,
         order: m.order,
       };
@@ -209,7 +216,8 @@ export async function syncFromFile(
   file: File,
   params?: ImportParams,
   aggregate?: AggregateLayoutConfig,
-  rawGroups?: RawGroupsConfig
+  rawGroups?: RawGroupsConfig,
+  opts?: { skipAutoGroups?: boolean }
 ) {
   const { setSyncing, addDataset, setDatasetRows, switchDataset } =
     useDatasetStore.getState();
@@ -343,7 +351,9 @@ export async function syncFromFile(
     }
 
     // Агрегат: метрики шапки → группы показателей (SUM по колонке).
-    if (aggregateColumns) {
+    // skipAutoGroups: импорт «готовой конфигурации» сам принесёт группы/шаблоны —
+    // не создаём авто-набор, иначе шаблоны (глобальный реестр) задвоятся.
+    if (aggregateColumns && !opts?.skipAutoGroups) {
       const n = createAggregateGroups(
         datasetId,
         aggregateColumns,

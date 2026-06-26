@@ -16,9 +16,29 @@ import {
   type AggregateMatrix,
   type AggregateLayoutConfig,
 } from '@/features/setup-dataset';
+import { validateConfigAgainstFile } from '@/features/setup-dataset';
 import type { ColumnClassification } from '@/shared/lib/types';
 import type { RawGroupsConfig } from '@/shared/lib/types/aggregate';
-import { PgStep, SetupStep, SourceType } from './types';
+import { parseConfigFile, ConfigImportError } from '@/shared/lib/services';
+import type { DatasetConfigExportParsed } from '@/shared/lib/validators';
+import { toast } from '@/shared/ui/toast';
+import { PgStep, SetupStep, SourceType, ConfigSelection } from './types';
+
+type ConfigItemKind = 'group' | 'template' | 'dashboard';
+
+/** Все элементы конфига включены по умолчанию (id групп/шаблонов/дашбордов). */
+function defaultSelection(parsed: DatasetConfigExportParsed): ConfigSelection {
+  const d = parsed.data;
+  const dashboardIds = (d.dashboards ?? [])
+    .map((x) => (x as { id?: unknown }).id)
+    .filter((id): id is string => typeof id === 'string');
+  return {
+    groupIds: new Set((d.indicatorGroups ?? []).map((g) => g.id)),
+    templateIds: new Set((d.metricTemplates ?? []).map((t) => t.id)),
+    dashboardIds: new Set(dashboardIds),
+    renames: {},
+  };
+}
 
 const DEFAULT_DECIMAL: DecimalSeparator = '.';
 
@@ -61,6 +81,11 @@ export function useSetupWizard() {
   const [aggregateConfig, setAggregateConfig] = useState<AggregateLayoutConfig | null>(null);
   // Группы для СЫРЫХ данных, заданные до импорта (применяются в syncFromFile).
   const [rawGroupsConfig, setRawGroupsConfig] = useState<RawGroupsConfig | null>(null);
+  // Режим «использовать готовую конфигурацию»: импорт конфига вместо ручной
+  // настройки прямо на шаге 2. readyConfig — распарсенный (после Zod) конфиг.
+  const [useReadyConfig, setUseReadyConfigState] = useState(false);
+  const [readyConfig, setReadyConfig] = useState<DatasetConfigExportParsed | null>(null);
+  const [configSelection, setConfigSelection] = useState<ConfigSelection | null>(null);
   // Префикс CSV-текста для синхронного перепарсинга при смене разделителя
   // (без повторного чтения файла). Для xlsx — null.
   const csvTextRef = useRef<string | null>(null);
@@ -157,6 +182,46 @@ export function useSetupWizard() {
     []
   );
 
+  /** Переключатель «использовать готовую конфигурацию»; сброс при выключении. */
+  const setUseReadyConfig = useCallback((on: boolean) => {
+    setUseReadyConfigState(on);
+    if (!on) {
+      setReadyConfig(null);
+      setConfigSelection(null);
+    }
+  }, []);
+
+  /** Загрузка JSON-конфига: парсинг + Zod; ошибки → toast. По умолчанию всё включено. */
+  const loadReadyConfig = useCallback(async (file: File) => {
+    try {
+      const parsed = parseConfigFile(await file.text());
+      setReadyConfig(parsed);
+      setConfigSelection(defaultSelection(parsed));
+      // Агрегат-конфиг сам подсказывает режим разметки.
+      if (parsed.data.aggregateConfig) setIsAggregate(true);
+    } catch (e) {
+      const msg = e instanceof ConfigImportError ? e.message
+        : e instanceof Error ? e.message : 'Не удалось прочитать конфиг';
+      toast.error(msg);
+    }
+  }, []);
+
+  /** Вкл/выкл элемент конфига (группа/шаблон/дашборд) в выборе. */
+  const toggleConfigItem = useCallback((kind: ConfigItemKind, id: string) => {
+    setConfigSelection((prev) => {
+      if (!prev) return prev;
+      const key = kind === 'group' ? 'groupIds' : kind === 'template' ? 'templateIds' : 'dashboardIds';
+      const next = new Set(prev[key]);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return { ...prev, [key]: next };
+    });
+  }, []);
+
+  /** Переименование элемента конфига (пустое → исходное имя). */
+  const renameConfigItem = useCallback((id: string, name: string) => {
+    setConfigSelection((prev) => (prev ? { ...prev, renames: { ...prev.renames, [id]: name } } : prev));
+  }, []);
+
   /** Сброс выбора файла (отмена импорта / возврат к загрузке). */
   const resetSelectedFile = useCallback(() => {
     setSelectedFile(null);
@@ -167,8 +232,25 @@ export function useSetupWizard() {
     setAggregateMatrix(null);
     setAggregateConfig(null);
     setRawGroupsConfig(null);
+    setUseReadyConfigState(false);
+    setReadyConfig(null);
+    setConfigSelection(null);
     csvTextRef.current = null;
   }, []);
+
+  // Сверка конфига с реальным файлом (усиленная валидация) — пересчёт при смене
+  // конфига/режима/превью. Показывается как предупреждения, импорт не блокирует.
+  const configValidation = useMemo(
+    () =>
+      readyConfig
+        ? validateConfigAgainstFile(readyConfig, {
+            headers: preview?.headers ?? [],
+            aggregateMatrix,
+            isAggregate,
+          })
+        : null,
+    [readyConfig, preview, aggregateMatrix, isAggregate]
+  );
 
   const hasMultipleDatasets = dataDatasetCount > 0;
 
@@ -211,6 +293,14 @@ export function useSetupWizard() {
     setAggregateConfig,
     rawGroupsConfig,
     setRawGroupsConfig,
+    useReadyConfig,
+    setUseReadyConfig,
+    readyConfig,
+    configSelection,
+    configValidation,
+    loadReadyConfig,
+    toggleConfigItem,
+    renameConfigItem,
     handleFileSelected,
     setDelimiter,
     setDecimalSeparator,

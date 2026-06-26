@@ -8,6 +8,8 @@ import { ChartTypeSelector } from './ChartTypeSelector';
 import { GroupChartsPanel } from './GroupChartsPanel';
 import { GroupNotFound } from './GroupNotFound';
 import { sortBreakdownItems as sortBreakdown } from '../lib/sort-breakdown';
+import { filterBreakdownByRules } from '../lib/filter-breakdown';
+import { DisplayFilterPanel } from './DisplayFilterPanel';
 import { useGroupViewState } from '../model/use-group-view-state';
 import { useGroupPath } from '@/shared/lib/hooks/use-group-path';
 import { useGroupBreakdown } from '../model/use-group-breakdown';
@@ -17,7 +19,10 @@ import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
-import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/entities/aggregate-nodes';
+import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, rollupNodes, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
+import { extractVariables } from '@/shared/lib/utils/formula';
+import { safeEvaluate } from '@/shared/lib/math/safe-math';
+import { formatValue } from '@/shared/lib/computation/lib/utils';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
@@ -154,21 +159,53 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   const aggregateNodes = useAggregateNodesStore(s =>
     datasetId ? s.nodesByDataset[datasetId] : undefined
   );
+  // Rolled-up узлы (own + childrenSum); своё значение в приоритете, иначе сумма
+  // детей. nodeMap = итог (value) для overlay; nodeRich несёт own/childrenSum
+  // для показа расхождения «записано в файле vs сумма по детям».
+  const nodeRich = useMemo(() => rollupNodes(aggregateNodes ?? []), [aggregateNodes]);
   const nodeMap = useMemo(() => {
-    const map = new Map<string, Record<string, number | null>>();
-    for (const n of aggregateNodes ?? []) map.set(nodePathKey(n.path), n.values);
-    return map;
-  }, [aggregateNodes]);
+    const out = new Map<string, Record<string, number | null>>();
+    for (const [key, cells] of nodeRich) {
+      const v: Record<string, number | null> = {};
+      for (const [col, cell] of Object.entries(cells)) v[col] = cell.value;
+      out.set(key, v);
+    }
+    return out;
+  }, [nodeRich]);
   // metricId → имя колонки метрики (для lookup введённого значения).
   // VirtualMetricValue.sourceMetricId = id метрики группы.
+  // Расчётные (формула над операндами) исключаем — их считает enteredCalc.
+  const isCalcMetric = (m: { fieldBindings: unknown[]; metricBindings: unknown[] }) =>
+    m.metricBindings.length > 0 || m.fieldBindings.length > 1;
   const columnByMetricId = useMemo(() => {
     const map: Record<string, string> = {};
     for (const m of group?.metrics ?? []) {
+      if (isCalcMetric(m)) continue;
       const col = m.fieldBindings[0]?.columnName;
       if (col) map[m.id] = col;
     }
     return map;
   }, [group]);
+  // Реестр расчётных: метрика → формула + привязка операндов к колонкам.
+  const calcSpecByMetricId = useMemo(() => {
+    const map: Record<string, EnteredCalcSpec> = {};
+    for (const m of group?.metrics ?? []) {
+      if (!isCalcMetric(m)) continue;
+      const tpl = templates.find(t => t.id === m.templateId);
+      if (!tpl?.formula) continue;
+      const operandColumns: Record<string, string> = {};
+      for (const fb of m.fieldBindings) operandColumns[fb.fieldAlias] = fb.columnName;
+      for (const mb of m.metricBindings) {
+        const col = columnByMetricId[mb.metricId];
+        if (col) operandColumns[mb.metricAlias] = col;
+      }
+      const vars = extractVariables(tpl.formula);
+      if (vars.length > 0 && vars.every(v => v in operandColumns)) {
+        map[m.id] = { formula: tpl.formula, operandColumns };
+      }
+    }
+    return map;
+  }, [group, templates, columnByMetricId]);
   const pathValues = useMemo(() => path.map(f => f.value), [path]);
   // Введённое значение узла для строки разбивки: rawLabel → vmId → число|null.
   const enteredByLabel = useMemo(() => {
@@ -178,19 +215,87 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
       if (item.dateLabel !== undefined) continue;
       const values = nodeMap.get(nodePathKey([...pathValues, item.label]));
       if (!values) continue;
-      const byVm = enteredVmValues(values, summaryVirtualMetrics, columnByMetricId);
+      const byVm = {
+        ...enteredVmValues(values, summaryVirtualMetrics, columnByMetricId),
+        ...enteredCalcVmValues(values, summaryVirtualMetrics, calcSpecByMetricId),
+      };
       if (Object.keys(byVm).length) out.set(item.label, byVm);
     }
     return out.size ? out : undefined;
-  }, [nodeMap, breakdown, pathValues, summaryVirtualMetrics, columnByMetricId]);
-  // Введённое значение текущего узла (строка «Итого»).
+  }, [nodeMap, breakdown, pathValues, summaryVirtualMetrics, columnByMetricId, calcSpecByMetricId]);
+  // Введённое значение текущего узла (строка «Итого»/KPI). На верхнем уровне
+  // (пустой путь) берётся синтетический корень rollup (сумма узлов верхнего
+  // уровня) — чтобы сводка добирала总 по детям, а не показывала «—».
   const enteredSummary = useMemo(() => {
-    if (nodeMap.size === 0 || pathValues.length === 0) return undefined;
+    if (nodeMap.size === 0) return undefined;
     const values = nodeMap.get(nodePathKey(pathValues));
     if (!values) return undefined;
-    const byVm = enteredVmValues(values, summaryVirtualMetrics, columnByMetricId);
+    const byVm = {
+      ...enteredVmValues(values, summaryVirtualMetrics, columnByMetricId),
+      ...enteredCalcVmValues(values, summaryVirtualMetrics, calcSpecByMetricId),
+    };
     return Object.keys(byVm).length ? byVm : undefined;
-  }, [nodeMap, pathValues, summaryVirtualMetrics, columnByMetricId]);
+  }, [nodeMap, pathValues, summaryVirtualMetrics, columnByMetricId, calcSpecByMetricId]);
+
+  // Расхождение «записано в файле (own) vs сумма по детям (childrenSum)».
+  // Простая метрика — own/childrenSum по своей колонке. Расчётная — формула на
+  // СОБСТВЕННЫХ значениях операндов vs на их суммах по детям (Σa/Σb), чтобы
+  // показать, что подразумевают дети. Только где оба полностью считаются и реально
+  // расходятся.
+  const childrenDeltaForNode = useMemo(() => {
+    const EPS = 1e-9;
+    return (pathKey: string): Record<string, { own: number; childrenSum: number }> | undefined => {
+      const cells = nodeRich.get(pathKey);
+      if (!cells) return undefined;
+      const rec: Record<string, { own: number; childrenSum: number }> = {};
+      for (const vm of summaryVirtualMetrics) {
+        const mid = vm.sourceMetricId;
+        const col = mid ? columnByMetricId[mid] : undefined;
+        if (col) {
+          const cell = cells[col];
+          if (cell && cell.own != null && cell.childrenSum != null && Math.abs(cell.own - cell.childrenSum) > EPS) {
+            rec[vm.virtualMetricId] = { own: cell.own, childrenSum: cell.childrenSum };
+          }
+          continue;
+        }
+        // Расчётная: формула на own операндов vs на их childrenSum.
+        const spec = mid ? calcSpecByMetricId[mid] : undefined;
+        if (!spec) continue;
+        const ownScope: Record<string, number | null> = {};
+        const childScope: Record<string, number | null> = {};
+        let okOwn = true;
+        let okChild = true;
+        for (const [alias, c] of Object.entries(spec.operandColumns)) {
+          const cell = cells[c];
+          if (!cell || cell.own == null) okOwn = false;
+          if (!cell || cell.childrenSum == null) okChild = false;
+          ownScope[alias] = cell?.own ?? 0;
+          childScope[alias] = cell?.childrenSum ?? 0;
+        }
+        if (!okOwn || !okChild) continue;
+        const own = safeEvaluate(spec.formula, ownScope);
+        const childrenSum = safeEvaluate(spec.formula, childScope);
+        if (own != null && childrenSum != null && Math.abs(own - childrenSum) > EPS) {
+          rec[vm.virtualMetricId] = { own, childrenSum };
+        }
+      }
+      return Object.keys(rec).length ? rec : undefined;
+    };
+  }, [nodeRich, summaryVirtualMetrics, columnByMetricId, calcSpecByMetricId]);
+  const childrenDeltaByLabel = useMemo(() => {
+    if (nodeRich.size === 0) return undefined;
+    const out = new Map<string, Record<string, { own: number; childrenSum: number }>>();
+    for (const item of breakdown ?? []) {
+      if (item.dateLabel !== undefined) continue;
+      const rec = childrenDeltaForNode(nodePathKey([...pathValues, item.label]));
+      if (rec) out.set(item.label, rec);
+    }
+    return out.size ? out : undefined;
+  }, [nodeRich, breakdown, pathValues, childrenDeltaForNode]);
+  const childrenDeltaSummary = useMemo(
+    () => childrenDeltaForNode(nodePathKey(pathValues)),
+    [pathValues, childrenDeltaForNode]
+  );
 
   // Переключатель: считать введённые значения узлов как эффективные (тогда они
   // форматируются/сортируются/окрашиваются наравне с вычисленными) либо
@@ -200,10 +305,23 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   const useEntered = hasEnteredData && useEnteredValues;
 
   // Эффективные значения: вычисленное ?? введённое (когда тумблер включён).
-  const effectiveSummaryMetrics = useMemo(
-    () => (useEntered ? mergeEnteredVms(summaryVirtualMetrics, enteredSummary) : summaryVirtualMetrics),
-    [useEntered, summaryVirtualMetrics, enteredSummary]
+  // overlay ставит formattedValue='—' (ждёт переформат из value). KPI-карточки
+  // показывают formattedValue напрямую — переформатируем по конфигу метрики,
+  // иначе на карточке «—» вместо итога по детям/введённого.
+  const metaById = useMemo(
+    () => new Map(virtualMetrics.map(m => [m.id, m])),
+    [virtualMetrics]
   );
+  const effectiveSummaryMetrics = useMemo(() => {
+    if (!useEntered) return summaryVirtualMetrics;
+    const merged = mergeEnteredVms(summaryVirtualMetrics, enteredSummary);
+    return merged.map(vm => {
+      if (vm.value == null || vm.formattedValue !== '—') return vm;
+      const meta = metaById.get(vm.virtualMetricId);
+      if (!meta) return vm;
+      return { ...vm, formattedValue: formatValue(vm.value, meta.displayFormat, meta.decimalPlaces, meta.unit) };
+    });
+  }, [useEntered, summaryVirtualMetrics, enteredSummary, metaById]);
   const effectiveBreakdown = useMemo(() => {
     if (!useEntered || !enteredByLabel || !oneDimBreakdown) return oneDimBreakdown;
     return oneDimBreakdown.map(item => {
@@ -214,12 +332,30 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     });
   }, [useEntered, oneDimBreakdown, enteredByLabel]);
 
+  // Условия отображения (правила по метрике, хранятся на группе): фильтруем
+  // элементы уровня ДО нормализации (проценты считаются по видимым). Сравнение
+  // в масштабе отображения — формат метрики по id.
+  const formatByMetricId = useMemo(() => {
+    const m: Record<string, string | undefined> = {};
+    for (const vm of virtualMetrics) m[vm.id] = vm.displayFormat;
+    return m;
+  }, [virtualMetrics]);
+  const displayFilters = group?.displayFilters;
+  const filterMetricOptions = useMemo(
+    () => virtualMetrics.map(vm => ({ id: vm.id, name: vm.name })),
+    [virtualMetrics]
+  );
+  const filteredBreakdown = useMemo(
+    () => (effectiveBreakdown ? filterBreakdownByRules(effectiveBreakdown, displayFilters, formatByMetricId) : effectiveBreakdown),
+    [effectiveBreakdown, displayFilters, formatByMetricId]
+  );
+
   // Нормализация (% от итога/макс/…) — пост-пасс по столбцу детей текущего
   // уровня, ПОСЛЕ overlay (введённые узлы входят в знаменатель как есть).
   // Итого не трогаем (effectiveSummaryMetrics остаётся абсолютным).
   const displayBreakdown = useMemo(
-    () => (effectiveBreakdown ? normalizeVmRows(effectiveBreakdown, normalizeByVmId) : effectiveBreakdown),
-    [effectiveBreakdown, normalizeByVmId]
+    () => (filteredBreakdown ? normalizeVmRows(filteredBreakdown, normalizeByVmId) : filteredBreakdown),
+    [filteredBreakdown, normalizeByVmId]
   );
 
   // Для чартов нормализованные метрики показываем процентом: чарт строит только
@@ -273,6 +409,15 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           Визуализации
         </h2>
         <div className="flex items-center gap-3">
+          {!isTwoDimensional && (
+            <DisplayFilterPanel
+              metrics={filterMetricOptions}
+              rules={displayFilters ?? []}
+              onChange={rules => updateGroup(groupId, { displayFilters: rules.length ? rules : undefined })}
+              shown={filteredBreakdown?.length}
+              total={effectiveBreakdown?.length}
+            />
+          )}
           {hasEnteredData && (
             <label
               className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none"
@@ -396,6 +541,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           onToggleChartLabel={chartTypes.length > 0 ? toggleChartLabel : undefined}
           enteredByLabel={useEntered ? undefined : enteredByLabel}
           enteredSummary={useEntered ? undefined : enteredSummary}
+          childrenDeltaByLabel={childrenDeltaByLabel}
+          childrenDeltaSummary={childrenDeltaSummary}
         />
       )}
     </div>

@@ -5,11 +5,14 @@ import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { cn } from '@/shared/lib/utils';
-import type { FilePreview, ImportParams, DecimalSeparator, AggregateMatrix, AggregateLayoutConfig } from '@/features/setup-dataset';
+import type { FilePreview, ImportParams, DecimalSeparator, AggregateMatrix, AggregateLayoutConfig, ConfigFileValidation } from '@/features/setup-dataset';
 import type { ColumnClassification } from '@/shared/lib/types';
 import type { RawGroupsConfig } from '@/shared/lib/types/aggregate';
+import type { DatasetConfigExportParsed } from '@/shared/lib/validators';
 import { AggregateStructurePanel } from './AggregateStructurePanel';
 import { RawGroupsPanel } from './RawGroupsPanel';
+import { ReadyConfigPanel } from './ReadyConfigPanel';
+import type { ConfigSelection } from '../model/types';
 
 interface ImportConfigStepProps {
   fileName: string;
@@ -29,6 +32,15 @@ interface ImportConfigStepProps {
   onAggregateLayoutChange: (config: AggregateLayoutConfig) => void;
   /** Конфиг групп для сырых данных (задаётся до импорта). */
   onRawGroupsChange: (config: RawGroupsConfig | null) => void;
+  /** Режим «использовать готовую конфигурацию» (импорт конфига вместо ручной настройки). */
+  useReadyConfig: boolean;
+  onUseReadyConfigToggle: (on: boolean) => void;
+  readyConfig: DatasetConfigExportParsed | null;
+  configSelection: ConfigSelection | null;
+  configValidation: ConfigFileValidation | null;
+  onLoadConfig: (file: File) => void;
+  onToggleConfigItem: (kind: 'group' | 'template' | 'dashboard', id: string) => void;
+  onRenameConfigItem: (id: string, name: string) => void;
 }
 
 const NEWLINE_LABEL: Record<string, string> = {
@@ -58,6 +70,41 @@ const TYPE_BADGE: Record<ColumnClassification, string> = {
   ignore: 'text-slate-400',
 };
 
+/** Параметры разбора CSV (разделитель колонок + десятичный) — общий блок. */
+function CsvParseControls({
+  importParams,
+  onDelimiterChange,
+  onDecimalChange,
+}: {
+  importParams: ImportParams;
+  onDelimiterChange: (delimiter: string) => void;
+  onDecimalChange: (dec: DecimalSeparator) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block">
+          Разделитель колонок
+        </label>
+        <Select className="h-9 w-52" value={importParams.delimiter ?? ','} onChange={(e) => onDelimiterChange(e.target.value)}>
+          {DELIMITER_OPTIONS.map((o) => (
+            <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
+          ))}
+        </Select>
+      </div>
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block">
+          Десятичный разделитель
+        </label>
+        <Select className="h-9 w-44" value={importParams.decimalSeparator} onChange={(e) => onDecimalChange(e.target.value as DecimalSeparator)}>
+          <SelectOption value=".">Точка  12.34</SelectOption>
+          <SelectOption value=",">Запятая  12,34</SelectOption>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Шаг «Импорт»: предпросмотр первых строк + параметры разбора (разделитель,
  * десятичный разделитель, тип каждой колонки) до тяжёлой загрузки.
@@ -81,6 +128,14 @@ export function ImportConfigStep({
   aggregateMatrix,
   onAggregateLayoutChange,
   onRawGroupsChange,
+  useReadyConfig,
+  onUseReadyConfigToggle,
+  readyConfig,
+  configSelection,
+  configValidation,
+  onLoadConfig,
+  onToggleConfigItem,
+  onRenameConfigItem,
 }: ImportConfigStepProps) {
   const showCsvControls = !!preview?.isCsv && !!importParams;
   // Числовые колонки превью — кандидаты в метрики для группировки сырых данных.
@@ -135,44 +190,54 @@ export function ImportConfigStep({
         </div>
       </label>
 
-      {/* Агрегат: разметку и типы задаёт панель «Структура»; плоская таблица
-          выбора типов скрыта (она не понимает multi-row шапку и на импорт
-          агрегата не влияет — типы выводятся из ролей колонок). */}
-      {isAggregate ? (
+      {/* ─── Тумблер «использовать готовую конфигурацию» ─── */}
+      <label className="flex items-start gap-3 p-3 rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-900/15 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={useReadyConfig}
+          onChange={(e) => onUseReadyConfigToggle(e.target.checked)}
+          className="mt-0.5"
+        />
+        <div>
+          <div className="text-sm font-medium text-slate-800 dark:text-slate-100">
+            Использовать готовую конфигурацию
+          </div>
+          <div className="text-[11px] text-slate-400">
+            Загрузить JSON-конфиг (экспорт настроек) вместо ручной настройки: группы, метрики,
+            шаблоны и дашборды применятся к файлу автоматически. Для агрегата разметка берётся из конфига.
+          </div>
+        </div>
+      </label>
+
+      {useReadyConfig ? (
+        <>
+          {showCsvControls && importParams && (
+            <CsvParseControls
+              importParams={importParams}
+              onDelimiterChange={onDelimiterChange}
+              onDecimalChange={onDecimalChange}
+            />
+          )}
+          <ReadyConfigPanel
+            config={readyConfig}
+            selection={configSelection}
+            validation={configValidation}
+            onLoadConfig={onLoadConfig}
+            onToggleItem={onToggleConfigItem}
+            onRenameItem={onRenameConfigItem}
+          />
+        </>
+      ) : isAggregate ? (
         <AggregateStructurePanel matrix={aggregateMatrix} onLayoutChange={onAggregateLayoutChange} />
       ) : (
         <>
       {/* ─── Параметры разбора (CSV) ─── */}
       {showCsvControls && importParams && (
-        <div className="flex flex-wrap gap-4 p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block">
-              Разделитель колонок
-            </label>
-            <Select
-              className="h-9 w-52"
-              value={importParams.delimiter ?? ','}
-              onChange={(e) => onDelimiterChange(e.target.value)}
-            >
-              {DELIMITER_OPTIONS.map((o) => (
-                <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>
-              ))}
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-500 dark:text-slate-400 block">
-              Десятичный разделитель
-            </label>
-            <Select
-              className="h-9 w-44"
-              value={importParams.decimalSeparator}
-              onChange={(e) => onDecimalChange(e.target.value as DecimalSeparator)}
-            >
-              <SelectOption value=".">Точка  12.34</SelectOption>
-              <SelectOption value=",">Запятая  12,34</SelectOption>
-            </Select>
-          </div>
-        </div>
+        <CsvParseControls
+          importParams={importParams}
+          onDelimiterChange={onDelimiterChange}
+          onDecimalChange={onDecimalChange}
+        />
       )}
 
       {previewLoading ? (
@@ -278,7 +343,7 @@ export function ImportConfigStep({
         </Button>
         <Button
           onClick={onImport}
-          disabled={isImporting || previewLoading || !preview}
+          disabled={isImporting || previewLoading || !preview || (useReadyConfig && !readyConfig)}
           className="gap-2 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700"
         >
           {isImporting ? (

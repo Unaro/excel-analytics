@@ -28,7 +28,9 @@ import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 import type { BreakdownItem, DashboardComputationResult } from '@/shared/lib/types/computation';
 import { HierarchyFilterValue } from '@/shared/lib/validators';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
-import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues } from '@/entities/aggregate-nodes';
+import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, rollupNodeValues, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
+import { useMetricTemplateStore } from '@/entities/metric';
+import { extractVariables } from '@/shared/lib/utils/formula';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
 
 
@@ -113,22 +115,51 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   const aggregateNodes = useAggregateNodesStore(s =>
     datasetId ? s.nodesByDataset[datasetId] : undefined
   );
-  const nodeMap = useMemo(() => {
-    const map = new Map<string, Record<string, number | null>>();
-    for (const n of aggregateNodes ?? []) map.set(nodePathKey(n.path), n.values);
-    return map;
-  }, [aggregateNodes]);
+  // Rolled-up значения: своё значение узла, иначе сумма детей (рекурсивно вниз).
+  // Так пустой уровень добирает число снизу. Ключи как у узлов — поиск по пути.
+  const nodeMap = useMemo(() => rollupNodeValues(aggregateNodes ?? []), [aggregateNodes]);
   const indicatorGroups = useIndicatorGroupStore(useShallow(s => s.groups));
+  const metricTemplates = useMetricTemplateStore(s => s.templates);
+  // Метрика расчётная, если её формула над НЕСКОЛЬКИМИ операндами (другие метрики
+  // и/или >1 поля). Простую (один SUM по колонке) overlay подменяет напрямую.
+  const isCalcMetric = (m: { fieldBindings: unknown[]; metricBindings: unknown[] }) =>
+    m.metricBindings.length > 0 || m.fieldBindings.length > 1;
   const columnByMetricId = useMemo(() => {
     const map: Record<string, string> = {};
     for (const g of indicatorGroups) {
       for (const m of g.metrics) {
+        if (isCalcMetric(m)) continue; // расчётные — через enteredCalcVmValues
         const col = m.fieldBindings[0]?.columnName;
         if (col) map[m.id] = col;
       }
     }
     return map;
   }, [indicatorGroups]);
+  // Реестр расчётных: метрика → формула шаблона + привязка операндов к колонкам
+  // (поле → своя колонка; операнд-метрика → колонка той метрики). По нему
+  // расчётные пересчитываются на введённых значениях узла.
+  const calcSpecByMetricId = useMemo(() => {
+    const map: Record<string, EnteredCalcSpec> = {};
+    for (const g of indicatorGroups) {
+      for (const m of g.metrics) {
+        if (!isCalcMetric(m)) continue;
+        const tpl = metricTemplates.find(t => t.id === m.templateId);
+        if (!tpl?.formula) continue;
+        const operandColumns: Record<string, string> = {};
+        for (const fb of m.fieldBindings) operandColumns[fb.fieldAlias] = fb.columnName;
+        for (const mb of m.metricBindings) {
+          const col = columnByMetricId[mb.metricId];
+          if (col) operandColumns[mb.metricAlias] = col;
+        }
+        // Все ли переменные формулы привязаны к колонкам — иначе пропускаем.
+        const vars = extractVariables(tpl.formula);
+        if (vars.length > 0 && vars.every(v => v in operandColumns)) {
+          map[m.id] = { formula: tpl.formula, operandColumns };
+        }
+      }
+    }
+    return map;
+  }, [indicatorGroups, metricTemplates, columnByMetricId]);
   const pathValues = useMemo(() => hierarchyFilters.map(f => f.value), [hierarchyFilters]);
 
   const hasEnteredData = nodeMap.size > 0;
@@ -143,11 +174,14 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
     if (!values) return result;
     const groups = result.groups.map(group => {
       const entered = enteredVmValues(values, group.virtualMetrics, columnByMetricId);
-      const vms = mergeEnteredVms(group.virtualMetrics, entered);
+      // Расчётные считаем по введённым значениям операндов узла (перекрывают
+      // вычисленное; в агрегатах операнды часто заданы только на узлах).
+      const enteredCalc = enteredCalcVmValues(values, group.virtualMetrics, calcSpecByMetricId);
+      const vms = mergeEnteredVms(group.virtualMetrics, { ...entered, ...enteredCalc });
       return vms === group.virtualMetrics ? group : { ...group, virtualMetrics: vms };
     });
     return { ...result, groups };
-  }, [useEntered, result, nodeMap, pathValues, columnByMetricId]);
+  }, [useEntered, result, nodeMap, pathValues, columnByMetricId, calcSpecByMetricId]);
 
   // UI-состояние чартов и таблицы — на эффективных колонках (формат из
   // шаблона), а не на хранимых (которые несут только templateId/colorConfig).

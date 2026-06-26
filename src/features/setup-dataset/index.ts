@@ -60,3 +60,5 @@ export type {
   FlattenResult,
   AggregateNode,
 } from './lib/aggregate-layout';
+export { validateConfigAgainstFile } from './lib/validate-config-against-file';
+export type { ConfigFileValidation } from './lib/validate-config-against-file';

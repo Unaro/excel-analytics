@@ -34,8 +34,11 @@ import { GroupMetricConfig, useGroupMetricConfigStore } from '@/entities/group-m
 import {
   buildConfigExportPayload,
   processConfigImport,
+  processParsedConfigImport,
   ConfigImportError,
+  type ConfigImportResult,
 } from '@/shared/lib/services';
+import type { DatasetConfigExportParsed } from '@/shared/lib/validators';
 
 export function useConfigPersistence() {
   const router = useRouter();
@@ -91,94 +94,121 @@ export function useConfigPersistence() {
   // ───────────────────────────────────────────────────────────
   // IMPORT
   // ───────────────────────────────────────────────────────────
+  // Применяет результат импорта к сторам + кэш + toast + refresh. Общая часть
+  // обоих путей: импорт из файла (`importToDataset`) и из уже распарсенного
+  // конфига (`importParsedToDataset`, мастер «готовая конфигурация»).
+  const applyImportResult = useCallback(
+    async (result: ConfigImportResult, targetDatasetId: string) => {
+      if (result.newMetricTemplates.length > 0) {
+        useMetricTemplateStore.setState((state) => ({
+          templates: [...state.templates, ...result.newMetricTemplates],
+        }));
+      }
+
+      useHierarchyStore
+        .getState()
+        .setDatasetLevels(targetDatasetId, result.hierarchyLevels);
+
+      useColumnConfigStore
+        .getState()
+        .setDatasetConfigs(targetDatasetId, result.columnConfigs);
+
+      useIndicatorGroupStore.setState({ groups: result.mergedIndicatorGroups });
+      useDashboardStore.setState({ dashboards: result.mergedDashboards });
+
+      if (
+        result.importedGroupMetricConfigs &&
+        Object.keys(result.importedGroupMetricConfigs).length > 0
+      ) {
+        useGroupMetricConfigStore
+          .getState()
+          .importConfigs(result.importedGroupMetricConfigs);
+      }
+
+      // Разметка агрегата → на целевой датасет (чтобы замена файла работала
+      // по тем же настройкам и после переноса конфига).
+      if (result.aggregateConfig) {
+        useDatasetStore
+          .getState()
+          .updateDataset(targetDatasetId, { aggregateConfig: result.aggregateConfig });
+      }
+
+      await invalidateComputationCache(targetDatasetId);
+
+      const { stats } = result;
+      const conflictNote =
+        stats.vmIdConflicts > 0
+          ? `\n⚠️ ${stats.vmIdConflicts} VM ID переименовано (конфликты)`
+          : '';
+
+      toast.success(
+        `Конфиг применён: ${stats.dashboardsImported} дашбордов, ` +
+          `${stats.groupsImported} групп, ${stats.hierarchyLevelsImported} уровней` +
+          (stats.groupConfigsWithColors > 0
+            ? `, ${stats.groupConfigsWithColors} групп с настройками цвета`
+            : '') +
+          conflictNote,
+        { duration: stats.vmIdConflicts > 0 ? 8000 : 4000 }
+      );
+      router.refresh();
+    },
+    [router]
+  );
+
   const importToDataset = useCallback(
     async (file: File, targetDatasetId: string) => {
       try {
         const fileContent = await file.text();
-
-        const existingVmIds = collectExistingVmIds(targetDatasetId);
         const result = processConfigImport(fileContent, {
           targetDatasetId,
           existingMetricTemplates: useMetricTemplateStore.getState().templates,
           existingIndicatorGroups: useIndicatorGroupStore.getState().groups,
           existingDashboards: useDashboardStore.getState().dashboards,
-          existingVmIds,
+          existingVmIds: collectExistingVmIds(targetDatasetId),
         });
-
-        // Применяем результат к сторам
-        if (result.newMetricTemplates.length > 0) {
-          useMetricTemplateStore.setState((state) => ({
-            templates: [...state.templates, ...result.newMetricTemplates],
-          }));
-        }
-
-        useHierarchyStore
-          .getState()
-          .setDatasetLevels(targetDatasetId, result.hierarchyLevels);
-
-        useColumnConfigStore
-          .getState()
-          .setDatasetConfigs(targetDatasetId, result.columnConfigs);
-
-        useIndicatorGroupStore.setState({
-          groups: result.mergedIndicatorGroups,
-        });
-
-        useDashboardStore.setState({
-          dashboards: result.mergedDashboards,
-        });
-
-        if (
-          result.importedGroupMetricConfigs &&
-          Object.keys(result.importedGroupMetricConfigs).length > 0
-        ) {
-          useGroupMetricConfigStore
-            .getState()
-            .importConfigs(result.importedGroupMetricConfigs);
-        }
-
-        // Разметка агрегата → на целевой датасет (чтобы замена файла работала
-        // по тем же настройкам и после переноса конфига).
-        if (result.aggregateConfig) {
-          useDatasetStore
-            .getState()
-            .updateDataset(targetDatasetId, { aggregateConfig: result.aggregateConfig });
-        }
-
-        // Инвалидация кэша
-        await invalidateComputationCache(targetDatasetId);
-
-        const { stats } = result;
-        const conflictNote =
-          stats.vmIdConflicts > 0
-            ? `\n⚠️ ${stats.vmIdConflicts} VM ID переименовано (конфликты)`
-            : '';
-
-        toast.success(
-          `Конфиг применён: ${stats.dashboardsImported} дашбордов, ` +
-            `${stats.groupsImported} групп, ${stats.hierarchyLevelsImported} уровней` +
-            (stats.groupConfigsWithColors > 0
-              ? `, ${stats.groupConfigsWithColors} групп с настройками цвета`
-              : '') +
-            conflictNote,
-          { duration: stats.vmIdConflicts > 0 ? 8000 : 4000 }
-        );
-        router.refresh();
+        await applyImportResult(result, targetDatasetId);
       } catch (e) {
-        logger.error('[ConfigImport] Error:', e);
-        const message =
-          e instanceof ConfigImportError
-            ? e.message
-            : e instanceof Error
-              ? e.message
-              : 'Ошибка импорта';
-        toast.error(message);
+        reportImportError(e);
       }
     },
-    [router]
+    [applyImportResult]
   );
 
-  return { exportDatasetConfig, importToDataset };
+  // Применение уже распарсенного (и отфильтрованного по выбору пользователя)
+  // конфига к датасету — путь мастера «использовать готовую конфигурацию».
+  const importParsedToDataset = useCallback(
+    async (parsed: DatasetConfigExportParsed, targetDatasetId: string) => {
+      try {
+        const result = processParsedConfigImport(parsed, {
+          targetDatasetId,
+          existingMetricTemplates: useMetricTemplateStore.getState().templates,
+          existingIndicatorGroups: useIndicatorGroupStore.getState().groups,
+          existingDashboards: useDashboardStore.getState().dashboards,
+          existingVmIds: collectExistingVmIds(targetDatasetId),
+        });
+        await applyImportResult(result, targetDatasetId);
+        return true;
+      } catch (e) {
+        reportImportError(e);
+        return false;
+      }
+    },
+    [applyImportResult]
+  );
+
+  return { exportDatasetConfig, importToDataset, importParsedToDataset };
+}
+
+/** Единая обработка ошибки импорта конфига (toast + лог). */
+function reportImportError(e: unknown): void {
+  logger.error('[ConfigImport] Error:', e);
+  const message =
+    e instanceof ConfigImportError
+      ? e.message
+      : e instanceof Error
+        ? e.message
+        : 'Ошибка импорта';
+  toast.error(message);
 }
 
 /**
