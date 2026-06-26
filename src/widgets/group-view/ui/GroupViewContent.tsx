@@ -22,6 +22,7 @@ import type { MetricChartStyle } from '@/shared/lib/types/chart';
 import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, rollupNodes, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
 import { extractVariables } from '@/shared/lib/utils/formula';
 import { safeEvaluate } from '@/shared/lib/math/safe-math';
+import { formatValue } from '@/shared/lib/computation/lib/utils';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
@@ -304,10 +305,23 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   const useEntered = hasEnteredData && useEnteredValues;
 
   // Эффективные значения: вычисленное ?? введённое (когда тумблер включён).
-  const effectiveSummaryMetrics = useMemo(
-    () => (useEntered ? mergeEnteredVms(summaryVirtualMetrics, enteredSummary) : summaryVirtualMetrics),
-    [useEntered, summaryVirtualMetrics, enteredSummary]
+  // overlay ставит formattedValue='—' (ждёт переформат из value). KPI-карточки
+  // показывают formattedValue напрямую — переформатируем по конфигу метрики,
+  // иначе на карточке «—» вместо итога по детям/введённого.
+  const metaById = useMemo(
+    () => new Map(virtualMetrics.map(m => [m.id, m])),
+    [virtualMetrics]
   );
+  const effectiveSummaryMetrics = useMemo(() => {
+    if (!useEntered) return summaryVirtualMetrics;
+    const merged = mergeEnteredVms(summaryVirtualMetrics, enteredSummary);
+    return merged.map(vm => {
+      if (vm.value == null || vm.formattedValue !== '—') return vm;
+      const meta = metaById.get(vm.virtualMetricId);
+      if (!meta) return vm;
+      return { ...vm, formattedValue: formatValue(vm.value, meta.displayFormat, meta.decimalPlaces, meta.unit) };
+    });
+  }, [useEntered, summaryVirtualMetrics, enteredSummary, metaById]);
   const effectiveBreakdown = useMemo(() => {
     if (!useEntered || !enteredByLabel || !oneDimBreakdown) return oneDimBreakdown;
     return oneDimBreakdown.map(item => {
