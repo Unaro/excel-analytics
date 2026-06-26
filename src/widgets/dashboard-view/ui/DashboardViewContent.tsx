@@ -28,7 +28,7 @@ import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 import type { BreakdownItem, DashboardComputationResult } from '@/shared/lib/types/computation';
 import { HierarchyFilterValue } from '@/shared/lib/validators';
 import { useIndicatorGroupStore } from '@/entities/indicator-group';
-import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
+import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, rollupNodeValues, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { extractVariables } from '@/shared/lib/utils/formula';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
@@ -115,11 +115,9 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
   const aggregateNodes = useAggregateNodesStore(s =>
     datasetId ? s.nodesByDataset[datasetId] : undefined
   );
-  const nodeMap = useMemo(() => {
-    const map = new Map<string, Record<string, number | null>>();
-    for (const n of aggregateNodes ?? []) map.set(nodePathKey(n.path), n.values);
-    return map;
-  }, [aggregateNodes]);
+  // Rolled-up значения: своё значение узла, иначе сумма детей (рекурсивно вниз).
+  // Так пустой уровень добирает число снизу. Ключи как у узлов — поиск по пути.
+  const nodeMap = useMemo(() => rollupNodeValues(aggregateNodes ?? []), [aggregateNodes]);
   const indicatorGroups = useIndicatorGroupStore(useShallow(s => s.groups));
   const metricTemplates = useMetricTemplateStore(s => s.templates);
   // Метрика расчётная, если её формула над НЕСКОЛЬКИМИ операндами (другие метрики

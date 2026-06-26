@@ -5,7 +5,59 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { VirtualMetricValue } from '@/shared/lib/types/computation';
+import type { AggregateNode } from '@/shared/lib/types/aggregate';
+import { nodePathKey } from '@/shared/lib/types/aggregate';
 import { safeEvaluate } from '@/shared/lib/math/safe-math';
+
+/**
+ * Rolled-up значения узлов с fallback вниз: для каждого узла по каждой колонке —
+ * его СОБСТВЕННОЕ введённое значение, а если оно пусто (null), то СУММА rolled-up
+ * значений прямых детей (которые сами добирают значение со своих детей, и т.д.).
+ * Так пустой уровень получает число, просуммированное снизу.
+ *
+ * `0` — реальное значение (не пусто): fallback срабатывает только на null/пусто.
+ * Возвращает карту nodePathKey → {колонка: значение|null}; ключи как у входных
+ * узлов, поэтому overlay-поиск по пути не меняется.
+ */
+export function rollupNodeValues(
+  nodes: ReadonlyArray<AggregateNode>
+): Map<string, Record<string, number | null>> {
+  const byKey = new Map<string, AggregateNode>();
+  for (const n of nodes) byKey.set(nodePathKey(n.path), n);
+
+  // Прямые дети: родитель = путь без последнего элемента (если такой узел есть).
+  const childKeys = new Map<string, string[]>();
+  for (const n of nodes) {
+    if (n.path.length === 0) continue;
+    const parentKey = nodePathKey(n.path.slice(0, -1));
+    if (!byKey.has(parentKey)) continue;
+    (childKeys.get(parentKey) ?? childKeys.set(parentKey, []).get(parentKey)!).push(
+      nodePathKey(n.path)
+    );
+  }
+
+  // Снизу вверх: глубокие уровни (бо́льший level) считаем первыми — к моменту
+  // обработки родителя его дети уже свёрнуты.
+  const order = [...nodes].sort((a, b) => b.level - a.level);
+  const rolled = new Map<string, Record<string, number | null>>();
+  for (const n of order) {
+    const key = nodePathKey(n.path);
+    const children = childKeys.get(key) ?? [];
+    const out: Record<string, number | null> = {};
+    for (const [col, own] of Object.entries(n.values)) {
+      if (own != null) { out[col] = own; continue; }
+      let sum = 0;
+      let any = false;
+      for (const ck of children) {
+        const cv = rolled.get(ck)?.[col];
+        if (cv != null) { sum += cv; any = true; }
+      }
+      out[col] = any ? sum : null;
+    }
+    rolled.set(key, out);
+  }
+  return rolled;
+}
 
 /**
  * Расчётная метрика для пересчёта по введённым значениям узла: формула шаблона

@@ -17,7 +17,7 @@ import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
-import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
+import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, rollupNodeValues, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
 import { extractVariables } from '@/shared/lib/utils/formula';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
 import { useMetricTemplateStore } from '@/entities/metric';
@@ -155,11 +155,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   const aggregateNodes = useAggregateNodesStore(s =>
     datasetId ? s.nodesByDataset[datasetId] : undefined
   );
-  const nodeMap = useMemo(() => {
-    const map = new Map<string, Record<string, number | null>>();
-    for (const n of aggregateNodes ?? []) map.set(nodePathKey(n.path), n.values);
-    return map;
-  }, [aggregateNodes]);
+  // Rolled-up значения: своё значение узла, иначе сумма детей (рекурсивно вниз).
+  const nodeMap = useMemo(() => rollupNodeValues(aggregateNodes ?? []), [aggregateNodes]);
   // metricId → имя колонки метрики (для lookup введённого значения).
   // VirtualMetricValue.sourceMetricId = id метрики группы.
   // Расчётные (формула над операндами) исключаем — их считает enteredCalc.

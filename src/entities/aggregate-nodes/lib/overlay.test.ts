@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { enteredVmValues, mergeEnteredVms, enteredCalcVmValues, type EnteredCalcSpec } from './overlay';
+import { enteredVmValues, mergeEnteredVms, enteredCalcVmValues, rollupNodeValues, type EnteredCalcSpec } from './overlay';
 import type { VirtualMetricValue } from '@/shared/lib/types/computation';
+import type { AggregateNode } from '@/shared/lib/types/aggregate';
+import { nodePathKey } from '@/shared/lib/types/aggregate';
 
 const vm = (id: string, source: string, value: number | null = 0): VirtualMetricValue => ({
   virtualMetricId: id,
@@ -47,5 +49,59 @@ describe('enteredCalcVmValues: расчётная по введённым зна
     const merged = mergeEnteredVms([vm('vP', 'mProfit', 0)], entered);
     expect(merged[0].value).toBeCloseTo(510.94 / 259.06);
     expect(merged[0].fromNode).toBe(true);
+  });
+});
+
+describe('rollupNodeValues: fallback-сумма детей при пустом уровне', () => {
+  const node = (path: string[], level: number, values: Record<string, number | null>): AggregateNode =>
+    ({ path, level, label: path[path.length - 1] ?? '', isTotal: false, values });
+
+  it('узел со своим значением — берётся как есть (без суммы детей)', () => {
+    const nodes = [
+      node(['Город'], 0, { potr: 100 }),
+      node(['Город', 'Р1'], 1, { potr: 30 }),
+      node(['Город', 'Р2'], 1, { potr: 50 }),
+    ];
+    const rolled = rollupNodeValues(nodes);
+    // у «Город» своё значение 100 — приоритет над суммой детей (80)
+    expect(rolled.get(nodePathKey(['Город']))!.potr).toBe(100);
+  });
+
+  it('пустой уровень добирает сумму детей', () => {
+    const nodes = [
+      node(['Город'], 0, { potr: null }),
+      node(['Город', 'Р1'], 1, { potr: 30 }),
+      node(['Город', 'Р2'], 1, { potr: 50 }),
+    ];
+    const rolled = rollupNodeValues(nodes);
+    expect(rolled.get(nodePathKey(['Город']))!.potr).toBe(80);
+  });
+
+  it('рекурсивный спуск: пустые дети добирают со внуков', () => {
+    const nodes = [
+      node(['Г'], 0, { potr: null }),
+      node(['Г', 'Р1'], 1, { potr: null }),
+      node(['Г', 'Р1', 'М1'], 2, { potr: 10 }),
+      node(['Г', 'Р1', 'М2'], 2, { potr: 5 }),
+      node(['Г', 'Р2'], 1, { potr: 20 }),
+    ];
+    const rolled = rollupNodeValues(nodes);
+    expect(rolled.get(nodePathKey(['Г', 'Р1']))!.potr).toBe(15); // внуки
+    expect(rolled.get(nodePathKey(['Г']))!.potr).toBe(35);       // 15 + 20
+  });
+
+  it('0 — реальное значение, не триггерит fallback', () => {
+    const nodes = [
+      node(['Г'], 0, { potr: 0 }),
+      node(['Г', 'Р1'], 1, { potr: 99 }),
+    ];
+    const rolled = rollupNodeValues(nodes);
+    expect(rolled.get(nodePathKey(['Г']))!.potr).toBe(0);
+  });
+
+  it('нет детей и нет значения → null', () => {
+    const nodes = [node(['Г'], 0, { potr: null })];
+    const rolled = rollupNodeValues(nodes);
+    expect(rolled.get(nodePathKey(['Г']))!.potr).toBeNull();
   });
 });
