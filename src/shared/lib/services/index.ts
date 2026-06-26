@@ -18,6 +18,8 @@ export {
 
 export {
   processConfigImport,
+  processParsedConfigImport,
+  parseConfigFile,
   ConfigImportError,
   type ConfigImportContext,
   type ConfigImportResult,

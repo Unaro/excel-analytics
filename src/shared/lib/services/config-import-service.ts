@@ -8,6 +8,7 @@
 
 import {
   DatasetConfigExportSchema,
+  type DatasetConfigExportParsed,
   type HierarchyFilterValue,
   type IndicatorGroup,
   type IndicatorGroupInDashboard,
@@ -284,8 +285,32 @@ function rebuildDashboard(
  *
  * @throws ConfigImportError при невалидном JSON или несоответствии схеме.
  */
+/**
+ * Парсит и валидирует JSON-конфиг (миграция legacy + Zod-схема), не применяя его.
+ * Используется мастером «готовая конфигурация» для предпросмотра/сверки с файлом
+ * до импорта. @throws ConfigImportError при невалидном JSON/схеме.
+ */
+export function parseConfigFile(fileContent: string): DatasetConfigExportParsed {
+  const raw = migrateLegacyConfig(safeParseJson(fileContent));
+  return validateConfigStructure(raw);
+}
+
 export function processConfigImport(
   fileContent: string,
+  context: ConfigImportContext
+): ConfigImportResult {
+  // 1. Парсинг и валидация → применение распарсенного конфига.
+  return processParsedConfigImport(parseConfigFile(fileContent), context);
+}
+
+/**
+ * Применяет УЖЕ распарсенный и провалидированный конфиг (без чтения файла):
+ * дедупликация VM ID, мерж с группами/дашбордами целевого датасета. Ядро
+ * `processConfigImport`; используется также при импорте «готовой конфигурации»
+ * в мастере, где конфиг уже разобран и отфильтрован по выбору пользователя.
+ */
+export function processParsedConfigImport(
+  config: DatasetConfigExportParsed,
   context: ConfigImportContext
 ): ConfigImportResult {
   const {
@@ -296,9 +321,6 @@ export function processConfigImport(
     existingVmIds,
   } = context;
 
-  // 1. Парсинг и валидация
-  const raw = migrateLegacyConfig(safeParseJson(fileContent));
-  const config = validateConfigStructure(raw);
   const { data } = config;
 
   // 2. Metric templates — добавляем только новые

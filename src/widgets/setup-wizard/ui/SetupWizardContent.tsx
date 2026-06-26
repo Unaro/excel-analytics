@@ -6,9 +6,11 @@ import { Card } from '@/shared/ui/card';
 import { useDatasetManager } from '@/features/setup-dataset';
 import { useDatasetReplace } from '@/features/setup-dataset';
 import { useFileImport } from '@/features/setup-dataset';
+import { useConfigPersistence } from '@/features/config-persistence';
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog';
 import type { PgConnectionConfig } from '@/shared/api/postgres/client';
 
+import { filterConfigBySelection } from '../lib/filter-config-selection';
 import { useSetupWizardActions } from '../model/use-setup-wizard-actions';
 import { SetupStepper } from './SetupStepper';
 import { DatasetManager } from './DatasetManager';
@@ -50,15 +52,38 @@ export function SetupWizardContent() {
 
   // Импорт выбранного файла (запускается со шага «Импорт», не при выборе).
   const { importFile, isUploading } = useFileImport();
+  const { importParsedToDataset } = useConfigPersistence();
   const handleConfirmImport = async () => {
     if (!wizard.selectedFile) return;
+
+    // ── Режим «готовая конфигурация»: импорт файла + применение конфига ──
+    if (wizard.useReadyConfig && wizard.readyConfig && wizard.configSelection) {
+      // Агрегат: разметку берём прямо из конфига (ручная не нужна).
+      const aggregate = wizard.isAggregate
+        ? wizard.readyConfig.data.aggregateConfig ?? undefined
+        : undefined;
+      const datasetId = await importFile(
+        wizard.selectedFile,
+        wizard.importParams ?? undefined,
+        aggregate,
+        undefined
+      );
+      if (datasetId) {
+        const filtered = filterConfigBySelection(wizard.readyConfig, wizard.configSelection);
+        await importParsedToDataset(filtered, datasetId);
+        wizard.resetSelectedFile();
+      }
+      return;
+    }
+
+    // ── Ручная настройка (без изменений) ──
     // Агрегат: передаём подтверждённую разметку → сплющивание в листья.
     const aggregate = wizard.isAggregate ? wizard.aggregateConfig ?? undefined : undefined;
     // Сырые: группы, заданные до импорта (применятся в syncFromFile).
     const rawGroups = wizard.isAggregate ? undefined : wizard.rawGroupsConfig ?? undefined;
-    const ok = await importFile(wizard.selectedFile, wizard.importParams ?? undefined, aggregate, rawGroups);
+    const datasetId = await importFile(wizard.selectedFile, wizard.importParams ?? undefined, aggregate, rawGroups);
     // Успех → сбрасываем выбранный файл; авто-навигация уведёт на «Колонки».
-    if (ok) wizard.resetSelectedFile();
+    if (datasetId) wizard.resetSelectedFile();
   };
 
   const {
@@ -151,6 +176,14 @@ export function SetupWizardContent() {
             aggregateMatrix={wizard.aggregateMatrix}
             onAggregateLayoutChange={wizard.setAggregateConfig}
             onRawGroupsChange={wizard.setRawGroupsConfig}
+            useReadyConfig={wizard.useReadyConfig}
+            onUseReadyConfigToggle={wizard.setUseReadyConfig}
+            readyConfig={wizard.readyConfig}
+            configSelection={wizard.configSelection}
+            configValidation={wizard.configValidation}
+            onLoadConfig={wizard.loadReadyConfig}
+            onToggleConfigItem={wizard.toggleConfigItem}
+            onRenameConfigItem={wizard.renameConfigItem}
           />
         )}
         {wizard.step === 'columns' && (

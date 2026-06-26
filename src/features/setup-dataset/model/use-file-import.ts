@@ -8,7 +8,8 @@ import type { AggregateLayoutConfig } from '../lib/aggregate-layout';
 import type { RawGroupsConfig } from '@/shared/lib/types/aggregate';
 
 export interface UseFileImportReturn {
-  importFile: (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig, rawGroups?: RawGroupsConfig) => Promise<boolean>;
+  /** Импортирует файл; возвращает datasetId созданного датасета или null при ошибке. */
+  importFile: (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig, rawGroups?: RawGroupsConfig) => Promise<string | null>;
   isUploading: boolean;
   error: string | null;
   progress: number;
@@ -22,27 +23,27 @@ export function useFileImport(): UseFileImportReturn {
 
   const uploadInProgressRef = useRef<boolean>(false);
 
-const handleFileUpload = useCallback(async (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig, rawGroups?: RawGroupsConfig): Promise<boolean> => {
-    if (isUploading) return false;
+const handleFileUpload = useCallback(async (file: File, params?: ImportParams, aggregate?: AggregateLayoutConfig, rawGroups?: RawGroupsConfig): Promise<string | null> => {
+    if (isUploading) return null;
 
     setIsUploading(true);
     const toastId = 'file-import-' + Date.now();
     toast.loading('Чтение файла (может занять время)...', { id: toastId });
 
-    return new Promise<boolean>((resolve) => {
+    return new Promise<string | null>((resolve) => {
       setTimeout(async () => {
         try {
           const res = await syncFromFile(file, params, aggregate, rawGroups);
           if (res.success) {
             toast.success(`Датасет "${file.name}" загружен`, { id: toastId });
-            resolve(true);
+            resolve(res.datasetId ?? null);
           } else {
             toast.error(`Ошибка: ${res.error}`, { id: toastId });
-            resolve(false);
+            resolve(null);
           }
         } catch (err) {
           toast.error('Непредвиденная ошибка при загрузке', { id: toastId });
-          resolve(false);
+          resolve(null);
         } finally {
           setIsUploading(false);
         }
