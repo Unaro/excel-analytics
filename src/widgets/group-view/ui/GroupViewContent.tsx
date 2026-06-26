@@ -21,6 +21,7 @@ import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
 import type { MetricChartStyle } from '@/shared/lib/types/chart';
 import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVmValues, rollupNodes, type EnteredCalcSpec } from '@/entities/aggregate-nodes';
 import { extractVariables } from '@/shared/lib/utils/formula';
+import { safeEvaluate } from '@/shared/lib/math/safe-math';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
 import { useMetricTemplateStore } from '@/entities/metric';
 import { normalizeVmRows, type NormalizeConfig } from '@/shared/lib/utils/normalize';
@@ -233,9 +234,11 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     return Object.keys(byVm).length ? byVm : undefined;
   }, [nodeMap, pathValues, summaryVirtualMetrics, columnByMetricId, calcSpecByMetricId]);
 
-  // Расхождение «записано в файле (own) vs сумма по детям (childrenSum)» для
-  // простых метрик — индикатор качества данных. Только где оба заданы и реально
-  // расходятся. Расчётные не сравниваем (они не суммируются).
+  // Расхождение «записано в файле (own) vs сумма по детям (childrenSum)».
+  // Простая метрика — own/childrenSum по своей колонке. Расчётная — формула на
+  // СОБСТВЕННЫХ значениях операндов vs на их суммах по детям (Σa/Σb), чтобы
+  // показать, что подразумевают дети. Только где оба полностью считаются и реально
+  // расходятся.
   const childrenDeltaForNode = useMemo(() => {
     const EPS = 1e-9;
     return (pathKey: string): Record<string, { own: number; childrenSum: number }> | undefined => {
@@ -243,15 +246,39 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
       if (!cells) return undefined;
       const rec: Record<string, { own: number; childrenSum: number }> = {};
       for (const vm of summaryVirtualMetrics) {
-        const col = vm.sourceMetricId ? columnByMetricId[vm.sourceMetricId] : undefined;
-        const cell = col ? cells[col] : undefined;
-        if (cell && cell.own != null && cell.childrenSum != null && Math.abs(cell.own - cell.childrenSum) > EPS) {
-          rec[vm.virtualMetricId] = { own: cell.own, childrenSum: cell.childrenSum };
+        const mid = vm.sourceMetricId;
+        const col = mid ? columnByMetricId[mid] : undefined;
+        if (col) {
+          const cell = cells[col];
+          if (cell && cell.own != null && cell.childrenSum != null && Math.abs(cell.own - cell.childrenSum) > EPS) {
+            rec[vm.virtualMetricId] = { own: cell.own, childrenSum: cell.childrenSum };
+          }
+          continue;
+        }
+        // Расчётная: формула на own операндов vs на их childrenSum.
+        const spec = mid ? calcSpecByMetricId[mid] : undefined;
+        if (!spec) continue;
+        const ownScope: Record<string, number | null> = {};
+        const childScope: Record<string, number | null> = {};
+        let okOwn = true;
+        let okChild = true;
+        for (const [alias, c] of Object.entries(spec.operandColumns)) {
+          const cell = cells[c];
+          if (!cell || cell.own == null) okOwn = false;
+          if (!cell || cell.childrenSum == null) okChild = false;
+          ownScope[alias] = cell?.own ?? 0;
+          childScope[alias] = cell?.childrenSum ?? 0;
+        }
+        if (!okOwn || !okChild) continue;
+        const own = safeEvaluate(spec.formula, ownScope);
+        const childrenSum = safeEvaluate(spec.formula, childScope);
+        if (own != null && childrenSum != null && Math.abs(own - childrenSum) > EPS) {
+          rec[vm.virtualMetricId] = { own, childrenSum };
         }
       }
       return Object.keys(rec).length ? rec : undefined;
     };
-  }, [nodeRich, summaryVirtualMetrics, columnByMetricId]);
+  }, [nodeRich, summaryVirtualMetrics, columnByMetricId, calcSpecByMetricId]);
   const childrenDeltaByLabel = useMemo(() => {
     if (nodeRich.size === 0) return undefined;
     const out = new Map<string, Record<string, { own: number; childrenSum: number }>>();

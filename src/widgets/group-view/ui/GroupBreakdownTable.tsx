@@ -12,6 +12,7 @@ import { GroupMetricConfigPopover } from '@/features/configure-group-metric';
 import { GroupMetricCell } from '@/entities/group-metric-config';
 import { SortIcon } from '@/shared/ui/sort-icon';
 import { formatRu } from '@/shared/lib/utils/format';
+import { toDisplayScale } from '@/shared/lib/utils/metric-colors';
 import { sortBreakdownItems } from '../lib/sort-breakdown';
 import type { SortConfig } from '../model/types';
 
@@ -34,21 +35,24 @@ function EnteredDelta({ entered, computed }: { entered: number | null; computed:
 }
 
 /**
- * Расхождение «записано в файле (own) vs сумма по детям (childrenSum)».
- * Δ = сумма детей − записанное: >0 — в файле занижено, <0 — завышено.
- * Индикатор качества данных файла-агрегата (рендерится только при расхождении).
+ * Расхождение «по уровню (own) vs по детям (childrenSum)».
+ * Для простой метрики own/childrenSum — значение/сумма колонки; для расчётной —
+ * формула на собственных значениях операндов vs на их суммах по детям (Σa/Σb).
+ * Δ = по детям − по уровню. Формат (percent → %) берётся из метрики.
  */
-function ChildrenSumDelta({ own, childrenSum }: { own: number; childrenSum: number }) {
+function ChildrenSumDelta({ own, childrenSum, format }: { own: number; childrenSum: number; format?: string }) {
+  const isPct = format === 'percent' || format === 'percent_raw';
+  const fmt = (v: number) => `${formatRu(toDisplayScale(v, format))}${isPct ? '%' : ''}`;
   const delta = childrenSum - own;
   return (
     <div
       className="text-[10px] leading-tight mt-0.5"
-      title="Сумма по дочерним уровням не сходится с записанным в файле значением узла"
+      title="Значение по дочерним уровням (для расчётной — формула на суммах детей) не сходится со значением этого уровня"
     >
       <span className="text-slate-400">Σдети: </span>
-      <span className="font-mono text-slate-600 dark:text-slate-300">{formatRu(childrenSum)}</span>
+      <span className="font-mono text-slate-600 dark:text-slate-300">{fmt(childrenSum)}</span>
       <span className={cn('ml-1 font-mono', delta > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400')}>
-        Δ{delta > 0 ? '+' : ''}{formatRu(delta)}
+        Δ{delta > 0 ? '+' : ''}{fmt(delta)}
       </span>
     </div>
   );
@@ -342,7 +346,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                       />
                       {(() => {
                         const d = childrenDeltaByLabel?.get(item.label)?.[vm.virtualMetricId];
-                        return d ? <ChildrenSumDelta own={d.own} childrenSum={d.childrenSum} /> : null;
+                        return d ? <ChildrenSumDelta own={d.own} childrenSum={d.childrenSum} format={meta?.displayFormat} /> : null;
                       })()}
                     </td>
                   );
@@ -386,7 +390,7 @@ export const GroupBreakdownTable = memo(function GroupBreakdownTable({
                       />
                       {(() => {
                         const d = childrenDeltaSummary?.[vm.virtualMetricId];
-                        return d ? <ChildrenSumDelta own={d.own} childrenSum={d.childrenSum} /> : null;
+                        return d ? <ChildrenSumDelta own={d.own} childrenSum={d.childrenSum} format={meta?.displayFormat} /> : null;
                       })()}
                     </td>
                   );
