@@ -513,8 +513,6 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           resolveLabel={resolveLabel}
           normalizeByVmId={normalizeByVmId}
           palette={paletteCat}
-          twoDKind={view.twoDKind}
-          onTwoDKindChange={kind => patchChartView({ twoDKind: kind })}
           seriesLimit={view.seriesLimit}
         />
       )}

@@ -191,7 +191,6 @@ export const IndicatorGroupSchema = z.object({
    */
   chartView: z.object({
     chartTypes: z.array(z.enum(['bar', 'radar'])).optional(),
-    twoDKind: z.enum(['line', 'bar']).optional(),
     seriesLimit: z.number().int().positive().optional(),
     paletteId: z.string().optional(),
   }).optional(),

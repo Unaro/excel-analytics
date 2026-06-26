@@ -5,20 +5,18 @@ describe('resolveChartView', () => {
   it('нет chartView → дефолты', () => {
     const r = resolveChartView({});
     expect(r.chartTypes).toEqual(DEFAULT_CHART_VIEW.chartTypes);
-    expect(r.twoDKind).toBe('line');
     expect(r.seriesLimit).toBe(8);
     expect(r.paletteId).toBeUndefined();
   });
 
   it('null/undefined источник → дефолты, без падения', () => {
-    expect(resolveChartView(null).twoDKind).toBe('line');
+    expect(resolveChartView(null).seriesLimit).toBe(8);
     expect(resolveChartView(undefined).chartTypes).toEqual(DEFAULT_CHART_VIEW.chartTypes);
   });
 
   it('значения chartView перекрывают дефолты', () => {
-    const r = resolveChartView({ chartView: { chartTypes: ['radar'], twoDKind: 'bar', seriesLimit: 5 } });
+    const r = resolveChartView({ chartView: { chartTypes: ['radar'], seriesLimit: 5 } });
     expect(r.chartTypes).toEqual(['radar']);
-    expect(r.twoDKind).toBe('bar');
     expect(r.seriesLimit).toBe(5);
   });
 

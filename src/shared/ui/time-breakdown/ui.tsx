@@ -20,7 +20,7 @@ import {
   Legend,
 } from 'recharts';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
-import { Search, AlertTriangle, ChevronRight, TrendingUp, BarChart3, LineChart as LineChartIcon } from 'lucide-react';
+import { Search, AlertTriangle, ChevronRight, TrendingUp } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
@@ -78,13 +78,7 @@ export interface TimeBreakdownSectionProps {
   normalizeByVmId?: Map<string, NormalizeConfig>;
   /** Палитра цветов категорий-серий (из group.paletteId). Дефолт — CATEGORY_SERIES_COLORS. */
   palette?: string[];
-  /**
-   * Вид 2-D-чарта (линии/столбцы) — управляемо-опционально: на странице группы
-   * персистится (chartView.twoDKind + onTwoDKindChange), на дашборде не задано →
-   * локальный стейт (эфемерно). Аналогично seriesLimit (top-N серий).
-   */
-  twoDKind?: 'line' | 'bar';
-  onTwoDKindChange?: (kind: 'line' | 'bar') => void;
+  /** Сколько серий показывать по умолчанию (top-N по сумме метрики). Дефолт — 8. */
   seriesLimit?: number;
 }
 
@@ -99,8 +93,6 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   resolveLabel,
   normalizeByVmId,
   palette = SERIES_COLORS,
-  twoDKind,
-  onTwoDKindChange,
   seriesLimit,
 }: TimeBreakdownSectionProps) {
   const display = useMemo(
@@ -129,12 +121,6 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const [searchQuery, setSearchQuery] = useState('');
   // null — авто-режим top-N; Set — явный выбор пользователя
   const [selectedLabels, setSelectedLabels] = useState<Set<string> | null>(null);
-  // Тип 2-D-чарта (линии / столбцы по периодам). Управляемо-опционально: если
-  // заданы twoDKind+onTwoDKindChange (страница группы) — контролируется и
-  // персистится снаружи; иначе локальный стейт (дашборд — эфемерно).
-  const [localChartKind, setLocalChartKind] = useState<'line' | 'bar'>('line');
-  const chartKind = twoDKind ?? localChartKind;
-  const setChartKind = onTwoDKindChange ?? setLocalChartKind;
   // Сколько серий показывать по умолчанию (top-N по сумме метрики).
   const effectiveSeriesLimit = seriesLimit ?? DEFAULT_SERIES_LIMIT;
 
@@ -312,26 +298,8 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* Тип 2-D-чарта: линии / сгруппированные столбцы по периодам. */}
-          <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-            {(['line', 'bar'] as const).map(k => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setChartKind(k)}
-                title={k === 'line' ? 'Линии' : 'Столбцы'}
-                aria-pressed={chartKind === k}
-                className={cn(
-                  'px-2.5 h-9 flex items-center transition-colors',
-                  chartKind === k
-                    ? 'bg-indigo-500 text-white'
-                    : 'bg-white dark:bg-slate-950 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900'
-                )}
-              >
-                {k === 'line' ? <LineChartIcon size={14} /> : <BarChart3 size={14} />}
-              </button>
-            ))}
-          </div>
+          {/* Линия/столбцы 2-D задаёт стиль ВЫБРАННОЙ метрики на её KPI-карточке
+              (единый контрол, как в 1-D) — отдельного тоггла здесь нет. */}
           {metricOptions.length > 1 && (
             <Select
               className="w-52 h-9 text-sm"
@@ -397,10 +365,11 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
             );
             const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
             const margin = { top: 8, right: 16, bottom: 4, left: 8 };
-            // Стиль линий 2-D берётся из chartStyle ВЫБРАННОЙ метрики (как в 1-D
-            // GroupBarChart) — так настройки curve/dash на KPI-карточке влияют и
-            // здесь. Все серии-категории этой метрики рисуются единым стилем.
-            // kind (столбец/линия) в 2-D задаёт собственный тоггл chartKind.
+            // Вид 2-D полностью задаёт chartStyle ВЫБРАННОЙ метрики на её
+            // KPI-карточке (единый контрол, как в 1-D): kind=line/bar — столбцы
+            // или линии, curve/dash — стиль линий. Все серии-категории этой
+            // метрики рисуются единым стилем.
+            const chartKind = currentMetric?.chartStyle?.kind === 'line' ? 'line' : 'bar';
             const lineCurve = currentMetric?.chartStyle?.curve === 'linear' ? 'linear' : 'monotone';
             const lineDash = currentMetric?.chartStyle?.dash === 'dashed' ? '6 4' : undefined;
 

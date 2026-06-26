@@ -6,8 +6,10 @@
 - Фаза 3 (палитры: `IndicatorGroup` + `PalettePicker` + `CHART_PALETTES`) — в коде.
 - Фаза 2 (единый `ChartViewConfig` на группе: `shared/lib/types/chart.ts`
   `resolveChartView`, поле `IndicatorGroupSchema.chartView`) — реализована:
-  типы чартов 1-D и вид 2-D (`twoDKind`/`seriesLimit`) теперь персистятся,
-  `paletteId` переехал в `chartView` (legacy-fallback сохранён).
+  типы чартов 1-D и `seriesLimit` 2-D персистятся, `paletteId` переехал в
+  `chartView` (legacy-fallback сохранён). Линия/столбцы 2-D — НЕ отдельный
+  тоггл, а `chartStyle.kind` выбранной метрики (единый контрол на KPI-карточке,
+  как в 1-D).
 - Фаза 4 (новые типы чартов — heatmap/treemap) — north star, не начата.
 
 Дата создания: 2026-06-23. Контекст: аудит [finos/perspective](https://github.com/perspective-dev/perspective)

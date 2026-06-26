@@ -46,18 +46,18 @@ export const DEFAULT_METRIC_CHART_STYLE: MetricChartStyle = { kind: 'bar' };
 export interface ChartViewConfig {
   /** 1-D: какие типы чартов показывать (bar | radar, на будущее area/…). */
   chartTypes?: ChartType[];
-  /** 2-D: вид по периодам — линии или сгруппированные столбцы. */
-  twoDKind?: 'line' | 'bar';
   /** 2-D: сколько серий (top-N) на чарте по умолчанию. */
   seriesLimit?: number;
   /** Палитра серий (id из CHART_PALETTES). Новый home для paletteId. */
   paletteId?: string;
 }
 
-/** Дефолты вида чартов (как было до персиста). */
+/**
+ * Дефолты вида чартов (как было до персиста). Линия/столбцы 2-D НЕ здесь —
+ * вид задаёт chartStyle.kind выбранной метрики (единый контрол на KPI-карточке).
+ */
 export const DEFAULT_CHART_VIEW = {
   chartTypes: ['bar', 'radar'] as ChartType[],
-  twoDKind: 'line' as const,
   seriesLimit: 8,
 };
 
@@ -71,7 +71,6 @@ export interface ChartViewSource {
 /** Вид с заполненными дефолтами (paletteId может быть undefined → дефолт палитры). */
 export interface ResolvedChartView {
   chartTypes: ChartType[];
-  twoDKind: 'line' | 'bar';
   seriesLimit: number;
   paletteId?: string;
 }
@@ -86,7 +85,6 @@ export function resolveChartView(src: ChartViewSource | null | undefined): Resol
   const cv = src?.chartView;
   return {
     chartTypes: cv?.chartTypes ?? DEFAULT_CHART_VIEW.chartTypes,
-    twoDKind: cv?.twoDKind ?? DEFAULT_CHART_VIEW.twoDKind,
     seriesLimit: cv?.seriesLimit ?? DEFAULT_CHART_VIEW.seriesLimit,
     paletteId: cv?.paletteId ?? src?.paletteId,
   };
