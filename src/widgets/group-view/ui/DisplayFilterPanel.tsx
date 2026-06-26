@@ -19,6 +19,56 @@ const OPS: { value: ConditionOperator; label: string }[] = [
 
 const rid = () => `flt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
+/**
+ * Числовое поле, допускающее ручной ввод «−», пустого и промежуточных значений
+ * (`-`, `12.`, запятая как разделитель). Нативный `type=number` это глотает,
+ * поэтому держим сырой текст в локальном состоянии и коммитим валидное число.
+ */
+function NumField({
+  value,
+  onCommit,
+  title,
+  className,
+}: {
+  value: number;
+  onCommit: (n: number) => void;
+  title?: string;
+  className?: string;
+}) {
+  // Сырой текст + значение, из которого он выведен. Когда внешнее `value`
+  // меняется (другое правило/сброс) и не совпадает с уже набранным — подхватываем
+  // его прямо в рендере (паттерн «adjusting state during render», без эффекта).
+  const [state, setState] = useState({ raw: String(value), from: value });
+  if (state.from !== value && Number(state.raw.replace(',', '.')) !== value) {
+    setState({ raw: String(value), from: value });
+  }
+  const raw = state.raw;
+  const setRaw = (t: string) => setState({ raw: t, from: value });
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={raw}
+      title={title}
+      onChange={(e) => {
+        const t = e.target.value;
+        if (t === '' || /^-?\d*[.,]?\d*$/.test(t)) {
+          setRaw(t);
+          const n = Number(t.replace(',', '.'));
+          if (t !== '' && t !== '-' && Number.isFinite(n)) onCommit(n);
+        }
+      }}
+      onBlur={() => {
+        const n = Number(raw.replace(',', '.'));
+        if (raw === '' || raw === '-' || !Number.isFinite(n)) setRaw(String(value));
+        else { onCommit(n); setRaw(String(n)); }
+      }}
+      className={className}
+    />
+  );
+}
+
 interface DisplayFilterPanelProps {
   /** Метрики группы для выбора (id + имя). */
   metrics: { id: string; name: string }[];
@@ -80,7 +130,9 @@ export function DisplayFilterPanel({ metrics, rules, onChange, shown, total }: D
             <button type="button" onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600"><X size={15} /></button>
           </div>
           <p className="text-[11px] text-slate-400">
-            Элемент уровня показывается, если удовлетворяет <b>всем</b> правилам. Сравнение — как видно (для %: в процентах).
+            Элемент уровня показывается, если удовлетворяет <b>всем</b> правилам. Сравнение — как видно
+            (для %: в процентах). Справа можно выбрать <b>число</b> или <b>другую метрику</b> строки
+            (напр. «Итоговое ≠ Потребность»).
           </p>
 
           {metrics.length === 0 ? (
@@ -89,40 +141,48 @@ export function DisplayFilterPanel({ metrics, rules, onChange, shown, total }: D
             <p className="text-[11px] text-slate-400 py-2">Правил нет — показаны все элементы.</p>
           ) : (
             <div className="space-y-1.5">
-              {rules.map(r => (
-                <div key={r.id} className="flex items-center gap-1.5">
+              {rules.map(r => {
+                const ops = r.compareMetricId ? OPS.filter(o => o.value !== 'between') : OPS;
+                const numCls = 'h-7 w-20 shrink-0 px-2 text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500';
+                return (
+                <div key={r.id} className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 dark:border-slate-800 pb-1.5 last:border-0">
                   <Select
-                    className="h-7 text-[11px] px-2 py-0 flex-1 min-w-0"
+                    className="h-7 text-[11px] px-2 py-0 flex-1 min-w-[110px]"
                     value={r.metricId}
                     onChange={e => patch(r.id, { metricId: e.target.value })}
                   >
                     {metrics.map(m => <SelectOption key={m.id} value={m.id}>{metricName(m.id)}</SelectOption>)}
                   </Select>
                   <Select
-                    className="h-7 text-[11px] px-2 py-0 w-20 shrink-0"
+                    className="h-7 text-[11px] px-2 py-0 w-16 shrink-0"
                     value={r.operator}
                     onChange={e => patch(r.id, { operator: e.target.value as ConditionOperator })}
                   >
-                    {OPS.map(o => <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>)}
+                    {ops.map(o => <SelectOption key={o.value} value={o.value}>{o.label}</SelectOption>)}
                   </Select>
-                  <input
-                    type="number"
-                    value={r.value}
-                    onChange={e => patch(r.id, { value: Number(e.target.value) || 0 })}
-                    className="h-7 w-20 shrink-0 px-2 text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
-                  />
-                  {r.operator === 'between' && (
-                    <input
-                      type="number"
-                      value={r.value2 ?? 0}
-                      onChange={e => patch(r.id, { value2: Number(e.target.value) || 0 })}
-                      title="Верхняя граница"
-                      className="h-7 w-20 shrink-0 px-2 text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
-                    />
+                  <Select
+                    className="h-7 text-[11px] px-2 py-0 flex-1 min-w-[110px]"
+                    value={r.compareMetricId ?? ''}
+                    title="Сравнить с числом или с другой метрикой строки"
+                    onChange={e => {
+                      const v = e.target.value;
+                      if (!v) patch(r.id, { compareMetricId: undefined });
+                      else patch(r.id, { compareMetricId: v, operator: r.operator === 'between' ? '!=' : r.operator });
+                    }}
+                  >
+                    <SelectOption value="">число…</SelectOption>
+                    {metrics.filter(m => m.id !== r.metricId).map(m => <SelectOption key={m.id} value={m.id}>{metricName(m.id)}</SelectOption>)}
+                  </Select>
+                  {!r.compareMetricId && (
+                    <NumField value={r.value} onCommit={v => patch(r.id, { value: v })} className={numCls} />
+                  )}
+                  {!r.compareMetricId && r.operator === 'between' && (
+                    <NumField value={r.value2 ?? 0} onCommit={v => patch(r.id, { value2: v })} title="Верхняя граница" className={numCls} />
                   )}
                   <button type="button" onClick={() => remove(r.id)} title="Удалить" className="text-slate-300 hover:text-rose-500 shrink-0"><X size={14} /></button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

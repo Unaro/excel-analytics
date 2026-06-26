@@ -61,4 +61,42 @@ describe('filterBreakdownByRules', () => {
     const rules: DisplayFilterRule[] = [{ id: 'r1', metricId: 'share', operator: '>', value: 50 }];
     expect(filterBreakdownByRules(data, rules, { share: 'percent' }).map((i) => i.label)).toEqual(['P']);
   });
+
+  it('сравнение метрика vs метрика: Итоговое ≠ Потребность', () => {
+    const data = [
+      item('равны', { itog: 100, potr: 100 }),
+      item('расходятся', { itog: 80, potr: 100 }),
+    ];
+    const rules: DisplayFilterRule[] = [
+      { id: 'r1', metricId: 'itog', operator: '!=', value: 0, compareMetricId: 'potr' },
+    ];
+    expect(filterBreakdownByRules(data, rules, {}).map((i) => i.label)).toEqual(['расходятся']);
+  });
+
+  it('сравнение метрик: допуск по float (0.1+0.2 == 0.3)', () => {
+    const data = [item('почти', { itog: 0.1 + 0.2, potr: 0.3 })];
+    const eq: DisplayFilterRule[] = [{ id: 'r1', metricId: 'itog', operator: '==', value: 0, compareMetricId: 'potr' }];
+    expect(filterBreakdownByRules(data, eq, {}).map((i) => i.label)).toEqual(['почти']);
+    const ne: DisplayFilterRule[] = [{ id: 'r1', metricId: 'itog', operator: '!=', value: 0, compareMetricId: 'potr' }];
+    expect(filterBreakdownByRules(data, ne, {})).toEqual([]);
+  });
+
+  it('сравнение метрик: > сравнивает левую с правой метрикой', () => {
+    const data = [
+      item('профицит', { itog: 120, potr: 100 }),
+      item('дефицит', { itog: 90, potr: 100 }),
+    ];
+    const rules: DisplayFilterRule[] = [
+      { id: 'r1', metricId: 'itog', operator: '>', value: 0, compareMetricId: 'potr' },
+    ];
+    expect(filterBreakdownByRules(data, rules, {}).map((i) => i.label)).toEqual(['профицит']);
+  });
+
+  it('сравнение метрик: правая метрика null → элемент скрыт', () => {
+    const data = [item('нет правой', { itog: 50, potr: null })];
+    const rules: DisplayFilterRule[] = [
+      { id: 'r1', metricId: 'itog', operator: '!=', value: 0, compareMetricId: 'potr' },
+    ];
+    expect(filterBreakdownByRules(data, rules, {})).toEqual([]);
+  });
 });

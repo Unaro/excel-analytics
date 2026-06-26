@@ -187,6 +187,12 @@ export const IndicatorGroupSchema = z.object({
     operator: z.enum(['>', '>=', '<', '<=', '==', '!=', 'between']),
     value: z.number(),
     value2: z.number().optional(),
+    /**
+     * Сравнение «метрика vs метрика» в одной строке: если задано, правая часть
+     * берётся из этой метрики строки (а не из `value`/`value2`). Напр.
+     * «Итоговое ≠ Потребность». Сравнение — с допуском по float.
+     */
+    compareMetricId: z.string().optional(),
   })).optional(),
   order: z.number().int(),
   createdAt: z.number(),
