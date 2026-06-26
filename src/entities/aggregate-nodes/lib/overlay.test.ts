@@ -105,6 +105,25 @@ describe('rollupNodeValues: fallback-сумма детей при пустом �
     expect(rolled.get(nodePathKey(['Г']))!.potr).toBeNull();
   });
 
+  it('синтетический корень (пустой путь) = сумма узлов верхнего уровня', () => {
+    const nodes = [
+      node(['Р1'], 0, { potr: 100 }),
+      node(['Р2'], 0, { potr: 250 }),
+      node(['Р1', 'М1'], 1, { potr: 40 }),
+    ];
+    const root = rollupNodeValues(nodes).get(nodePathKey([]))!;
+    expect(root.potr).toBe(350); // 100 + 250 (дети Р1 не двойного счёта)
+  });
+
+  it('синтетический корень исключает строки «Итого» (isTotal)', () => {
+    const nodes: AggregateNode[] = [
+      { path: ['Р1'], level: 0, label: 'Р1', isTotal: false, values: { potr: 100 } },
+      { path: ['Всего'], level: 0, label: 'Всего', isTotal: true, values: { potr: 999 } },
+    ];
+    const root = rollupNodeValues(nodes).get(nodePathKey([]))!;
+    expect(root.potr).toBe(100); // «Всего» (isTotal) не суммируется
+  });
+
   it('rollupNodes отдаёт own и childrenSum раздельно (для показа расхождения)', () => {
     const nodes = [
       node(['Г'], 0, { potr: 100 }),         // записано 100

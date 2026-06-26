@@ -222,9 +222,11 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     }
     return out.size ? out : undefined;
   }, [nodeMap, breakdown, pathValues, summaryVirtualMetrics, columnByMetricId, calcSpecByMetricId]);
-  // Введённое значение текущего узла (строка «Итого»).
+  // Введённое значение текущего узла (строка «Итого»/KPI). На верхнем уровне
+  // (пустой путь) берётся синтетический корень rollup (сумма узлов верхнего
+  // уровня) — чтобы сводка добирала总 по детям, а не показывала «—».
   const enteredSummary = useMemo(() => {
-    if (nodeMap.size === 0 || pathValues.length === 0) return undefined;
+    if (nodeMap.size === 0) return undefined;
     const values = nodeMap.get(nodePathKey(pathValues));
     if (!values) return undefined;
     const byVm = {
@@ -290,7 +292,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     return out.size ? out : undefined;
   }, [nodeRich, breakdown, pathValues, childrenDeltaForNode]);
   const childrenDeltaSummary = useMemo(
-    () => (pathValues.length ? childrenDeltaForNode(nodePathKey(pathValues)) : undefined),
+    () => childrenDeltaForNode(nodePathKey(pathValues)),
     [pathValues, childrenDeltaForNode]
   );
 

@@ -67,6 +67,31 @@ export function rollupNodes(
     }
     rolled.set(key, out);
   }
+
+  // Синтетический корень (пустой путь): сумма rolled-up значений узлов верхнего
+  // уровня (без своего родителя-узла, не «Итого»). Нужен, чтобы на верхнем
+  // уровне (без фильтров) сводка/KPI и дашборд добирали总 по детям, а не «—».
+  // Только если реального узла на пустом пути ещё нет.
+  const rootKey = nodePathKey([]);
+  if (!rolled.has(rootKey) && nodes.length > 0) {
+    const tops = nodes.filter(
+      n => n.path.length > 0 && !n.isTotal && !byKey.has(nodePathKey(n.path.slice(0, -1)))
+    );
+    const cols = new Set<string>();
+    for (const n of nodes) for (const c of Object.keys(n.values)) cols.add(c);
+    const out: Record<string, RolledCell> = {};
+    for (const col of cols) {
+      let sum = 0;
+      let any = false;
+      for (const t of tops) {
+        const cv = rolled.get(nodePathKey(t.path))?.[col]?.value;
+        if (cv != null) { sum += cv; any = true; }
+      }
+      const childrenSum = any ? sum : null;
+      out[col] = { value: childrenSum, own: null, childrenSum };
+    }
+    rolled.set(rootKey, out);
+  }
   return rolled;
 }
 
