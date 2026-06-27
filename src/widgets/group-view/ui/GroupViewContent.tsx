@@ -88,7 +88,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     sortConfig,
     setSortConfig,
     handleToggleMetric,
-  } = useGroupViewState(virtualMetrics);
+  } = useGroupViewState(groupId, virtualMetrics);
 
   const groupMetricIds = useMemo(() => {
     return group?.metrics.map(m => m.id) ?? [];
@@ -400,13 +400,20 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     return m;
   }, [virtualMetrics]);
   const displayFilters = group?.displayFilters;
+  // Правила действуют ТОЛЬКО на своём уровне (level = глубина пути): фильтр не
+  // распространяется на дрилл вглубь, иначе скрытый родитель ломал бы навигацию.
+  // Старые правила без level → 0 (корень).
+  const activeDisplayFilters = useMemo(
+    () => displayFilters?.filter(r => (r.level ?? 0) === path.length),
+    [displayFilters, path.length]
+  );
   const filterMetricOptions = useMemo(
     () => virtualMetrics.map(vm => ({ id: vm.id, name: vm.name })),
     [virtualMetrics]
   );
   const filteredBreakdown = useMemo(
-    () => (effectiveBreakdown ? filterBreakdownByRules(effectiveBreakdown, displayFilters, formatByMetricId) : effectiveBreakdown),
-    [effectiveBreakdown, displayFilters, formatByMetricId]
+    () => (effectiveBreakdown ? filterBreakdownByRules(effectiveBreakdown, activeDisplayFilters, formatByMetricId) : effectiveBreakdown),
+    [effectiveBreakdown, activeDisplayFilters, formatByMetricId]
   );
 
   // Условия отображения в 2-D: правила применяются к КАТЕГОРИИ по её итогу
@@ -416,11 +423,11 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     [isTwoDimensional, breakdown]
   );
   const allowed2DLabels = useMemo(() => {
-    if (!isTwoDimensional || !breakdown || !displayFilters || displayFilters.length === 0) return null;
+    if (!isTwoDimensional || !breakdown || !activeDisplayFilters || activeDisplayFilters.length === 0) return null;
     const cats = aggregateByLabel(breakdown, calcSpecByVmId);
-    const passed = filterBreakdownByRules(cats, displayFilters, formatByMetricId);
+    const passed = filterBreakdownByRules(cats, activeDisplayFilters, formatByMetricId);
     return new Set(passed.map(c => c.label));
-  }, [isTwoDimensional, breakdown, displayFilters, calcSpecByVmId, formatByMetricId]);
+  }, [isTwoDimensional, breakdown, activeDisplayFilters, calcSpecByVmId, formatByMetricId]);
   const breakdown2D = useMemo(
     () => (allowed2DLabels && breakdown ? breakdown.filter(it => allowed2DLabels.has(it.label)) : breakdown),
     [breakdown, allowed2DLabels]
@@ -489,8 +496,16 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         <div className="flex items-center gap-3">
           <DisplayFilterPanel
             metrics={filterMetricOptions}
-            rules={displayFilters ?? []}
-            onChange={rules => updateGroup(groupId, { displayFilters: rules.length ? rules : undefined })}
+            rules={activeDisplayFilters ?? []}
+            levelLabel={nextLevel?.displayName ?? 'корень'}
+            onChange={rules => {
+              // Правила привязаны к текущему уровню (level = глубина пути).
+              // Сохраняем правила ДРУГИХ уровней, текущие — штампуем глубиной.
+              const otherLevels = (displayFilters ?? []).filter(r => (r.level ?? 0) !== path.length);
+              const stamped = rules.map(r => ({ ...r, level: path.length }));
+              const next = [...otherLevels, ...stamped];
+              updateGroup(groupId, { displayFilters: next.length ? next : undefined });
+            }}
             shown={isTwoDimensional ? (allowed2DLabels ? allowed2DLabels.size : cat2DTotal) : filteredBreakdown?.length}
             total={isTwoDimensional ? cat2DTotal : effectiveBreakdown?.length}
           />

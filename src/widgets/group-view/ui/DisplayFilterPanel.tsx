@@ -77,6 +77,8 @@ interface DisplayFilterPanelProps {
   /** Счётчик «показано из всего» — для контекста при больших уровнях. */
   shown?: number;
   total?: number;
+  /** Имя текущего уровня — правила действуют только на нём (не на дрилле вглубь). */
+  levelLabel?: string;
 }
 
 /**
@@ -84,7 +86,7 @@ interface DisplayFilterPanelProps {
  * форматирование, но для видимости). Хранятся на группе; применяются к таблице
  * и чартам. Строка остаётся, если удовлетворяет ВСЕМ правилам (AND).
  */
-export function DisplayFilterPanel({ metrics, rules, onChange, shown, total }: DisplayFilterPanelProps) {
+export function DisplayFilterPanel({ metrics, rules, onChange, shown, total, levelLabel }: DisplayFilterPanelProps) {
   const [open, setOpen] = useState(false);
   const active = rules.length > 0;
 
@@ -134,6 +136,12 @@ export function DisplayFilterPanel({ metrics, rules, onChange, shown, total }: D
             (для %: в процентах). Справа можно выбрать <b>число</b> или <b>другую метрику</b> строки
             (напр. «Итоговое ≠ Потребность»).
           </p>
+          {levelLabel && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400">
+              Действует только на текущем уровне (<b>{levelLabel}</b>) — при переходе вглубь не
+              применяется.
+            </p>
+          )}
 
           {metrics.length === 0 ? (
             <p className="text-[11px] text-slate-400 py-2">Нет метрик для фильтра.</p>

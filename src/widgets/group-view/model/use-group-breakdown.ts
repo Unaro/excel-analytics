@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useDatasetStore } from '@/entities/dataset';
 import { useAppSettingsStore, selectFormulaOptions } from '@/entities/app-settings';
 import { useColumnDictionary } from '@/entities/reference-type';
@@ -9,6 +9,7 @@ import { useIndicatorGroupStore } from '@/entities/indicator-group';
 import { useMetricTemplateStore, type IndicatorGroup } from '@/entities/metric';
 import { useColumnConfigStore } from '@/entities/column-config';
 import { useGroupMetricConfigStore } from '@/entities/group-metric-config';
+import { useGroupViewPrefsStore } from './group-view-prefs-store';
 import {
   buildVirtualMetric,
   useDatasetInfo,
@@ -65,7 +66,15 @@ export function useGroupBreakdown(
   currentPath: HierarchyFilterValue[], // Переименовали из initialPath, теперь это path из URL
   setPath: (p: HierarchyFilterValue[]) => void // Добавили сеттер
 ): GroupBreakdownResult {
-  const [secondary, setSecondary] = useState<SecondaryDimension | null>(null);
+  // Вторая ось 2-D персистится per-group (group-view-prefs-store) — восстанавливаем
+  // выбор между визитами. Сырое значение валидируем ниже (колонка/дата могли
+  // исчезнуть), сеттер пишет в стор.
+  const storedSecondary = useGroupViewPrefsStore(s => s.prefsByGroup[groupId]?.secondary) ?? null;
+  const setGroupPrefs = useGroupViewPrefsStore(s => s.setPrefs);
+  const setSecondary = useCallback(
+    (s: SecondaryDimension | null) => setGroupPrefs(groupId, { secondary: s }),
+    [groupId, setGroupPrefs]
+  );
 
   const {
     activeDatasetId,
@@ -168,6 +177,16 @@ export function useGroupBreakdown(
         .map(c => ({ columnName: c.columnName, displayName: c.displayName || c.columnName })),
     [columnConfigs, nextLevel?.columnName]
   );
+  // Валидация восстановленного выбора: дата/колонка могли исчезнуть (скрыта,
+  // другой набор колонок) → не активируем 2-D с битой осью.
+  const secondary = useMemo<SecondaryDimension | null>(() => {
+    if (!storedSecondary) return null;
+    if (storedSecondary.kind === 'date') return dateColumn ? storedSecondary : null;
+    if (storedSecondary.kind === 'column')
+      return validColumns.includes(storedSecondary.columnName) ? storedSecondary : null;
+    return storedSecondary; // bucket — отдельной валидации пока нет
+  }, [storedSecondary, dateColumn, validColumns]);
+
   const isTwoDimensional = secondary !== null && nextLevel !== null;
   const groupByColumn = nextLevel?.columnName;
 
