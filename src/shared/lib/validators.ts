@@ -190,7 +190,7 @@ export const IndicatorGroupSchema = z.object({
    * с дефолтами. См. docs/architecture/unified-view-config.md (Фаза 2).
    */
   chartView: z.object({
-    chartTypes: z.array(z.enum(['bar', 'radar'])).optional(),
+    chartTypes: z.array(z.enum(['bar', 'radar', 'treemap'])).optional(),
     seriesLimit: z.number().int().positive().optional(),
     paletteId: z.string().optional(),
   }).optional(),

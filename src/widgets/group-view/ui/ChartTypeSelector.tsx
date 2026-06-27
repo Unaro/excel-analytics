@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, Radar } from 'lucide-react';
+import { BarChart3, Radar, LayoutGrid } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
 import { LucideIcon } from 'lucide-react';
 import { ChartType } from '@/shared/lib/types/chart';
@@ -14,7 +14,8 @@ interface ChartOption {
 
 const CHART_OPTIONS: ChartOption[] = [
   { type: 'bar', label: 'Столбцы', icon: BarChart3, color: 'indigo' },
-  { type: 'radar', label: 'Радар', icon: Radar, color: 'purple' }
+  { type: 'radar', label: 'Радар', icon: Radar, color: 'purple' },
+  { type: 'treemap', label: 'Treemap', icon: LayoutGrid, color: 'emerald' }
 ];
 
 interface ChartTypeSelectorProps {

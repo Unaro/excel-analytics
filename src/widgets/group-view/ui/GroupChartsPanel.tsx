@@ -3,6 +3,8 @@ import { memo, useMemo } from 'react';
 import { BreakdownItem, VirtualMetricValue } from '@/entities/metric';
 import { GroupBarChart } from './Chart/GroupBarChart';
 import { GroupRadarChart } from './Chart/GroupRadarChart';
+import { GroupTreemapChart } from './Chart/GroupTreemapChart';
+import { buildTreemapData } from '../lib/build-treemap-data';
 import { VirtualMetric } from '@/shared/lib/validators';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { toDisplayScale } from '@/shared/lib/utils/metric-colors';
@@ -79,6 +81,17 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
     return map;
   }, [activeMetrics]);
 
+  // Treemap — одна метрика (площадь ∝ значению): берём первую активную.
+  const treemapKey = metricKeys[0];
+  const treemapMeta = useMemo(
+    () => metricConfigs.find(v => v.id === treemapKey),
+    [metricConfigs, treemapKey]
+  );
+  const treemapData = useMemo(
+    () => (treemapKey ? buildTreemapData(breakdown, treemapKey, treemapMeta?.displayFormat) : []),
+    [breakdown, treemapKey, treemapMeta]
+  );
+
 
 
   if (activeMetrics.length === 0) {
@@ -114,6 +127,15 @@ export const GroupChartsPanel = memo(function GroupChartsPanel({
             metricNames={metricNames}
             title="Радарная диаграмма"
             metricConfigs={metricConfigs}
+            resolveLabel={resolveLabel}
+            palette={palette}
+          />
+        )}
+        {chartTypes.includes('treemap') && (
+          <GroupTreemapChart
+            data={treemapData}
+            title={`Treemap · ${treemapMeta?.name ?? ''}`}
+            metricConfig={treemapMeta}
             resolveLabel={resolveLabel}
             palette={palette}
           />
