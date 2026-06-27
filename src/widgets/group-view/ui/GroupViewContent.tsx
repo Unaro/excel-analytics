@@ -13,7 +13,7 @@ import { DisplayFilterPanel } from './DisplayFilterPanel';
 import { useGroupViewState } from '../model/use-group-view-state';
 import { useGroupPath } from '@/shared/lib/hooks/use-group-path';
 import { useGroupBreakdown } from '../model/use-group-breakdown';
-import { CalendarClock } from 'lucide-react';
+import { SplitSquareHorizontal } from 'lucide-react';
 import { Select, SelectOption } from '@/shared/ui/select';
 import { TimeBreakdownSection } from '@/shared/ui/time-breakdown';
 import type { DateGranularity } from '@/shared/lib/computation/lib/types';
@@ -464,10 +464,21 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
             </label>
           )}
           {(dateColumn || secondaryColumns.length > 0) && (
-            <div className="flex items-center gap-2">
-              <CalendarClock size={16} className="text-indigo-500 shrink-0" />
+            <div
+              className="inline-flex items-center gap-1.5 h-9 pl-2 pr-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+              title="Разбивка: первая ось (уровень иерархии) × вторая ось (дата или колонка)"
+            >
+              <SplitSquareHorizontal size={14} className="text-indigo-500 shrink-0" />
+              {nextLevel && (
+                <>
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-200 max-w-[120px] truncate">
+                    {nextLevel.displayName}
+                  </span>
+                  <span className="text-slate-400 text-sm">×</span>
+                </>
+              )}
               <Select
-                className="w-56 h-9 text-sm"
+                className="h-7 w-44 text-xs px-1.5 py-0 border-0 bg-transparent focus:ring-0"
                 value={secondaryValue}
                 onChange={e => {
                   const v = e.target.value;
@@ -477,17 +488,16 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
                   else if (v.startsWith('col:'))
                     setSecondary({ kind: 'column', columnName: v.slice(4), topN: 12 });
                 }}
-                title="Вторая ось разбивки (дата или колонка)"
               >
                 <SelectOption value="">Без разбивки</SelectOption>
                 {dateColumn && (Object.keys(GRANULARITY_LABELS) as DateGranularity[]).map(g => (
                   <SelectOption key={`date:${g}`} value={`date:${g}`}>
-                    + по дате: {GRANULARITY_LABELS[g]}
+                    Дата · {GRANULARITY_LABELS[g]}
                   </SelectOption>
                 ))}
                 {secondaryColumns.map(c => (
                   <SelectOption key={`col:${c.columnName}`} value={`col:${c.columnName}`}>
-                    + по колонке: {c.displayName}
+                    {c.displayName}
                   </SelectOption>
                 ))}
               </Select>
@@ -499,8 +509,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
                   onChange={e =>
                     setSecondary({ kind: 'column', columnName: secondary.columnName, topN: Math.max(1, Number(e.target.value) || 12) })
                   }
-                  title="Топ-N значений, остальное → «Прочее»"
-                  className="w-16 h-9 px-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                  title="Топ-N значений второй оси, остальное → «Прочее»"
+                  className="w-14 h-7 px-1.5 text-xs rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
                 />
               )}
             </div>
@@ -509,10 +519,13 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
             value={view.paletteId}
             onChange={id => patchChartView({ paletteId: id })}
           />
-          <ChartTypeSelector
-            selected={chartTypes}
-            onChange={handleChartTypesChange}
-          />
+          {/* Типы 1-D-чартов (bar/radar/treemap) в 2-D не применяются — скрываем. */}
+          {!isTwoDimensional && (
+            <ChartTypeSelector
+              selected={chartTypes}
+              onChange={handleChartTypesChange}
+            />
+          )}
         </div>
       </div>
 
