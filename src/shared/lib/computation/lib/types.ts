@@ -35,14 +35,22 @@ export interface ClientComputeParams {
   /** Категориальное измерение breakdown (обычно следующий уровень иерархии). */
   groupByColumn?: string;
   /**
-   * Дата-колонка временно́го измерения. Работает в паре
-   * с groupByDateGranularity:
-   *  - только дата → метка группы (`_group_label`) — временно́й интервал;
-   *  - дата + groupByColumn → двумерная группировка: `_group_label` —
-   *    значение категории, `_date_label` — интервал (BreakdownItem.dateLabel).
+   * Вторая ось breakdown (источник `_date_label` / BreakdownItem.dateLabel).
+   * Обобщает временну́ю ось на любое измерение:
+   *  - date   → метка интервала (date_trunc);
+   *  - column → сырое значение колонки;
+   *  - bucket → корзина-диапазон числовой колонки (width_bucket).
+   * `topN` (column/bucket) сворачивает редкие значения в «Прочее».
+   * Если задано — имеет приоритет над legacy groupByDateColumn.
+   */
+  secondary?: SecondaryDimension;
+  /**
+   * @deprecated legacy временна́я ось (дашборд). Если `secondary` не задан,
+   * компилятор выводит из этих полей `{ kind: 'date' }`. groupByColumn —
+   * первая ось (категория), при двумерной группировке `_date_label` — интервал.
    */
   groupByDateColumn?: string;
-  /** Размерность временно́й группировки (date_trunc), требует groupByDateColumn. */
+  /** @deprecated размерность date_trunc (см. groupByDateColumn). */
   groupByDateGranularity?: DateGranularity;
   validColumns?: string[];
   pgSchema?: string;
@@ -61,6 +69,15 @@ export interface AggregateFormulaOptions {
   /** true — голая колонка вне агрегата запрещена (ошибка вместо авто-обёртки). */
   requireExplicit: boolean;
 }
+
+/**
+ * Вторая ось разбивки 2-D: дата (интервалы), категориальная колонка (значения)
+ * или числовая колонка (корзины). topN сворачивает хвост в «Прочее».
+ */
+export type SecondaryDimension =
+  | { kind: 'date'; columnName: string; granularity: DateGranularity }
+  | { kind: 'column'; columnName: string; topN?: number }
+  | { kind: 'bucket'; columnName: string; bucketCount: number; topN?: number };
 
 /** Размерность временно́й группировки breakdown. */
 export type DateGranularity =

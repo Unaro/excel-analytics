@@ -62,11 +62,24 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     resetToLevel,
     resetAll,
     dateColumn,
-    dateGranularity,
-    setDateGranularity,
+    secondary,
+    setSecondary,
+    secondaryColumns,
     isTwoDimensional,
     resolveLabel,
   } = useGroupBreakdown(groupId, path, setPath);
+
+  // Значение/заголовок второй оси разбивки (дата|колонка) для селектора и pivot.
+  const secondaryValue = !secondary
+    ? ''
+    : secondary.kind === 'date'
+      ? `date:${secondary.granularity}`
+      : `col:${secondary.columnName}`;
+  const secondaryTitle = !secondary
+    ? 'Разбивка'
+    : secondary.kind === 'date'
+      ? `${dateColumn?.displayName ?? 'Дата'} · ${GRANULARITY_LABELS[secondary.granularity]}`
+      : secondaryColumns.find(c => c.columnName === secondary.columnName)?.displayName ?? secondary.columnName;
 
   const {
     activeMetricIds,
@@ -450,22 +463,31 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
               )}
             </label>
           )}
-          {dateColumn && (
+          {(dateColumn || secondaryColumns.length > 0) && (
             <div className="flex items-center gap-2">
               <CalendarClock size={16} className="text-indigo-500 shrink-0" />
               <Select
-                className="w-44 h-9 text-sm"
-                value={dateGranularity ?? ''}
-                onChange={e =>
-                  setDateGranularity(
-                    (e.target.value || null) as DateGranularity | null
-                  )
-                }
+                className="w-56 h-9 text-sm"
+                value={secondaryValue}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (!v) setSecondary(null);
+                  else if (v.startsWith('date:') && dateColumn)
+                    setSecondary({ kind: 'date', columnName: dateColumn.columnName, granularity: v.slice(5) as DateGranularity });
+                  else if (v.startsWith('col:'))
+                    setSecondary({ kind: 'column', columnName: v.slice(4) });
+                }}
+                title="Вторая ось разбивки (дата или колонка)"
               >
-                <SelectOption value="">Без разбивки по дате</SelectOption>
-                {(Object.keys(GRANULARITY_LABELS) as DateGranularity[]).map(g => (
-                  <SelectOption key={g} value={g}>
+                <SelectOption value="">Без разбивки</SelectOption>
+                {dateColumn && (Object.keys(GRANULARITY_LABELS) as DateGranularity[]).map(g => (
+                  <SelectOption key={`date:${g}`} value={`date:${g}`}>
                     + по дате: {GRANULARITY_LABELS[g]}
+                  </SelectOption>
+                ))}
+                {secondaryColumns.map(c => (
+                  <SelectOption key={`col:${c.columnName}`} value={`col:${c.columnName}`}>
+                    + по колонке: {c.displayName}
                   </SelectOption>
                 ))}
               </Select>
@@ -503,11 +525,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           metricMetas={virtualMetrics}
           activeMetricIds={activeMetricIds}
           dimensionTitle={nextLevel?.displayName ?? 'Элемент'}
-          dateTitle={
-            dateColumn && dateGranularity
-              ? `${dateColumn.displayName} · ${GRANULARITY_LABELS[dateGranularity]}`
-              : 'Дата'
-          }
+          dateTitle={secondaryTitle}
           truncated={summary?.breakdownTruncated}
           onRowClick={drillDown}
           resolveLabel={resolveLabel}
@@ -539,12 +557,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           summary={summary}
           virtualMetrics={effectiveSummaryMetrics}
           metricMetas={baseVirtualMetrics}
-          nextLevel={dateGranularity ? null : nextLevel}
-          dimensionLabel={
-            dateGranularity && dateColumn
-              ? `${dateColumn.displayName} · ${GRANULARITY_LABELS[dateGranularity]}`
-              : undefined
-          }
+          nextLevel={secondary ? null : nextLevel}
+          dimensionLabel={secondary ? secondaryTitle : undefined}
           onDrillDown={drillDown}
           activeMetricIds={activeMetricIds}
           groupId={groupId}

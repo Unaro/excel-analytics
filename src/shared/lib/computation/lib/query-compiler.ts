@@ -221,10 +221,19 @@ export function compileQuery(
     metricTemplates,
     tableName,
     groupByColumn,
+    secondary,
     groupByDateColumn,
     groupByDateGranularity,
     validColumns,
   } = params;
+
+  // Вторая ось: новый дескриптор `secondary` имеет приоритет; иначе выводим из
+  // legacy date-полей (дашборд ещё на них). column/bucket — Фазы B/C.
+  const secondaryDim =
+    secondary ??
+    (groupByDateColumn
+      ? { kind: 'date' as const, columnName: groupByDateColumn, granularity: groupByDateGranularity as DateGranularity }
+      : undefined);
 
   // Дефолтный авто-агрегат и режим «требовать явный агрегат» (из настроек).
   const formulaOptions = params.formulaOptions ?? DEFAULT_AGGREGATE_OPTIONS;
@@ -290,14 +299,20 @@ export function compileQuery(
   // true — в SELECT есть отдельная колонка _date_label (двумерный режим)
   let hasDateLabelColumn = false;
 
+  // Выражение второй оси (источник _date_label): дата → date_trunc-метка,
+  // column → сырое значение колонки. bucket/topN — Фазы C/B.
   let dateExpr: string | undefined;
-  if (groupByDateColumn && isColumnValid(groupByDateColumn)) {
-    if (groupByDateGranularity && DATE_GRANULARITIES.has(groupByDateGranularity)) {
-      dateExpr = buildDateLabelExpr(groupByDateColumn, groupByDateGranularity, dialect);
-    } else {
-      logger.warn(
-        `[query-compiler] Blocked invalid date granularity: ${groupByDateGranularity}`
-      );
+  if (secondaryDim && isColumnValid(secondaryDim.columnName)) {
+    if (secondaryDim.kind === 'date') {
+      if (secondaryDim.granularity && DATE_GRANULARITIES.has(secondaryDim.granularity)) {
+        dateExpr = buildDateLabelExpr(secondaryDim.columnName, secondaryDim.granularity, dialect);
+      } else {
+        logger.warn(
+          `[query-compiler] Blocked invalid date granularity: ${secondaryDim.granularity}`
+        );
+      }
+    } else if (secondaryDim.kind === 'column') {
+      dateExpr = quote(secondaryDim.columnName);
     }
   }
 
@@ -308,15 +323,15 @@ export function compileQuery(
     baseSelectParts.push(`${labelExpr} AS "_group_label"`);
 
     if (dateExpr) {
-      // Двумерный режим: время — вторая колонка метки
+      // Двумерный режим: вторая ось — отдельная колонка метки
       groupByExprs.push(dateExpr);
       baseSelectParts.push(`${dateExpr} AS "_date_label"`);
       hasDateLabelColumn = true;
       orderByDateLabel = true;
     }
   } else if (dateExpr) {
-    // Только время: метка группы — временно́й интервал
-    safeGroupByColumn = groupByDateColumn;
+    // Только вторая ось: метка группы — её значение
+    safeGroupByColumn = secondaryDim?.columnName;
     groupByExprs.push(dateExpr);
     baseSelectParts.push(`${dateExpr} AS "_group_label"`);
     orderByDateLabel = true;

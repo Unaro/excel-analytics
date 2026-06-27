@@ -16,9 +16,8 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 import type { CacheKey } from '@/shared/lib/storage';
 import { generateFiltersHash, generateConfigHash } from '@/shared/lib/utils/hash';
-import type { ClientComputeParams, DateGranularity } from '@/shared/lib/computation/lib/types';
+import type { ClientComputeParams, SecondaryDimension } from '@/shared/lib/computation/lib/types';
 import type {
-  GroupMetric,
   HierarchyFilterValue,
   IndicatorGroupInDashboard,
   MetricTemplate,
@@ -47,10 +46,12 @@ export interface GroupBreakdownResult {
   resetAll: () => void;
   /** Первая колонка датасета с классификацией «Дата» (null — нет таких). */
   dateColumn: ColumnConfig | null;
-  /** Активная размерность временно́й группировки (null — только иерархия). */
-  dateGranularity: DateGranularity | null;
-  setDateGranularity: (g: DateGranularity | null) => void;
-  /** true — двумерный режим: следующий уровень иерархии × время. */
+  /** Вторая ось разбивки (дата|колонка|бакеты) или null — только иерархия. */
+  secondary: SecondaryDimension | null;
+  setSecondary: (s: SecondaryDimension | null) => void;
+  /** Категориальные колонки-кандидаты во вторую ось (кроме текущего уровня). */
+  secondaryColumns: { columnName: string; displayName: string }[];
+  /** true — двумерный режим: следующий уровень иерархии × вторая ось. */
   isTwoDimensional: boolean;
   /**
    * Код → наименование по справочнику колонки текущего уровня
@@ -64,7 +65,7 @@ export function useGroupBreakdown(
   currentPath: HierarchyFilterValue[], // Переименовали из initialPath, теперь это path из URL
   setPath: (p: HierarchyFilterValue[]) => void // Добавили сеттер
 ): GroupBreakdownResult {
-  const [dateGranularity, setDateGranularity] = useState<DateGranularity | null>(null);
+  const [secondary, setSecondary] = useState<SecondaryDimension | null>(null);
 
   const {
     activeDatasetId,
@@ -158,13 +159,28 @@ export function useGroupBreakdown(
     () => columnConfigs.find(c => c.classification === 'date') ?? null,
     [columnConfigs]
   );
-  const isTimeMode = dateGranularity !== null && dateColumn !== null;
-  const isTwoDimensional = isTimeMode && nextLevel !== null;
+  // Категориальные колонки-кандидаты во вторую ось (кроме текущего уровня —
+  // он уже первая ось).
+  const secondaryColumns = useMemo(
+    () =>
+      columnConfigs
+        .filter(c => c.classification === 'categorical' && c.columnName !== nextLevel?.columnName)
+        .map(c => ({ columnName: c.columnName, displayName: c.displayName || c.columnName })),
+    [columnConfigs, nextLevel?.columnName]
+  );
+  const isTwoDimensional = secondary !== null && nextLevel !== null;
   const groupByColumn = nextLevel?.columnName;
-  const groupByDateColumn = isTimeMode ? dateColumn.columnName : undefined;
 
 const formulaOptions = useAppSettingsStore(useShallow(selectFormulaOptions));  
 const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.requireExplicit}`;
+
+  // Сериализация второй оси для ключа кэша/конфига.
+  const secondaryHash = secondary
+    ? `:sec:${secondary.kind}:${secondary.columnName}:${
+        secondary.kind === 'date' ? secondary.granularity
+        : secondary.kind === 'bucket' ? `b${secondary.bucketCount}` : ''
+      }:${secondary.kind !== 'date' && secondary.topN ? `t${secondary.topN}` : ''}`
+    : '';
 
   const configHash = useMemo(() => {
     return (
@@ -175,10 +191,10 @@ const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.
         virtualMetrics,
       }) +
       (groupByColumn ? `:gb:${groupByColumn}` : '') +
-      (isTimeMode ? `:dc:${groupByDateColumn}:dg:${dateGranularity}` : '') +
+      secondaryHash +
       `:fo:${formulaOptionsHash}`
     );
-  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn, isTimeMode, groupByDateColumn, dateGranularity, formulaOptionsHash]);
+  }, [group, templates, dashboardGroupsConfig, virtualMetrics, groupByColumn, secondaryHash, formulaOptionsHash]);
 
   const buildParams = useCallback((): ClientComputeParams | null => {
     if (!activeDatasetId || !group) return null;
@@ -193,8 +209,7 @@ const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.
       metricTemplates: templates,
       virtualMetrics,
       groupByColumn: groupByColumn ?? undefined,
-      groupByDateColumn,
-      groupByDateGranularity: isTimeMode ? dateGranularity : undefined,
+      secondary: secondary ?? undefined,
       formulaOptions,
       validColumns,
       pgSchema,
@@ -203,7 +218,7 @@ const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.
   }, [
     activeDatasetId, group, groupId, encryptedConnection, currentPath,
     dashboardGroupsConfig, templates, virtualMetrics,
-    groupByColumn, groupByDateColumn, isTimeMode, dateGranularity,
+    groupByColumn, secondary,
     formulaOptions, validColumns, pgSchema, pgTable,
   ]);
 
@@ -279,8 +294,9 @@ const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.
     resetToLevel,
     resetAll,
     dateColumn,
-    dateGranularity,
-    setDateGranularity,
+    secondary,
+    setSecondary,
+    secondaryColumns,
     isTwoDimensional,
     resolveLabel,
   };
