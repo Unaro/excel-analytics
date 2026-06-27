@@ -10,10 +10,13 @@
   `chartView` (legacy-fallback сохранён). Линия/столбцы 2-D — НЕ отдельный
   тоггл, а `chartStyle.kind` выбранной метрики (единый контрол на KPI-карточке,
   как в 1-D).
-- Фаза 4 (новые типы чартов) — начата: **Treemap** (доли категорий по одной
-  метрике) добавлен в 1-D — `ChartType += 'treemap'`, `GroupTreemapChart`,
-  `buildTreemapData`. Следующие по запросу: heatmap (категория×время, кастомная
-  сетка), area (2-D).
+- Фаза 4 (новые типы чартов) — в работе:
+  - **Treemap** (доли категорий по метрике) в 1-D — `ChartType += 'treemap'`,
+    `GroupTreemapChart`, `buildTreemapData`.
+  - **Heatmap** (тепловая карта 2-D) — тумблер в `time-breakdown` красит ячейки
+    pivot градиентом по значению (`shared/ui/time-breakdown/heatmap.ts`), реюз
+    сетки категория×время.
+  - Следующий по запросу: area (2-D).
 
 Дата создания: 2026-06-23. Контекст: аудит [finos/perspective](https://github.com/perspective-dev/perspective)
 выявил, что у эталона вид (`View`) — один декларативный объект, а 1-D/2-D —

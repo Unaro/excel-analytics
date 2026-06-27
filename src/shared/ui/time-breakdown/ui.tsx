@@ -20,7 +20,7 @@ import {
   Legend,
 } from 'recharts';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
-import { Search, AlertTriangle, ChevronRight, TrendingUp } from 'lucide-react';
+import { Search, AlertTriangle, ChevronRight, TrendingUp, Grid2x2 } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
@@ -41,6 +41,7 @@ import {
   cellRatioOf,
   type PivotRow,
 } from './pivot';
+import { heatmapExtent, heatmapColor } from './heatmap';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { renderThresholdReferenceLines } from '@/shared/ui/threshold-marker';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
@@ -119,6 +120,9 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const effectiveFormat = effectiveChartFormat(currentMetric?.displayFormat, isNormalized);
 
   const [searchQuery, setSearchQuery] = useState('');
+  // Тепловая карта: окраска ячеек pivot градиентом по значению (эфемерно, как
+  // остальные 2-D-контролы). Заменяет CF-окраску, пока включена.
+  const [heatmap, setHeatmap] = useState(false);
   // null — авто-режим top-N; Set — явный выбор пользователя
   const [selectedLabels, setSelectedLabels] = useState<Set<string> | null>(null);
   // Сколько серий показывать по умолчанию (top-N по сумме метрики).
@@ -264,6 +268,28 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     return rule ? COLOR_STYLES[rule.color] : null;
   };
 
+  // Тепловая карта: единый экстент по всем ячейкам (строки×даты) выбранной
+  // метрики в display-масштабе; фон ячейки — градиент по интенсивности.
+  const heatExtent = useMemo(() => {
+    if (!heatmap) return null;
+    const vals: (number | null)[] = [];
+    for (const r of rows) {
+      for (const d of dates) {
+        const cell = r.cells.get(d);
+        const v = isNormalized ? cellRatio(cell) : metricValue(cell);
+        vals.push(v === null ? null : toDisplayScale(v, effectiveFormat));
+      }
+    }
+    return heatmapExtent(vals);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heatmap, rows, dates, isNormalized, effectiveMetricId, dateRefs, effectiveFormat]);
+
+  const cellHeat = (item: BreakdownItem | undefined): string | undefined => {
+    if (!heatmap) return undefined;
+    const v = isNormalized ? cellRatio(item) : metricValue(item);
+    return heatmapColor(v === null ? null : toDisplayScale(v, effectiveFormat), heatExtent);
+  };
+
   if (rows.length === 0 || dates.length === 0) {
     return (
       <Card className="p-12 text-center text-slate-400">
@@ -300,6 +326,20 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
         <div className="flex items-center gap-2 shrink-0">
           {/* Линия/столбцы 2-D задаёт стиль ВЫБРАННОЙ метрики на её KPI-карточке
               (единый контрол, как в 1-D) — отдельного тоггла здесь нет. */}
+          <button
+            type="button"
+            onClick={() => setHeatmap(h => !h)}
+            aria-pressed={heatmap}
+            title="Тепловая карта (окраска ячеек по значению)"
+            className={cn(
+              'px-2.5 h-9 flex items-center rounded-lg border transition-colors shrink-0',
+              heatmap
+                ? 'bg-indigo-500 text-white border-indigo-500'
+                : 'bg-white dark:bg-slate-950 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900'
+            )}
+          >
+            <Grid2x2 size={14} />
+          </button>
           {metricOptions.length > 1 && (
             <Select
               className="w-52 h-9 text-sm"
@@ -483,13 +523,15 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                 </td>
                 {dates.map(d => {
                   const item = row.cells.get(d);
+                  const heat = cellHeat(item);
                   return (
                     <td key={d} className="px-4 py-2 text-sm text-right whitespace-nowrap">
                       <span
                         className={cn(
                           'font-mono text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded-md',
-                          cellColorClass(item)
+                          !heatmap && cellColorClass(item)
                         )}
+                        style={heat ? { backgroundColor: heat } : undefined}
                       >
                         {metricFormatted(item)}
                       </span>
