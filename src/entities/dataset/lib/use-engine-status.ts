@@ -41,9 +41,26 @@ export function useEngineStatus(): EngineStatusState {
   const sourceType = useDatasetStore(s =>
     (activeDatasetId ? s.datasets[activeDatasetId]?.sourceType : undefined) ?? 'file'
   );
+  // Статус восстановления активного датасета (его ставит гидрация-restore):
+  // нужен, чтобы провал restore ('error') не превращался в вечный лоадер.
+  const activeEngineStatus = useDatasetStore(s =>
+    activeDatasetId ? s.datasets[activeDatasetId]?.engineStatus : undefined
+  );
 
   const [status, setStatus] = useState<DuckDBEngineStatus>(duckdbManager.status);
   const [isReloading, setIsReloading] = useState(false);
+
+  // Гидрация dataset-стора (persist из IndexedDB) асинхронна: до её завершения
+  // activeDatasetId ещё null, а статус движка — дефолтный 'no-data'. Чтобы не
+  // мигать терминальной заглушкой «Нет данных», ждём гидрацию.
+  const [hydrated, setHydrated] = useState<boolean>(
+    () => useDatasetStore.persist?.hasHydrated?.() ?? true
+  );
+  useEffect(() => {
+    if (hydrated) return;
+    // setState только в колбэке завершения гидрации (не синхронно в теле эффекта).
+    return useDatasetStore.persist?.onFinishHydration?.(() => setHydrated(true));
+  }, [hydrated]);
 
   // Подписка на изменения статуса
   useEffect(() => {
@@ -94,8 +111,25 @@ export function useEngineStatus(): EngineStatusState {
     }
   }, [sourceType, activeDatasetId]);
 
+  // Эффективный статус: 'no-data' от менеджера НЕ означает «нет данных», пока
+  // стор гидрируется или есть активный file-датасет (движок лениво/через
+  // restore ещё загружает его в воркер; registerArrowBuffer затем ставит
+  // 'ready'). В этих случаях показываем loading, а не терминальную заглушку.
+  const effectiveStatus: DuckDBEngineStatus =
+    sourceType !== 'file'
+      ? 'ready'
+      : !hydrated
+        ? 'loading'
+        : status !== 'no-data'
+          ? status // менеджер знает реальный статус (ready/loading/disconnected/error)
+          : !activeDatasetId
+            ? 'no-data' // реально нет активного датасета
+            : activeEngineStatus === 'error'
+              ? 'error' // restore активного датасета провалился
+              : 'loading'; // данные есть, движок ещё восстанавливает
+
   return {
-    status: sourceType === 'file' ? status : 'ready',
+    status: effectiveStatus,
     activeFileDatasetId: sourceType === 'file' ? activeDatasetId : null,
     reload,
     isReloading,
