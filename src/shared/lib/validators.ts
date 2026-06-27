@@ -57,7 +57,7 @@ export const VirtualMetricSchema = z.object({
   // Стиль на чарте «Столбцы» (столбец/линия + стиль линии). Прокидывается из
   // group-metric-config в UI-слое, движком вычислений не используется.
   chartStyle: z.object({
-    kind: z.enum(['bar', 'line']),
+    kind: z.enum(['bar', 'line', 'area']),
     curve: z.enum(['smooth', 'linear']).optional(),
     dash: z.enum(['solid', 'dashed']).optional(),
   }).optional(),

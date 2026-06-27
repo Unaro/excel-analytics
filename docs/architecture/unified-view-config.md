@@ -16,7 +16,9 @@
   - **Heatmap** (тепловая карта 2-D) — тумблер в `time-breakdown` красит ячейки
     pivot градиентом по значению (`shared/ui/time-breakdown/heatmap.ts`), реюз
     сетки категория×время.
-  - Следующий по запросу: area (2-D).
+  - **Area** (область) — третий `MetricChartStyle.kind` (`bar|line|area`),
+    управляется тем же тумблером на KPI-карточке, рисуется в 1-D (`GroupBarChart`)
+    и 2-D (`time-breakdown`). Единый контрол, без дублей.
 
 Дата создания: 2026-06-23. Контекст: аудит [finos/perspective](https://github.com/perspective-dev/perspective)
 выявил, что у эталона вид (`View`) — один декларативный объект, а 1-D/2-D —

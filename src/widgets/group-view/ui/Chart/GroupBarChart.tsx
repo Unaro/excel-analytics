@@ -1,7 +1,7 @@
 'use client';
 import { memo, useMemo } from 'react';
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ComposedChart, Bar, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   Rectangle,
 } from 'recharts';
 import { Card } from '@/shared/ui/card';
@@ -92,6 +92,42 @@ export const GroupBarChart = memo(function GroupBarChart({
               const rules = vm?.colorConfig?.rules;
               const defaultColor = palette[idx % palette.length];
               const style = vm?.chartStyle;
+
+              // Метрика-область: filled line (заливка под кривой) + те же curve/dash.
+              if (style?.kind === 'area') {
+                return (
+                  <Area
+                    key={key}
+                    type={style.curve === 'linear' ? 'linear' : 'monotone'}
+                    dataKey={key}
+                    name={metricNames[key]}
+                    stroke={defaultColor}
+                    strokeWidth={2}
+                    strokeDasharray={style.dash === 'dashed' ? '6 4' : undefined}
+                    fill={defaultColor}
+                    fillOpacity={0.2}
+                    isAnimationActive={true}
+                    animationDuration={800}
+                    dot={(props) => {
+                      const { cx = 0, cy = 0, payload } = props;
+                      const raw = payload?.[key];
+                      const numericValue = typeof raw === 'number' ? raw : null;
+                      const conditionalColor = getColorForValue(numericValue, rules);
+                      const highlighted = !!conditionalColor;
+                      return (
+                        <circle
+                          key={`${key}-${cx}-${cy}`}
+                          cx={cx} cy={cy}
+                          r={highlighted ? 5 : 3}
+                          fill={conditionalColor || defaultColor}
+                          stroke="#fff"
+                          strokeWidth={highlighted ? 2 : 1}
+                        />
+                      );
+                    }}
+                  />
+                );
+              }
 
               // Метрика-линия: гладкая/ломаная (type) + сплошная/пунктир (dash).
               if (style?.kind === 'line') {

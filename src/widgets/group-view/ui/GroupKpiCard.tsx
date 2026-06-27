@@ -1,11 +1,11 @@
 'use client';
 import { memo } from 'react';
-import { Calculator, Check, BarChart3, TrendingUp, Spline, Activity, Minus, MoreHorizontal } from 'lucide-react';
+import { Calculator, Check, BarChart3, TrendingUp, AreaChart, Spline, Activity, Minus, MoreHorizontal } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { cn } from '@/shared/lib/utils';
 import { formatRu } from '@/shared/lib/utils/format';
 import { VirtualMetricValue } from '@/entities/metric';
-import type { MetricChartStyle } from '@/shared/lib/types/chart';
+import type { MetricChartStyle, MetricChartKind } from '@/shared/lib/types/chart';
 
 interface GroupKpiCardProps {
   metric: VirtualMetricValue;
@@ -58,13 +58,15 @@ export const GroupKpiCard = memo(function GroupKpiCard({
   const kind = chartStyle?.kind ?? 'bar';
   const curve = chartStyle?.curve ?? 'smooth';
   const dash = chartStyle?.dash ?? 'solid';
-  // Переключение на line подставляет дефолты кривой/штриха, чтобы они «помнились».
-  const setKind = (k: 'bar' | 'line') =>
-    onChartStyleChange?.(k === 'line' ? { kind: 'line', curve, dash } : { ...chartStyle, kind: 'bar' });
+  // line и area делят настройки кривой/штриха; bar — без них.
+  const hasLineStyle = kind === 'line' || kind === 'area';
+  // Переключение на line/area подставляет дефолты кривой/штриха, чтобы «помнились».
+  const setKind = (k: MetricChartKind) =>
+    onChartStyleChange?.(k === 'bar' ? { ...chartStyle, kind: 'bar' } : { kind: k, curve, dash });
   const setCurve = (c: 'smooth' | 'linear') =>
-    onChartStyleChange?.({ kind: 'line', curve: c, dash });
+    onChartStyleChange?.({ kind: kind === 'area' ? 'area' : 'line', curve: c, dash });
   const setDash = (d: 'solid' | 'dashed') =>
-    onChartStyleChange?.({ kind: 'line', curve, dash: d });
+    onChartStyleChange?.({ kind: kind === 'area' ? 'area' : 'line', curve, dash: d });
   // Цвета для активных метрик (чередуются)
   const ACTIVE_COLORS = [
     'border-indigo-400 bg-indigo-50/50 dark:border-indigo-600 dark:bg-indigo-950/30',
@@ -127,9 +129,12 @@ export const GroupKpiCard = memo(function GroupKpiCard({
           <StyleToggle active={kind === 'line'} title="Линия" onClick={() => setKind('line')}>
             <TrendingUp size={13} />
           </StyleToggle>
+          <StyleToggle active={kind === 'area'} title="Область" onClick={() => setKind('area')}>
+            <AreaChart size={13} />
+          </StyleToggle>
 
-          {/* Для линии — стиль кривой и штрих */}
-          {kind === 'line' && (
+          {/* Для линии/области — стиль кривой и штрих обводки */}
+          {hasLineStyle && (
             <>
               <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-0.5" />
               <StyleToggle active={curve === 'smooth'} title="Гладкая кривая" onClick={() => setCurve('smooth')}>

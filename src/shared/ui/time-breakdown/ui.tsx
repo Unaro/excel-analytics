@@ -16,7 +16,7 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend,
 } from 'recharts';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
@@ -406,10 +406,11 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
             const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
             const margin = { top: 8, right: 16, bottom: 4, left: 8 };
             // Вид 2-D полностью задаёт chartStyle ВЫБРАННОЙ метрики на её
-            // KPI-карточке (единый контрол, как в 1-D): kind=line/bar — столбцы
-            // или линии, curve/dash — стиль линий. Все серии-категории этой
-            // метрики рисуются единым стилем.
-            const chartKind = currentMetric?.chartStyle?.kind === 'line' ? 'line' : 'bar';
+            // KPI-карточке (единый контрол, как в 1-D): kind=bar/line/area —
+            // столбцы, линии или области; curve/dash — стиль обводки. Все
+            // серии-категории этой метрики рисуются единым стилем.
+            const styleKind = currentMetric?.chartStyle?.kind;
+            const chartKind = styleKind === 'area' ? 'area' : styleKind === 'line' ? 'line' : 'bar';
             const lineCurve = currentMetric?.chartStyle?.curve === 'linear' ? 'linear' : 'monotone';
             const lineDash = currentMetric?.chartStyle?.dash === 'dashed' ? '6 4' : undefined;
 
@@ -427,6 +428,33 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                     />
                   ))}
                 </BarChart>
+              );
+            }
+
+            if (chartKind === 'area') {
+              return (
+                <AreaChart data={chartData} margin={margin}>
+                  {grid}{xAxis}{yAxis}{tooltip}{legend}
+                  {renderThresholdReferenceLines(thresholds)}
+                  {chartLabels.map((label, i) => {
+                    const c = palette[i % palette.length];
+                    return (
+                      <Area
+                        key={label}
+                        type={lineCurve}
+                        dataKey={label}
+                        name={display(label)}
+                        stroke={c}
+                        strokeWidth={2}
+                        strokeDasharray={lineDash}
+                        fill={c}
+                        fillOpacity={0.2}
+                        dot={dates.length <= 31}
+                        connectNulls
+                      />
+                    );
+                  })}
+                </AreaChart>
               );
             }
 
