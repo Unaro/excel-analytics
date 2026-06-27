@@ -6,6 +6,7 @@ import { cn } from '@/shared/lib/utils';
 import { formatRu } from '@/shared/lib/utils/format';
 import { VirtualMetricValue } from '@/entities/metric';
 import type { MetricChartStyle, MetricChartKind } from '@/shared/lib/types/chart';
+import { GroupMetricConfigPopover } from '@/features/configure-group-metric';
 
 interface GroupKpiCardProps {
   metric: VirtualMetricValue;
@@ -18,6 +19,11 @@ interface GroupKpiCardProps {
   chartStyle?: MetricChartStyle;
   /** Сменить стиль чарта. Нет коллбэка → контрол скрыт. */
   onChartStyleChange?: (style: MetricChartStyle) => void;
+  /** Группа + шаблон метрики — для редактора условного форматирования (CF). */
+  groupId?: string;
+  /** sourceMetricId метрики группы (ключ CF/стиля). Нет → CF-кнопка скрыта. */
+  metricId?: string;
+  templateId?: string;
 }
 
 /** Маленькая кнопка-переключатель стиля внутри карточки. */
@@ -54,6 +60,9 @@ export const GroupKpiCard = memo(function GroupKpiCard({
   onToggle,
   chartStyle,
   onChartStyleChange,
+  groupId,
+  metricId,
+  templateId,
 }: GroupKpiCardProps) {
   const kind = chartStyle?.kind ?? 'bar';
   const curve = chartStyle?.curve ?? 'smooth';
@@ -80,7 +89,7 @@ export const GroupKpiCard = memo(function GroupKpiCard({
     <Card
       onClick={() => onToggle(metric.virtualMetricId)}
       className={cn(
-        "p-5 flex flex-col justify-between cursor-pointer select-none",
+        "group/th p-5 flex flex-col justify-between cursor-pointer select-none",
         "hover:shadow-md transition-all",
         isActive
           ? ACTIVE_COLORS[activeIndex % ACTIVE_COLORS.length]
@@ -94,20 +103,31 @@ export const GroupKpiCard = memo(function GroupKpiCard({
         >
           {metric.virtualMetricName}
         </span>
-        {isActive ? (
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white/70 dark:bg-slate-900/70 rounded-full px-1.5 py-0.5">
-              #{activeIndex + 1}
-            </span>
-            <div className="p-1 bg-indigo-600 rounded-full">
-              <Check size={10} className="text-white" />
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Условное форматирование метрики (CF) — доступно в 1-D и 2-D. */}
+          {groupId && metricId && (
+            <GroupMetricConfigPopover
+              groupId={groupId}
+              metricId={metricId}
+              metricName={metric.virtualMetricName}
+              templateId={templateId}
+            />
+          )}
+          {isActive ? (
+            <>
+              <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white/70 dark:bg-slate-900/70 rounded-full px-1.5 py-0.5">
+                #{activeIndex + 1}
+              </span>
+              <div className="p-1 bg-indigo-600 rounded-full">
+                <Check size={10} className="text-white" />
+              </div>
+            </>
+          ) : (
+            <div className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-400">
+              <Calculator size={12} />
             </div>
-          </div>
-        ) : (
-          <div className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-400">
-            <Calculator size={12} />
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <div>
         <div className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">

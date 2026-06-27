@@ -428,6 +428,8 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         onToggleMetric={handleToggleMetric}
         chartStyleByMetricId={chartStyleByMetricId}
         onChartStyleChange={handleChartStyleChange}
+        groupId={groupId}
+        metricTemplateIds={metricTemplateIds}
       />
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
