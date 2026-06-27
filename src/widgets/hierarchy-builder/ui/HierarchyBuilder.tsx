@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { HierarchyLevel, useHierarchyStore } from '@/entities/hierarchy';
 import { useColumnConfigStore } from '@/entities/column-config';
-import { Plus, GripVertical } from 'lucide-react';
+import { Plus, GripVertical, Lock } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
@@ -23,6 +23,15 @@ export function HierarchyBuilder() {
   const levels = useHierarchyStore(useShallow(s =>
     activeDatasetId ? (s.levelsByDataset?.[activeDatasetId] || []) : []
   ));
+
+  // Агрегат-датасет: иерархия — это каскад ключевых колонок, зафиксированный при
+  // импорте, и одновременно СТРУКТУРНЫЙ ИНДЕКС узлов (значение узла адресуется
+  // своим путём по этим колонкам). Любая правка рассинхронизирует индекс →
+  // overlay узлов промахивается → метрики «итого/потребность» (заданы только на
+  // узлах) считаются null. Поэтому для агрегатов иерархия read-only.
+  const isAggregate = useDatasetStore(s =>
+    activeDatasetId ? !!s.datasets[activeDatasetId]?.aggregateConfig : false
+  );
 
   const configs = useColumnConfigStore(useShallow(s =>
     activeDatasetId ? (s.configsByDataset?.[activeDatasetId] || []) : []
@@ -147,68 +156,117 @@ export function HierarchyBuilder() {
     );
   };
 
+  // Статичная (неперетаскиваемая, без удаления) строка уровня — для read-only.
+  const renderStaticLevel = (level: HierarchyLevel, index: number) => (
+    <div
+      key={level.id}
+      className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-sm"
+    >
+      <div className="text-slate-300 dark:text-slate-600 shrink-0">
+        <Lock size={16} />
+      </div>
+      <div className="flex-1 select-none min-w-0">
+        <div className="text-[10px] font-bold text-indigo-500 uppercase tracking-wider mb-0.5">
+          Уровень {index + 1}
+        </div>
+        <div className="font-medium text-slate-900 dark:text-slate-100 flex items-center gap-2 truncate">
+          <span className="truncate">{level.displayName}</span>
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-mono text-slate-400 shrink-0">
+            {level.columnName}
+          </Badge>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-      {/* Левая колонка: Сортируемый список */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
-            Текущая структура
-          </h3>
-          <span className="text-xs text-slate-500">
-            Перетащите для изменения порядка
-          </span>
+    <div className="space-y-6">
+      {isAggregate && (
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <Lock size={18} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-800 dark:text-amber-200">
+            <span className="font-semibold">Иерархия задана структурой файла-агрегата.</span>{' '}
+            Уровни — это каскад ключевых колонок из импорта, по которому
+            адресуются значения узлов. Менять порядок, удалять или добавлять
+            уровни нельзя: это рассинхронизирует расчёт по узлам (итоги стали бы
+            пустыми). Чтобы изменить структуру — переразметьте файл при импорте.
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Левая колонка: список уровней (drag — только для не-агрегата) */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
+              Текущая структура
+            </h3>
+            <span className="text-xs text-slate-500">
+              {isAggregate ? 'Задана структурой файла' : 'Перетащите для изменения порядка'}
+            </span>
+          </div>
+
+          <Card className="p-4 min-h-[300px] bg-slate-50/50 dark:bg-slate-900/50">
+            {levels.length === 0 ? (
+              <div className="text-center py-12 text-slate-400 border-2 border-dashed rounded-lg border-slate-200 dark:border-slate-800">
+                {isAggregate ? 'Уровни не заданы' : 'Перетащите уровни из списка справа'}
+              </div>
+            ) : isAggregate ? (
+              <div className="space-y-2">
+                {levels.map((level, index) => renderStaticLevel(level, index))}
+              </div>
+            ) : (
+              <DragDropList<HierarchyLevel>
+                items={levels}
+                onReorder={reorderLevels}
+                renderItem={renderHierarchyLevel}
+                className="space-y-2"
+                dragDelay={0}
+              />
+            )}
+          </Card>
         </div>
 
-        <Card className="p-4 min-h-[300px] bg-slate-50/50 dark:bg-slate-900/50">
-          {levels.length === 0 ? (
-            <div className="text-center py-12 text-slate-400 border-2 border-dashed rounded-lg border-slate-200 dark:border-slate-800">
-              Перетащите уровни из списка справа
-            </div>
-          ) : (
-            <DragDropList<HierarchyLevel>
-              items={levels}
-              onReorder={reorderLevels}
-              renderItem={renderHierarchyLevel}
-              className="space-y-2"
-              dragDelay={0}
-            />
-          )}
-        </Card>
-      </div>
-
-      {/* Правая колонка: Доступные поля */}
-      <div className="space-y-4">
-        <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
-          Доступные категории
-        </h3>
-        <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-          {availableColumns.map((col) => (
-            <Card
-              key={col.columnName}
-              className="flex items-center justify-between p-3 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors group"
-            >
-              <div className="flex flex-col">
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                  {col.displayName}
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  {col.alias}
-                </span>
-              </div>
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-8 w-8"
-                onClick={() => handleAddLevel(col.columnName)}
-              >
-                <Plus size={16} />
-              </Button>
+        {/* Правая колонка: добавление категорий (для не-агрегата) */}
+        <div className="space-y-4">
+          <h3 className="font-semibold text-lg text-slate-900 dark:text-white">
+            Доступные категории
+          </h3>
+          {isAggregate ? (
+            <Card className="p-4 min-h-[120px] flex items-center justify-center text-center text-sm text-slate-500 dark:text-slate-400 border-dashed">
+              Для файла-агрегата категории фиксированы импортом и недоступны
+              для добавления.
             </Card>
-          ))}
-          {availableColumns.length === 0 && (
-            <div className="text-sm text-slate-500 p-4 text-center">
-              Нет доступных категорий
+          ) : (
+            <div className="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+              {availableColumns.map((col) => (
+                <Card
+                  key={col.columnName}
+                  className="flex items-center justify-between p-3 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors group"
+                >
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                      {col.displayName}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {col.alias}
+                    </span>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="h-8 w-8"
+                    onClick={() => handleAddLevel(col.columnName)}
+                  >
+                    <Plus size={16} />
+                  </Button>
+                </Card>
+              ))}
+              {availableColumns.length === 0 && (
+                <div className="text-sm text-slate-500 p-4 text-center">
+                  Нет доступных категорий
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -187,6 +187,12 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   const aggregateNodes = useAggregateNodesStore(s =>
     datasetId ? s.nodesByDataset[datasetId] : undefined
   );
+  // Агрегат-датасет: расчёты идут из узлов (overlay), листья пусты. Узлы
+  // сплющены вдоль одного каскада ключевых колонок — ячейки «(категория ×
+  // вторая ось)» в узлах не существует, поэтому разбивка по второй оси даёт
+  // пустоту. Скрываем её селектор (см. также блокировку иерархии — она и есть
+  // этот каскад, структурный индекс узлов).
+  const isAggregateDataset = (aggregateNodes?.length ?? 0) > 0;
   // Rolled-up узлы (own + childrenSum); своё значение в приоритете, иначе сумма
   // детей. nodeMap = итог (value) для overlay; nodeRich несёт own/childrenSum
   // для показа расхождения «записано в файле vs сумма по детям».
@@ -507,7 +513,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
               )}
             </label>
           )}
-          {(dateColumn || secondaryColumns.length > 0) && (
+          {!isAggregateDataset && (dateColumn || secondaryColumns.length > 0) && (
             <div
               className="inline-flex items-center gap-1.5 h-9 pl-2 pr-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
               title="Разбивка: первая ось (уровень иерархии) × вторая ось (дата или колонка)"
