@@ -40,6 +40,7 @@ import {
   metricValueOf,
   cellRatioOf,
   type PivotRow,
+  type MetricCalcSpec,
 } from './pivot';
 import { heatmapExtent, heatmapColor } from './heatmap';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
@@ -81,6 +82,12 @@ export interface TimeBreakdownSectionProps {
   palette?: string[];
   /** Сколько серий показывать по умолчанию (top-N по сумме метрики). Дефолт — 8. */
   seriesLimit?: number;
+  /**
+   * Спеки расчётных метрик (vmId → формула+операнды) для КОРРЕКТНОГО итога строки
+   * (Σ-столбец): формула на суммах операндов, а не сумма долей. Нет записи →
+   * метрика суммируется как аддитивная.
+   */
+  calcSpecByVmId?: Record<string, MetricCalcSpec>;
 }
 
 export const TimeBreakdownSection = memo(function TimeBreakdownSection({
@@ -95,6 +102,7 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   normalizeByVmId,
   palette = SERIES_COLORS,
   seriesLimit,
+  calcSpecByVmId,
 }: TimeBreakdownSectionProps) {
   const display = useMemo(
     () => resolveLabel ?? ((label: string) => label),
@@ -161,8 +169,8 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const dates = useMemo(() => buildPivotDates(items), [items]);
 
   const rows = useMemo<PivotRow[]>(
-    () => buildPivotRows(items, effectiveMetricId),
-    [items, effectiveMetricId]
+    () => buildPivotRows(items, effectiveMetricId, calcSpecByVmId?.[effectiveMetricId]),
+    [items, effectiveMetricId, calcSpecByVmId]
   );
 
   // Нормализация ПО ПЕРИОДАМ: ориентир (знаменатель) — по столбцу каждой даты

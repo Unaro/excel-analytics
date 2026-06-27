@@ -14,6 +14,41 @@ import {
   normalizeValue,
   type NormalizeBase,
 } from '@/shared/lib/utils/normalize';
+import { safeEvaluate } from '@/shared/lib/math/safe-math';
+
+/**
+ * Спецификация расчётной метрики для корректного ИТОГА по строке: формула на
+ * суммах операндов-метрик (Σa/Σb), а не сумма ячеек-долей. Применимо, когда
+ * операнды — другие метрики строки (их значения есть в ячейках).
+ */
+export interface MetricCalcSpec {
+  formula: string;
+  /** alias формулы → virtualMetricId операнда (значение берётся из ячеек). */
+  operandVmByAlias: Record<string, string>;
+}
+
+/**
+ * Итог расчётной метрики по набору ячеек строки: суммируем каждый операнд по
+ * ячейкам, затем вычисляем формулу. null — формула не посчиталась (деление на 0).
+ */
+export function evalCalcRowTotal(
+  cells: Iterable<BreakdownItem>,
+  spec: MetricCalcSpec
+): number | null {
+  // Материализуем: cells может быть одноразовым итератором (Map.values()),
+  // а операндов несколько — иначе второй проход получит пусто.
+  const arr = Array.from(cells);
+  const scope: Record<string, number> = {};
+  for (const [alias, vmId] of Object.entries(spec.operandVmByAlias)) {
+    let sum = 0;
+    for (const c of arr) {
+      const v = metricValueOf(c, vmId);
+      if (v !== null) sum += v;
+    }
+    scope[alias] = sum;
+  }
+  return safeEvaluate(spec.formula, scope);
+}
 
 export interface PivotRow {
   label: string;
@@ -57,7 +92,8 @@ export function buildPivotDates(items: BreakdownItem[]): string[] {
  */
 export function buildPivotRows(
   items: BreakdownItem[],
-  metricId: string
+  metricId: string,
+  calcSpec?: MetricCalcSpec
 ): PivotRow[] {
   const byLabel = new Map<string, PivotRow>();
   for (const item of items) {
@@ -68,8 +104,17 @@ export function buildPivotRows(
       byLabel.set(item.label, row);
     }
     row.cells.set(item.dateLabel, item);
-    const v = metricValueOf(item, metricId);
-    if (v !== null) row.total += v;
+    // Простая (аддитивная) метрика — сумма ячеек. Расчётную считаем post-pass.
+    if (!calcSpec) {
+      const v = metricValueOf(item, metricId);
+      if (v !== null) row.total += v;
+    }
+  }
+  // Расчётная метрика: итог = формула на суммах операндов (Σa/Σb), не сумма долей.
+  if (calcSpec) {
+    for (const row of byLabel.values()) {
+      row.total = evalCalcRowTotal(row.cells.values(), calcSpec) ?? 0;
+    }
   }
   return Array.from(byLabel.values()).sort((a, b) => b.total - a.total);
 }

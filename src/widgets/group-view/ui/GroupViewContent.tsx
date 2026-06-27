@@ -9,6 +9,8 @@ import { GroupChartsPanel } from './GroupChartsPanel';
 import { GroupNotFound } from './GroupNotFound';
 import { sortBreakdownItems as sortBreakdown } from '../lib/sort-breakdown';
 import { filterBreakdownByRules } from '../lib/filter-breakdown';
+import { aggregateByLabel } from '../lib/aggregate-breakdown';
+import type { MetricCalcSpec } from '@/shared/ui/time-breakdown/pivot';
 import { DisplayFilterPanel } from './DisplayFilterPanel';
 import { useGroupViewState } from '../model/use-group-view-state';
 import { useGroupPath } from '@/shared/lib/hooks/use-group-path';
@@ -212,6 +214,31 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     }
     return map;
   }, [group]);
+  // Реестр расчётных для ИТОГОВ 2-D: vmId → формула + операнды-метрики (vmId).
+  // Только когда операнды — другие метрики строки (значения есть в ячейках);
+  // field-only calc сюда не попадает (операндов в разбивке нет) → обычная сумма.
+  const calcSpecByVmId = useMemo(() => {
+    const vmIdBySrc: Record<string, string> = {};
+    for (const vm of virtualMetrics) if (vm.sourceMetricId) vmIdBySrc[vm.sourceMetricId] = vm.id;
+    const map: Record<string, MetricCalcSpec> = {};
+    for (const m of group?.metrics ?? []) {
+      if (!isCalcMetric(m)) continue;
+      const tpl = templates.find(t => t.id === m.templateId);
+      const vmId = vmIdBySrc[m.id];
+      if (!tpl?.formula || !vmId) continue;
+      const operandVmByAlias: Record<string, string> = {};
+      for (const mb of m.metricBindings) {
+        const opVm = vmIdBySrc[mb.metricId];
+        if (opVm) operandVmByAlias[mb.metricAlias] = opVm;
+      }
+      const vars = extractVariables(tpl.formula);
+      if (vars.length > 0 && vars.every(v => v in operandVmByAlias)) {
+        map[vmId] = { formula: tpl.formula, operandVmByAlias };
+      }
+    }
+    return map;
+  }, [group, templates, virtualMetrics]);
+
   // Реестр расчётных: метрика → формула + привязка операндов к колонкам.
   const calcSpecByMetricId = useMemo(() => {
     const map: Record<string, EnteredCalcSpec> = {};
@@ -376,6 +403,23 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     [effectiveBreakdown, displayFilters, formatByMetricId]
   );
 
+  // Условия отображения в 2-D: правила применяются к КАТЕГОРИИ по её итогу
+  // (calc-aware), затем breakdown фильтруется по разрешённым label.
+  const cat2DTotal = useMemo(
+    () => (isTwoDimensional && breakdown ? new Set(breakdown.map(i => i.label)).size : undefined),
+    [isTwoDimensional, breakdown]
+  );
+  const allowed2DLabels = useMemo(() => {
+    if (!isTwoDimensional || !breakdown || !displayFilters || displayFilters.length === 0) return null;
+    const cats = aggregateByLabel(breakdown, calcSpecByVmId);
+    const passed = filterBreakdownByRules(cats, displayFilters, formatByMetricId);
+    return new Set(passed.map(c => c.label));
+  }, [isTwoDimensional, breakdown, displayFilters, calcSpecByVmId, formatByMetricId]);
+  const breakdown2D = useMemo(
+    () => (allowed2DLabels && breakdown ? breakdown.filter(it => allowed2DLabels.has(it.label)) : breakdown),
+    [breakdown, allowed2DLabels]
+  );
+
   // Нормализация (% от итога/макс/…) — пост-пасс по столбцу детей текущего
   // уровня, ПОСЛЕ overlay (введённые узлы входят в знаменатель как есть).
   // Итого не трогаем (effectiveSummaryMetrics остаётся абсолютным).
@@ -437,15 +481,13 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           Визуализации
         </h2>
         <div className="flex items-center gap-3">
-          {!isTwoDimensional && (
-            <DisplayFilterPanel
-              metrics={filterMetricOptions}
-              rules={displayFilters ?? []}
-              onChange={rules => updateGroup(groupId, { displayFilters: rules.length ? rules : undefined })}
-              shown={filteredBreakdown?.length}
-              total={effectiveBreakdown?.length}
-            />
-          )}
+          <DisplayFilterPanel
+            metrics={filterMetricOptions}
+            rules={displayFilters ?? []}
+            onChange={rules => updateGroup(groupId, { displayFilters: rules.length ? rules : undefined })}
+            shown={isTwoDimensional ? (allowed2DLabels ? allowed2DLabels.size : cat2DTotal) : filteredBreakdown?.length}
+            total={isTwoDimensional ? cat2DTotal : effectiveBreakdown?.length}
+          />
           {hasEnteredData && (
             <label
               className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer select-none"
@@ -545,10 +587,10 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         </div>
       )}
 
-      {/* Двумерный режим: иерархия × время — pivot + линии */}
-      {!isComputing && isTwoDimensional && breakdown && breakdown.length > 0 && (
+      {/* Двумерный режим: иерархия × вторая ось — pivot + чарты */}
+      {!isComputing && isTwoDimensional && breakdown2D && breakdown2D.length > 0 && (
         <TimeBreakdownSection
-          items={breakdown}
+          items={breakdown2D}
           metricMetas={virtualMetrics}
           activeMetricIds={activeMetricIds}
           dimensionTitle={nextLevel?.displayName ?? 'Элемент'}
@@ -559,6 +601,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
           normalizeByVmId={normalizeByVmId}
           palette={paletteCat}
           seriesLimit={view.seriesLimit}
+          calcSpecByVmId={calcSpecByVmId}
         />
       )}
 

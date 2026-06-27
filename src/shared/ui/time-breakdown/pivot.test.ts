@@ -64,6 +64,18 @@ describe('buildPivotDates', () => {
   });
 });
 
+describe('buildPivotRows: calc-итог', () => {
+  it('расчётная метрика: total = формула на суммах операндов (а не сумма ячеек)', () => {
+    const items = [
+      item('Р1', 'Янв', [vm('a', 100), vm('b', 50)]),
+      item('Р1', 'Фев', [vm('a', 20), vm('b', 30)]),
+    ];
+    const rows = buildPivotRows(items, 'ob', { formula: 'a / b', operandVmByAlias: { a: 'a', b: 'b' } });
+    // Σa/Σb = 120/80 = 1.5
+    expect(rows[0].total).toBeCloseTo(1.5);
+  });
+});
+
 describe('buildPivotRows', () => {
   it('группирует по label, ячейки по дате, сумма метрики, сортировка по сумме desc', () => {
     const rows = buildPivotRows(ITEMS, 'm1');
