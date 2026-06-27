@@ -46,6 +46,11 @@ export function useEngineStatus(): EngineStatusState {
   const activeEngineStatus = useDatasetStore(s =>
     activeDatasetId ? s.datasets[activeDatasetId]?.engineStatus : undefined
   );
+  // Существует ли активный датасет реально (id мог остаться от удалённого/
+  // сброшенного — тогда это «нет данных», а не «грузим»).
+  const activeDatasetExists = useDatasetStore(s =>
+    activeDatasetId ? !!s.datasets[activeDatasetId] : false
+  );
 
   const [status, setStatus] = useState<DuckDBEngineStatus>(duckdbManager.status);
   const [isReloading, setIsReloading] = useState(false);
@@ -53,14 +58,23 @@ export function useEngineStatus(): EngineStatusState {
   // Гидрация dataset-стора (persist из IndexedDB) асинхронна: до её завершения
   // activeDatasetId ещё null, а статус движка — дефолтный 'no-data'. Чтобы не
   // мигать терминальной заглушкой «Нет данных», ждём гидрацию.
-  const [hydrated, setHydrated] = useState<boolean>(
-    () => useDatasetStore.persist?.hasHydrated?.() ?? true
-  );
+  //
+  // ВАЖНО: стартуем строго с false на ЛЮБОМ первом рендере (и сервер, и клиент).
+  // hasHydrated() в инициализаторе вернул бы разные значения на сервере (false)
+  // и клиенте (часто true — стор успел гидрироваться) → гидрационный мисматч
+  // (сайдбар рисует <a> на сервере и <div> на клиенте). Проверку выносим в
+  // эффект (после монтирования), там же закрываем гонку «check-then-subscribe»:
+  // если гидрация уже завершилась между рендером и эффектом, onFinishHydration
+  // (одноразовый) больше не сработает — поэтому сперва проверяем hasHydrated().
+  const [hydrated, setHydrated] = useState(false);
   useEffect(() => {
-    if (hydrated) return;
-    // setState только в колбэке завершения гидрации (не синхронно в теле эффекта).
+    if (useDatasetStore.persist?.hasHydrated?.() ?? true) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- разовая синхронизация SSR-флага после монтирования
+      setHydrated(true);
+      return;
+    }
     return useDatasetStore.persist?.onFinishHydration?.(() => setHydrated(true));
-  }, [hydrated]);
+  }, []);
 
   // Подписка на изменения статуса
   useEffect(() => {
@@ -122,8 +136,8 @@ export function useEngineStatus(): EngineStatusState {
         ? 'loading'
         : status !== 'no-data'
           ? status // менеджер знает реальный статус (ready/loading/disconnected/error)
-          : !activeDatasetId
-            ? 'no-data' // реально нет активного датасета
+          : !activeDatasetId || !activeDatasetExists
+            ? 'no-data' // нет активного датасета (или он удалён/сброшен)
             : activeEngineStatus === 'error'
               ? 'error' // restore активного датасета провалился
               : 'loading'; // данные есть, движок ещё восстанавливает
