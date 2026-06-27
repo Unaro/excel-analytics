@@ -69,6 +69,8 @@ export interface ConfigExportResult {
     dashboardsCount: number;
     groupsCount: number;
     groupConfigsWithColors: number;
+    /** Сколько шаблонов реально задействовано (а не вся библиотека). */
+    templatesCount: number;
   };
 }
 
@@ -122,6 +124,36 @@ function filterGroupMetricConfigs(
 }
 
 /**
+ * Собирает id шаблонов, реально задействованных в экспортируемых группах и
+ * дашбордах: метрики групп (GroupMetric.templateId), колонки дашборда
+ * (DashboardColumn.templateId) и KPI-виджеты (KPIWidget.templateId).
+ *
+ * Шаблон-к-шаблону ссылок нет: зависимости-метрики шаблона резолвятся через
+ * metricBindings уровня группы (на metricId инстанса, не на templateId), —
+ * поэтому транзитивного обхода не требуется.
+ */
+function collectReferencedTemplateIds(
+  groups: IndicatorGroup[],
+  dashboards: Dashboard[]
+): Set<string> {
+  const ids = new Set<string>();
+  for (const g of groups) {
+    for (const m of g.metrics) {
+      if (m.templateId) ids.add(m.templateId);
+    }
+  }
+  for (const d of dashboards) {
+    for (const col of d.virtualMetrics) {
+      if (col.templateId) ids.add(col.templateId);
+    }
+    for (const w of d.kpiWidgets) {
+      if (w.templateId) ids.add(w.templateId);
+    }
+  }
+  return ids;
+}
+
+/**
  * Формирует детерминированное имя файла для экспорта.
  */
 function buildFileName(datasetId: string): string {
@@ -162,6 +194,13 @@ export function buildConfigExportPayload(
     datasetGroupIds
   );
 
+  // 2b. Оставляем только шаблоны, задействованные в группах/дашбордах датасета —
+  // выгружать всю глобальную библиотеку шаблонов нелогично (и раздувает конфиг).
+  const referencedTemplateIds = collectReferencedTemplateIds(groups, dashboards);
+  const metricTemplates = context.metricTemplates.filter((t) =>
+    referencedTemplateIds.has(t.id)
+  );
+
   // 3. Собираем итоговый payload
   const payload: ConfigExportPayload = {
     version: 2,
@@ -173,7 +212,7 @@ export function buildConfigExportPayload(
       indicatorGroups: groups,
       hierarchyLevels: context.hierarchyLevels,
       columnConfigs: context.columnConfigs,
-      metricTemplates: context.metricTemplates,
+      metricTemplates,
       groupMetricConfigs:
         Object.keys(groupMetricConfigs).length > 0
           ? groupMetricConfigs
@@ -193,6 +232,7 @@ export function buildConfigExportPayload(
       dashboardsCount: dashboards.length,
       groupsCount: groups.length,
       groupConfigsWithColors: Object.keys(groupMetricConfigs).length,
+      templatesCount: metricTemplates.length,
     },
   };
 }

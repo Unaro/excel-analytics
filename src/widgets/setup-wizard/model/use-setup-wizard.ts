@@ -63,7 +63,22 @@ export function useSetupWizard() {
 
   const hasActiveData = !!activeDataset && (activeDataset.metadata?.totalRows ?? 0) > 0;
 
-  const [step, setStep] = useState<SetupStep>('manager');
+  // Внешний запрос «сразу к выбору источника»: DatasetSwitcher → «Добавить
+  // датасет» ставит маркер 'setup-step'='upload' перед переходом на /setup.
+  // Читаем один раз при инициализации (ленивый useState — без эффекта, чтобы
+  // не плодить set-state-in-effect). Флаг отключает авто-навигацию, иначе при
+  // активном датасете она увела бы на 'columns'/'manager'. Сбрасывается, как
+  // только пользователь выберет файл — дальше навигация штатная.
+  const [forcedAddSource, setForcedAddSource] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    if (sessionStorage.getItem('setup-step') !== 'upload') return false;
+    sessionStorage.removeItem('setup-step');
+    return true;
+  });
+
+  const [step, setStep] = useState<SetupStep>(() =>
+    forcedAddSource ? 'upload' : 'manager'
+  );
   const [sourceType, setSourceType] = useState<SourceType>('file');
   const [pgStep, setPgStep] = useState<PgStep>('connection');
   const [pgConfig, setPgConfig] = useState<unknown>(null);
@@ -100,6 +115,7 @@ export function useSetupWizard() {
   // Пока выбран файл под импорт — не вмешиваемся (пользователь на шаге «Импорт»).
   useEffect(() => {
     if (selectedFile) return;
+    if (forcedAddSource) return;
     if (activeId && !datasets[activeId]) {
       setStep(dataDatasetCount > 0 ? 'manager' : 'upload');
       return;
@@ -109,10 +125,11 @@ export function useSetupWizard() {
     } else {
       setStep(dataDatasetCount > 0 ? 'manager' : 'upload');
     }
-  }, [activeId, hasActiveData, datasets, dataDatasetCount, selectedFile]);
+  }, [activeId, hasActiveData, datasets, dataDatasetCount, selectedFile, forcedAddSource]);
 
   /** Файл выбран: строим лёгкий предпросмотр и уходим на шаг «Импорт». */
   const handleFileSelected = useCallback(async (file: File) => {
+    setForcedAddSource(false); // дальше — штатная навигация визарда
     setSelectedFile(file);
     setPreview(null);
     setImportParams(null);

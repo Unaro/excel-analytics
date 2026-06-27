@@ -79,9 +79,11 @@ export function useConfigPersistence() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      const { dashboardsCount, groupsCount, groupConfigsWithColors } = result.stats;
+      const { dashboardsCount, groupsCount, groupConfigsWithColors, templatesCount } =
+        result.stats;
       toast.success(
-        `Экспортировано: ${dashboardsCount} дашбордов, ${groupsCount} групп` +
+        `Экспортировано: ${dashboardsCount} дашбордов, ${groupsCount} групп, ` +
+          `${templatesCount} шаблонов` +
           (groupConfigsWithColors > 0
             ? `, ${groupConfigsWithColors} групп с настройками цвета`
             : '')
