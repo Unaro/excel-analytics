@@ -283,6 +283,36 @@ export function compileQuery(
   const whereConditions: string[] = [];
   const calculatedMetrics: CalculatedMetricEntry[] = [];
 
+  // ───────────────────────────────────────────────────────────
+  // WHERE clause (строим ДО измерений: нужен подзапросу Top-N второй оси)
+  // ───────────────────────────────────────────────────────────
+  for (const f of filters) {
+    if (!isColumnValid(f.columnName)) continue;
+    const col = quote(f.columnName);
+    const op = sanitizeOperator(f.operator);
+
+    if (dialect === 'postgres') {
+      if (op === 'BETWEEN' && f.value2 != null) {
+        whereConditions.push(
+          `${col} BETWEEN $${pgParams.length + 1} AND $${pgParams.length + 2}`
+        );
+        pgParams.push(f.value as QueryParam, f.value2 as QueryParam);
+      } else {
+        whereConditions.push(`${col} ${op} $${pgParams.length + 1}`);
+        pgParams.push(f.value as QueryParam);
+      }
+    } else {
+      if (op === 'BETWEEN' && f.value2 != null) {
+        whereConditions.push(
+          `${col} BETWEEN ${escapeDuckDBValue(f.value)} AND ${escapeDuckDBValue(f.value2)}`
+        );
+      } else {
+        whereConditions.push(`${col} ${op} ${escapeDuckDBValue(f.value)}`);
+      }
+    }
+  }
+  const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
   // ── Измерения группировки ──────────────────────────────────
   // Категориальное (groupByColumn) и временно́е (groupByDateColumn +
   // granularity) измерения независимы:
@@ -312,7 +342,16 @@ export function compileQuery(
         );
       }
     } else if (secondaryDim.kind === 'column') {
-      dateExpr = quote(secondaryDim.columnName);
+      const raw = quote(secondaryDim.columnName);
+      // Top-N: редкие значения сворачиваются в «Прочее» прямо в SQL (метрики
+      // «Прочее» агрегируются движком корректно). Подзапрос top-N по тем же
+      // FROM+WHERE; PG-плейсхолдеры $n переиспользуются (новых параметров нет).
+      dateExpr =
+        secondaryDim.topN && secondaryDim.topN > 0
+          ? `CASE WHEN ${raw} IN (SELECT ${raw} FROM ${tableName} ${whereClause} ` +
+            `GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT ${Math.floor(secondaryDim.topN)}) ` +
+            `THEN ${raw} ELSE 'Прочее' END`
+          : raw;
     }
   }
 
@@ -340,35 +379,6 @@ export function compileQuery(
     baseSelectParts.push(`NULL AS "_group_label"`);
   }
   baseSelectParts.push(`COUNT(*) AS "_record_count"`);
-
-  // ───────────────────────────────────────────────────────────
-  // WHERE clause
-  // ───────────────────────────────────────────────────────────
-  for (const f of filters) {
-    if (!isColumnValid(f.columnName)) continue;
-    const col = quote(f.columnName);
-    const op = sanitizeOperator(f.operator);
-
-    if (dialect === 'postgres') {
-      if (op === 'BETWEEN' && f.value2 != null) {
-        whereConditions.push(
-          `${col} BETWEEN $${pgParams.length + 1} AND $${pgParams.length + 2}`
-        );
-        pgParams.push(f.value as QueryParam, f.value2 as QueryParam);
-      } else {
-        whereConditions.push(`${col} ${op} $${pgParams.length + 1}`);
-        pgParams.push(f.value as QueryParam);
-      }
-    } else {
-      if (op === 'BETWEEN' && f.value2 != null) {
-        whereConditions.push(
-          `${col} BETWEEN ${escapeDuckDBValue(f.value)} AND ${escapeDuckDBValue(f.value2)}`
-        );
-      } else {
-        whereConditions.push(`${col} ${op} ${escapeDuckDBValue(f.value)}`);
-      }
-    }
-  }
 
   // ───────────────────────────────────────────────────────────
   // SELECT expressions (base CTE)

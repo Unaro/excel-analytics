@@ -475,7 +475,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
                   else if (v.startsWith('date:') && dateColumn)
                     setSecondary({ kind: 'date', columnName: dateColumn.columnName, granularity: v.slice(5) as DateGranularity });
                   else if (v.startsWith('col:'))
-                    setSecondary({ kind: 'column', columnName: v.slice(4) });
+                    setSecondary({ kind: 'column', columnName: v.slice(4), topN: 12 });
                 }}
                 title="Вторая ось разбивки (дата или колонка)"
               >
@@ -491,6 +491,18 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
                   </SelectOption>
                 ))}
               </Select>
+              {secondary?.kind === 'column' && (
+                <input
+                  type="number"
+                  min={1}
+                  value={secondary.topN ?? 12}
+                  onChange={e =>
+                    setSecondary({ kind: 'column', columnName: secondary.columnName, topN: Math.max(1, Number(e.target.value) || 12) })
+                  }
+                  title="Топ-N значений, остальное → «Прочее»"
+                  className="w-16 h-9 px-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              )}
             </div>
           )}
           <PalettePicker

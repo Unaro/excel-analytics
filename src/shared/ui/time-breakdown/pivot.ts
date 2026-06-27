@@ -32,11 +32,22 @@ export function metricValueOf(
   return typeof vm?.value === 'number' ? vm.value : null;
 }
 
-/** Оси-интервалы: уникальные непустые dateLabel, хронологически (строковая сортировка). */
+/** Свёрнутый «хвост» Top-N второй оси — всегда последним столбцом. */
+export const OTHER_LABEL = 'Прочее';
+
+/**
+ * Оси второй размерности: уникальные непустые метки, сортировка строковая
+ * (даты — хронологически по формату, категории — по алфавиту). «Прочее»
+ * (свёрнутый Top-N-хвост) всегда в конце.
+ */
 export function buildPivotDates(items: BreakdownItem[]): string[] {
   return Array.from(new Set(items.map((i) => i.dateLabel ?? '')))
     .filter(Boolean)
-    .sort();
+    .sort((a, b) => {
+      if (a === OTHER_LABEL) return 1;
+      if (b === OTHER_LABEL) return -1;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
 }
 
 /**

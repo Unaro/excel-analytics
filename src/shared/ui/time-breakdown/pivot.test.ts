@@ -54,6 +54,14 @@ describe('buildPivotDates', () => {
   it('пустой массив без дат', () => {
     expect(buildPivotDates([item('A', undefined, [vm('m1', 1)])])).toEqual([]);
   });
+  it('«Прочее» (свёрнутый Top-N) всегда последним', () => {
+    const items = [
+      item('X', 'Прочее', [vm('m1', 1)]),
+      item('X', 'Бета', [vm('m1', 1)]),
+      item('X', 'Альфа', [vm('m1', 1)]),
+    ];
+    expect(buildPivotDates(items)).toEqual(['Альфа', 'Бета', 'Прочее']);
+  });
 });
 
 describe('buildPivotRows', () => {
