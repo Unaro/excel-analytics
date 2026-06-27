@@ -41,9 +41,40 @@ export function useEngineStatus(): EngineStatusState {
   const sourceType = useDatasetStore(s =>
     (activeDatasetId ? s.datasets[activeDatasetId]?.sourceType : undefined) ?? 'file'
   );
+  // Статус восстановления активного датасета (его ставит гидрация-restore):
+  // нужен, чтобы провал restore ('error') не превращался в вечный лоадер.
+  const activeEngineStatus = useDatasetStore(s =>
+    activeDatasetId ? s.datasets[activeDatasetId]?.engineStatus : undefined
+  );
+  // Существует ли активный датасет реально (id мог остаться от удалённого/
+  // сброшенного — тогда это «нет данных», а не «грузим»).
+  const activeDatasetExists = useDatasetStore(s =>
+    activeDatasetId ? !!s.datasets[activeDatasetId] : false
+  );
 
   const [status, setStatus] = useState<DuckDBEngineStatus>(duckdbManager.status);
   const [isReloading, setIsReloading] = useState(false);
+
+  // Гидрация dataset-стора (persist из IndexedDB) асинхронна: до её завершения
+  // activeDatasetId ещё null, а статус движка — дефолтный 'no-data'. Чтобы не
+  // мигать терминальной заглушкой «Нет данных», ждём гидрацию.
+  //
+  // ВАЖНО: стартуем строго с false на ЛЮБОМ первом рендере (и сервер, и клиент).
+  // hasHydrated() в инициализаторе вернул бы разные значения на сервере (false)
+  // и клиенте (часто true — стор успел гидрироваться) → гидрационный мисматч
+  // (сайдбар рисует <a> на сервере и <div> на клиенте). Проверку выносим в
+  // эффект (после монтирования), там же закрываем гонку «check-then-subscribe»:
+  // если гидрация уже завершилась между рендером и эффектом, onFinishHydration
+  // (одноразовый) больше не сработает — поэтому сперва проверяем hasHydrated().
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => {
+    if (useDatasetStore.persist?.hasHydrated?.() ?? true) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- разовая синхронизация SSR-флага после монтирования
+      setHydrated(true);
+      return;
+    }
+    return useDatasetStore.persist?.onFinishHydration?.(() => setHydrated(true));
+  }, []);
 
   // Подписка на изменения статуса
   useEffect(() => {
@@ -94,8 +125,25 @@ export function useEngineStatus(): EngineStatusState {
     }
   }, [sourceType, activeDatasetId]);
 
+  // Эффективный статус: 'no-data' от менеджера НЕ означает «нет данных», пока
+  // стор гидрируется или есть активный file-датасет (движок лениво/через
+  // restore ещё загружает его в воркер; registerArrowBuffer затем ставит
+  // 'ready'). В этих случаях показываем loading, а не терминальную заглушку.
+  const effectiveStatus: DuckDBEngineStatus =
+    sourceType !== 'file'
+      ? 'ready'
+      : !hydrated
+        ? 'loading'
+        : status !== 'no-data'
+          ? status // менеджер знает реальный статус (ready/loading/disconnected/error)
+          : !activeDatasetId || !activeDatasetExists
+            ? 'no-data' // нет активного датасета (или он удалён/сброшен)
+            : activeEngineStatus === 'error'
+              ? 'error' // restore активного датасета провалился
+              : 'loading'; // данные есть, движок ещё восстанавливает
+
   return {
-    status: sourceType === 'file' ? status : 'ready',
+    status: effectiveStatus,
     activeFileDatasetId: sourceType === 'file' ? activeDatasetId : null,
     reload,
     isReloading,

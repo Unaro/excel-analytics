@@ -16,11 +16,11 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   Legend,
 } from 'recharts';
 import { ScrollableChart } from '@/shared/ui/scrollable-chart';
-import { Search, AlertTriangle, ChevronRight, TrendingUp, BarChart3, LineChart as LineChartIcon } from 'lucide-react';
+import { Search, AlertTriangle, ChevronRight, TrendingUp, Grid2x2 } from 'lucide-react';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Select, SelectOption } from '@/shared/ui/select';
@@ -40,7 +40,9 @@ import {
   metricValueOf,
   cellRatioOf,
   type PivotRow,
+  type MetricCalcSpec,
 } from './pivot';
+import { heatmapExtent, heatmapColor } from './heatmap';
 import { groupThresholdsByValue } from '@/shared/lib/utils/thresholds';
 import { renderThresholdReferenceLines } from '@/shared/ui/threshold-marker';
 import type { BreakdownItem } from '@/shared/lib/types/computation';
@@ -78,6 +80,14 @@ export interface TimeBreakdownSectionProps {
   normalizeByVmId?: Map<string, NormalizeConfig>;
   /** Палитра цветов категорий-серий (из group.paletteId). Дефолт — CATEGORY_SERIES_COLORS. */
   palette?: string[];
+  /** Сколько серий показывать по умолчанию (top-N по сумме метрики). Дефолт — 8. */
+  seriesLimit?: number;
+  /**
+   * Спеки расчётных метрик (vmId → формула+операнды) для КОРРЕКТНОГО итога строки
+   * (Σ-столбец): формула на суммах операндов, а не сумма долей. Нет записи →
+   * метрика суммируется как аддитивная.
+   */
+  calcSpecByVmId?: Record<string, MetricCalcSpec>;
 }
 
 export const TimeBreakdownSection = memo(function TimeBreakdownSection({
@@ -91,6 +101,8 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   resolveLabel,
   normalizeByVmId,
   palette = SERIES_COLORS,
+  seriesLimit,
+  calcSpecByVmId,
 }: TimeBreakdownSectionProps) {
   const display = useMemo(
     () => resolveLabel ?? ((label: string) => label),
@@ -116,12 +128,13 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const effectiveFormat = effectiveChartFormat(currentMetric?.displayFormat, isNormalized);
 
   const [searchQuery, setSearchQuery] = useState('');
+  // Тепловая карта: окраска ячеек pivot градиентом по значению (эфемерно, как
+  // остальные 2-D-контролы). Заменяет CF-окраску, пока включена.
+  const [heatmap, setHeatmap] = useState(false);
   // null — авто-режим top-N; Set — явный выбор пользователя
   const [selectedLabels, setSelectedLabels] = useState<Set<string> | null>(null);
-  // Тип 2-D-чарта — собственный для 2-D (оси иные, чем у 1-D): линии или
-  // сгруппированные столбцы по периодам. Локальное состояние (как metricId/
-  // searchQuery); персист — в Фазе 3 вместе с палитрой и сохранением вида.
-  const [chartKind, setChartKind] = useState<'line' | 'bar'>('line');
+  // Сколько серий показывать по умолчанию (top-N по сумме метрики).
+  const effectiveSeriesLimit = seriesLimit ?? DEFAULT_SERIES_LIMIT;
 
   // Чарт и pivot-таблица — одна ось дат: их горизонтальные скроллы связаны,
   // чтобы листать вместе (а не наводиться на каждый скроллбар отдельно).
@@ -156,8 +169,8 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
   const dates = useMemo(() => buildPivotDates(items), [items]);
 
   const rows = useMemo<PivotRow[]>(
-    () => buildPivotRows(items, effectiveMetricId),
-    [items, effectiveMetricId]
+    () => buildPivotRows(items, effectiveMetricId, calcSpecByVmId?.[effectiveMetricId]),
+    [items, effectiveMetricId, calcSpecByVmId]
   );
 
   // Нормализация ПО ПЕРИОДАМ: ориентир (знаменатель) — по столбцу каждой даты
@@ -203,8 +216,8 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     if (selectedLabels) {
       return rows.filter(r => selectedLabels.has(r.label)).map(r => r.label);
     }
-    return rows.slice(0, DEFAULT_SERIES_LIMIT).map(r => r.label);
-  }, [rows, selectedLabels]);
+    return rows.slice(0, effectiveSeriesLimit).map(r => r.label);
+  }, [rows, selectedLabels, effectiveSeriesLimit]);
 
   const chartLabelSet = useMemo(() => new Set(chartLabels), [chartLabels]);
 
@@ -263,6 +276,28 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
     return rule ? COLOR_STYLES[rule.color] : null;
   };
 
+  // Тепловая карта: единый экстент по всем ячейкам (строки×даты) выбранной
+  // метрики в display-масштабе; фон ячейки — градиент по интенсивности.
+  const heatExtent = useMemo(() => {
+    if (!heatmap) return null;
+    const vals: (number | null)[] = [];
+    for (const r of rows) {
+      for (const d of dates) {
+        const cell = r.cells.get(d);
+        const v = isNormalized ? cellRatio(cell) : metricValue(cell);
+        vals.push(v === null ? null : toDisplayScale(v, effectiveFormat));
+      }
+    }
+    return heatmapExtent(vals);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heatmap, rows, dates, isNormalized, effectiveMetricId, dateRefs, effectiveFormat]);
+
+  const cellHeat = (item: BreakdownItem | undefined): string | undefined => {
+    if (!heatmap) return undefined;
+    const v = isNormalized ? cellRatio(item) : metricValue(item);
+    return heatmapColor(v === null ? null : toDisplayScale(v, effectiveFormat), heatExtent);
+  };
+
   if (rows.length === 0 || dates.length === 0) {
     return (
       <Card className="p-12 text-center text-slate-400">
@@ -285,8 +320,8 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {rows.length} элементов · {dates.length} интервалов · на графике{' '}
             {chartLabels.length}
-            {selectedLabels === null && rows.length > DEFAULT_SERIES_LIMIT && (
-              <> (top-{DEFAULT_SERIES_LIMIT}, состав — флажками в таблице)</>
+            {selectedLabels === null && rows.length > effectiveSeriesLimit && (
+              <> (top-{effectiveSeriesLimit}, состав — флажками в таблице)</>
             )}
           </p>
           {truncated && (
@@ -297,26 +332,22 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* Тип 2-D-чарта: линии / сгруппированные столбцы по периодам. */}
-          <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-            {(['line', 'bar'] as const).map(k => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setChartKind(k)}
-                title={k === 'line' ? 'Линии' : 'Столбцы'}
-                aria-pressed={chartKind === k}
-                className={cn(
-                  'px-2.5 h-9 flex items-center transition-colors',
-                  chartKind === k
-                    ? 'bg-indigo-500 text-white'
-                    : 'bg-white dark:bg-slate-950 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900'
-                )}
-              >
-                {k === 'line' ? <LineChartIcon size={14} /> : <BarChart3 size={14} />}
-              </button>
-            ))}
-          </div>
+          {/* Линия/столбцы 2-D задаёт стиль ВЫБРАННОЙ метрики на её KPI-карточке
+              (единый контрол, как в 1-D) — отдельного тоггла здесь нет. */}
+          <button
+            type="button"
+            onClick={() => setHeatmap(h => !h)}
+            aria-pressed={heatmap}
+            title="Тепловая карта (окраска ячеек по значению)"
+            className={cn(
+              'px-2.5 h-9 flex items-center rounded-lg border transition-colors shrink-0',
+              heatmap
+                ? 'bg-indigo-500 text-white border-indigo-500'
+                : 'bg-white dark:bg-slate-950 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900'
+            )}
+          >
+            <Grid2x2 size={14} />
+          </button>
           {metricOptions.length > 1 && (
             <Select
               className="w-52 h-9 text-sm"
@@ -382,10 +413,12 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
             );
             const legend = <Legend wrapperStyle={{ fontSize: 11 }} />;
             const margin = { top: 8, right: 16, bottom: 4, left: 8 };
-            // Стиль линий 2-D берётся из chartStyle ВЫБРАННОЙ метрики (как в 1-D
-            // GroupBarChart) — так настройки curve/dash на KPI-карточке влияют и
-            // здесь. Все серии-категории этой метрики рисуются единым стилем.
-            // kind (столбец/линия) в 2-D задаёт собственный тоггл chartKind.
+            // Вид 2-D полностью задаёт chartStyle ВЫБРАННОЙ метрики на её
+            // KPI-карточке (единый контрол, как в 1-D): kind=bar/line/area —
+            // столбцы, линии или области; curve/dash — стиль обводки. Все
+            // серии-категории этой метрики рисуются единым стилем.
+            const styleKind = currentMetric?.chartStyle?.kind;
+            const chartKind = styleKind === 'area' ? 'area' : styleKind === 'line' ? 'line' : 'bar';
             const lineCurve = currentMetric?.chartStyle?.curve === 'linear' ? 'linear' : 'monotone';
             const lineDash = currentMetric?.chartStyle?.dash === 'dashed' ? '6 4' : undefined;
 
@@ -403,6 +436,33 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                     />
                   ))}
                 </BarChart>
+              );
+            }
+
+            if (chartKind === 'area') {
+              return (
+                <AreaChart data={chartData} margin={margin}>
+                  {grid}{xAxis}{yAxis}{tooltip}{legend}
+                  {renderThresholdReferenceLines(thresholds)}
+                  {chartLabels.map((label, i) => {
+                    const c = palette[i % palette.length];
+                    return (
+                      <Area
+                        key={label}
+                        type={lineCurve}
+                        dataKey={label}
+                        name={display(label)}
+                        stroke={c}
+                        strokeWidth={2}
+                        strokeDasharray={lineDash}
+                        fill={c}
+                        fillOpacity={0.2}
+                        dot={dates.length <= 31}
+                        connectNulls
+                      />
+                    );
+                  })}
+                </AreaChart>
               );
             }
 
@@ -499,13 +559,15 @@ export const TimeBreakdownSection = memo(function TimeBreakdownSection({
                 </td>
                 {dates.map(d => {
                   const item = row.cells.get(d);
+                  const heat = cellHeat(item);
                   return (
                     <td key={d} className="px-4 py-2 text-sm text-right whitespace-nowrap">
                       <span
                         className={cn(
                           'font-mono text-slate-700 dark:text-slate-300 px-1.5 py-0.5 rounded-md',
-                          cellColorClass(item)
+                          !heatmap && cellColorClass(item)
                         )}
+                        style={heat ? { backgroundColor: heat } : undefined}
                       >
                         {metricFormatted(item)}
                       </span>

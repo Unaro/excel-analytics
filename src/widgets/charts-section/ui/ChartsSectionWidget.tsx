@@ -26,7 +26,9 @@ interface ChartsSectionWidgetProps {
   palette?: string[];
 }
 
-const CHART_TYPE_CONFIG: Record<ChartType, { label: string; icon: typeof BarChart3; colorClass: string }> = {
+// Partial: дашборд предлагает не все типы ChartType (treemap пока только на
+// странице группы). Object.keys ниже строит кнопки лишь по заданным ключам.
+const CHART_TYPE_CONFIG: Partial<Record<ChartType, { label: string; icon: typeof BarChart3; colorClass: string }>> = {
   bar: { label: 'Столбцы', icon: BarChart3, colorClass: 'text-indigo-600 dark:text-indigo-300' },
   radar: { label: 'Радар', icon: Hexagon, colorClass: 'text-purple-600 dark:text-purple-300' },
 };
@@ -95,6 +97,7 @@ export function ChartsSectionWidget({
           role={mode === 'single' ? 'radiogroup' : 'group'} aria-label="Тип графика">
           {(Object.keys(CHART_TYPE_CONFIG) as ChartType[]).map(type => {
             const config = CHART_TYPE_CONFIG[type];
+            if (!config) return null;
             const Icon = config.icon;
             const isSelected = chartTypes.includes(type);
             return (

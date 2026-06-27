@@ -323,16 +323,41 @@ export function processParsedConfigImport(
 
   const { data } = config;
 
-  // 2. Metric templates — добавляем только новые
+  // 2. Metric templates — добавляем только новые. Дедуп по id ИЛИ по
+  // (имя+формула): шаблон с тем же именем и формулой, но другим id — это тот
+  // же логический показатель (та же библиотека, независимо созданная), его
+  // переиспуем и переназначаем ссылки. Та же логика, что в sync-engine при
+  // авто-создании шаблонов.
+  const tfKey = (t: { name: string; formula: string }) => `${t.name} ${t.formula}`;
   const existingTemplateIds = new Set(existingMetricTemplates.map((t) => t.id));
-  const newMetricTemplates = (data.metricTemplates || []).filter(
-    (t) => !existingTemplateIds.has(t.id)
+  const existingByNameFormula = new Map(
+    existingMetricTemplates.map((t) => [tfKey(t), t.id] as const)
   );
+  // импортный templateId → целевой id (для ремаппинга ссылок групп/дашбордов).
+  const templateIdRemap = new Map<string, string>();
+  const newMetricTemplates: MetricTemplate[] = [];
+  for (const t of data.metricTemplates || []) {
+    if (existingTemplateIds.has(t.id)) continue; // ровно этот шаблон уже есть
+    const twinId = existingByNameFormula.get(tfKey(t));
+    if (twinId) {
+      templateIdRemap.set(t.id, twinId); // смысловой дубль — переиспуем
+      continue;
+    }
+    newMetricTemplates.push(t);
+    // Регистрируем, чтобы дубли ВНУТРИ импорта схлопнулись на первое вхождение.
+    existingByNameFormula.set(tfKey(t), t.id);
+  }
+  const remapTpl = (id: string | undefined): string | undefined =>
+    id ? templateIdRemap.get(id) ?? id : id;
 
-  // 3. Indicator groups — переназначаем datasetId
+  // 3. Indicator groups — переназначаем datasetId + ремаппинг templateId метрик.
   const importedGroups: IndicatorGroup[] = (data.indicatorGroups || []).map((g) => ({
     ...g,
     datasetId: targetDatasetId,
+    metrics:
+      templateIdRemap.size > 0
+        ? g.metrics.map((m) => ({ ...m, templateId: remapTpl(m.templateId) ?? m.templateId }))
+        : g.metrics,
   }));
   const mergedIndicatorGroups = mergeWithExisting(
     existingIndicatorGroups,
@@ -363,6 +388,16 @@ export function processParsedConfigImport(
     );
     importedDashboards.push(dashboard);
     totalVmConflicts += conflictCount;
+
+    // Ремаппинг templateId-ссылок на схлопнутые шаблоны (колонки + KPI-виджеты).
+    if (templateIdRemap.size > 0) {
+      for (const col of dashboard.virtualMetrics) {
+        if (col.templateId) col.templateId = remapTpl(col.templateId);
+      }
+      for (const w of dashboard.kpiWidgets) {
+        w.templateId = remapTpl(w.templateId) ?? w.templateId;
+      }
+    }
 
     // Регистрируем использованные VM ID для следующих дашбордов
     for (const vm of dashboard.virtualMetrics) {

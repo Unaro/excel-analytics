@@ -221,10 +221,19 @@ export function compileQuery(
     metricTemplates,
     tableName,
     groupByColumn,
+    secondary,
     groupByDateColumn,
     groupByDateGranularity,
     validColumns,
   } = params;
+
+  // Вторая ось: новый дескриптор `secondary` имеет приоритет; иначе выводим из
+  // legacy date-полей (дашборд ещё на них). column/bucket — Фазы B/C.
+  const secondaryDim =
+    secondary ??
+    (groupByDateColumn
+      ? { kind: 'date' as const, columnName: groupByDateColumn, granularity: groupByDateGranularity as DateGranularity }
+      : undefined);
 
   // Дефолтный авто-агрегат и режим «требовать явный агрегат» (из настроек).
   const formulaOptions = params.formulaOptions ?? DEFAULT_AGGREGATE_OPTIONS;
@@ -274,60 +283,8 @@ export function compileQuery(
   const whereConditions: string[] = [];
   const calculatedMetrics: CalculatedMetricEntry[] = [];
 
-  // ── Измерения группировки ──────────────────────────────────
-  // Категориальное (groupByColumn) и временно́е (groupByDateColumn +
-  // granularity) измерения независимы:
-  //  - только категория → _group_label = колонка (как раньше);
-  //  - только дата     → _group_label = date_trunc-метка (1-D путь
-  //    потребителей сохраняется);
-  //  - оба             → двумерная группировка: _group_label = категория,
-  //    _date_label = date_trunc-метка.
-  let safeGroupByColumn: string | undefined;
-  // Выражения для GROUP BY (по числу активных измерений)
-  const groupByExprs: string[] = [];
-  // true — сортировать breakdown хронологически, а не по первой метрике
-  let orderByDateLabel = false;
-  // true — в SELECT есть отдельная колонка _date_label (двумерный режим)
-  let hasDateLabelColumn = false;
-
-  let dateExpr: string | undefined;
-  if (groupByDateColumn && isColumnValid(groupByDateColumn)) {
-    if (groupByDateGranularity && DATE_GRANULARITIES.has(groupByDateGranularity)) {
-      dateExpr = buildDateLabelExpr(groupByDateColumn, groupByDateGranularity, dialect);
-    } else {
-      logger.warn(
-        `[query-compiler] Blocked invalid date granularity: ${groupByDateGranularity}`
-      );
-    }
-  }
-
-  if (groupByColumn && isColumnValid(groupByColumn)) {
-    safeGroupByColumn = groupByColumn;
-    const labelExpr = quote(groupByColumn);
-    groupByExprs.push(labelExpr);
-    baseSelectParts.push(`${labelExpr} AS "_group_label"`);
-
-    if (dateExpr) {
-      // Двумерный режим: время — вторая колонка метки
-      groupByExprs.push(dateExpr);
-      baseSelectParts.push(`${dateExpr} AS "_date_label"`);
-      hasDateLabelColumn = true;
-      orderByDateLabel = true;
-    }
-  } else if (dateExpr) {
-    // Только время: метка группы — временно́й интервал
-    safeGroupByColumn = groupByDateColumn;
-    groupByExprs.push(dateExpr);
-    baseSelectParts.push(`${dateExpr} AS "_group_label"`);
-    orderByDateLabel = true;
-  } else if (groupByColumn) {
-    // Категориальная колонка не прошла whitelist
-    baseSelectParts.push(`NULL AS "_group_label"`);
-  }
-  baseSelectParts.push(`COUNT(*) AS "_record_count"`);
-
   // ───────────────────────────────────────────────────────────
-  // WHERE clause
+  // WHERE clause (строим ДО измерений: нужен подзапросу Top-N второй оси)
   // ───────────────────────────────────────────────────────────
   for (const f of filters) {
     if (!isColumnValid(f.columnName)) continue;
@@ -354,6 +311,74 @@ export function compileQuery(
       }
     }
   }
+  const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+
+  // ── Измерения группировки ──────────────────────────────────
+  // Категориальное (groupByColumn) и временно́е (groupByDateColumn +
+  // granularity) измерения независимы:
+  //  - только категория → _group_label = колонка (как раньше);
+  //  - только дата     → _group_label = date_trunc-метка (1-D путь
+  //    потребителей сохраняется);
+  //  - оба             → двумерная группировка: _group_label = категория,
+  //    _date_label = date_trunc-метка.
+  let safeGroupByColumn: string | undefined;
+  // Выражения для GROUP BY (по числу активных измерений)
+  const groupByExprs: string[] = [];
+  // true — сортировать breakdown хронологически, а не по первой метрике
+  let orderByDateLabel = false;
+  // true — в SELECT есть отдельная колонка _date_label (двумерный режим)
+  let hasDateLabelColumn = false;
+
+  // Выражение второй оси (источник _date_label): дата → date_trunc-метка,
+  // column → сырое значение колонки. bucket/topN — Фазы C/B.
+  let dateExpr: string | undefined;
+  if (secondaryDim && isColumnValid(secondaryDim.columnName)) {
+    if (secondaryDim.kind === 'date') {
+      if (secondaryDim.granularity && DATE_GRANULARITIES.has(secondaryDim.granularity)) {
+        dateExpr = buildDateLabelExpr(secondaryDim.columnName, secondaryDim.granularity, dialect);
+      } else {
+        logger.warn(
+          `[query-compiler] Blocked invalid date granularity: ${secondaryDim.granularity}`
+        );
+      }
+    } else if (secondaryDim.kind === 'column') {
+      const raw = quote(secondaryDim.columnName);
+      // Top-N: редкие значения сворачиваются в «Прочее» прямо в SQL (метрики
+      // «Прочее» агрегируются движком корректно). Подзапрос top-N по тем же
+      // FROM+WHERE; PG-плейсхолдеры $n переиспользуются (новых параметров нет).
+      dateExpr =
+        secondaryDim.topN && secondaryDim.topN > 0
+          ? `CASE WHEN ${raw} IN (SELECT ${raw} FROM ${tableName} ${whereClause} ` +
+            `GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT ${Math.floor(secondaryDim.topN)}) ` +
+            `THEN ${raw} ELSE 'Прочее' END`
+          : raw;
+    }
+  }
+
+  if (groupByColumn && isColumnValid(groupByColumn)) {
+    safeGroupByColumn = groupByColumn;
+    const labelExpr = quote(groupByColumn);
+    groupByExprs.push(labelExpr);
+    baseSelectParts.push(`${labelExpr} AS "_group_label"`);
+
+    if (dateExpr) {
+      // Двумерный режим: вторая ось — отдельная колонка метки
+      groupByExprs.push(dateExpr);
+      baseSelectParts.push(`${dateExpr} AS "_date_label"`);
+      hasDateLabelColumn = true;
+      orderByDateLabel = true;
+    }
+  } else if (dateExpr) {
+    // Только вторая ось: метка группы — её значение
+    safeGroupByColumn = secondaryDim?.columnName;
+    groupByExprs.push(dateExpr);
+    baseSelectParts.push(`${dateExpr} AS "_group_label"`);
+    orderByDateLabel = true;
+  } else if (groupByColumn) {
+    // Категориальная колонка не прошла whitelist
+    baseSelectParts.push(`NULL AS "_group_label"`);
+  }
+  baseSelectParts.push(`COUNT(*) AS "_record_count"`);
 
   // ───────────────────────────────────────────────────────────
   // SELECT expressions (base CTE)

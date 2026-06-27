@@ -90,6 +90,9 @@ export function DatasetSwitcher({ isDisabled = false }: DatasetSwitcherProps) {
 
   const handleAddNew = () => {
     setOpen(false);
+    // Сразу к шагу выбора источника, минуя менеджер датасетов (визард читает
+    // маркер при монтировании — см. use-setup-wizard).
+    sessionStorage.setItem('setup-step', 'upload');
     router.push('/setup');
   };
 

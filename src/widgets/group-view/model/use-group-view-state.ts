@@ -2,14 +2,15 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { VirtualMetric } from '@/shared/lib/validators';
 import { SortConfig } from './types';
-import { ChartType } from '@/shared/lib/types/chart';
 
 
-const DEFAULT_CHART_TYPES: ChartType[] = ['bar', 'radar'];
 const DEFAULT_SELECTTED_METRIC_IDS: string[] = [];
 /**
  * UI-состояние виджета просмотра группы.
- * Управляет выбором метрик для визуализации, типами графиков и сортировкой.
+ * Управляет выбором метрик для визуализации и сортировкой.
+ *
+ * Типы чартов (`chartTypes`) больше НЕ здесь — они персистятся на группе
+ * (IndicatorGroup.chartView), GroupViewContent читает их через resolveChartView.
  *
  * Дефолты («первая метрика активна», «сортировка по первой активной»)
  * ДЕРИВИРУЮТСЯ во время рендера, а не записываются в state эффектами:
@@ -19,7 +20,6 @@ const DEFAULT_SELECTTED_METRIC_IDS: string[] = [];
 export function useGroupViewState(virtualMetrics: VirtualMetric[]) {
   // null/[] = «пользователь ещё не выбирал» → действует дефолт
   const [selectedMetricIds, setSelectedMetricIds] = useState<string[]>(DEFAULT_SELECTTED_METRIC_IDS);
-  const [chartTypes, setChartTypes] = useState<ChartType[]>(DEFAULT_CHART_TYPES);
   const [userSortConfig, setUserSortConfig] = useState<SortConfig | null>(null);
 
   // Дефолт: первая метрика группы
@@ -56,16 +56,10 @@ export function useGroupViewState(virtualMetrics: VirtualMetric[]) {
     });
   }, [virtualMetrics]);
 
-  const handleChartTypesChange = useCallback((types: ChartType[]) => {
-    setChartTypes(types);
-  }, []);
-
   return {
     activeMetricIds,
-    chartTypes,
     sortConfig,
     setSortConfig: setUserSortConfig,
     handleToggleMetric,
-    handleChartTypesChange,
   };
 }

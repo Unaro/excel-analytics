@@ -13,6 +13,10 @@ interface GroupKpiGridProps {
   chartStyleByMetricId?: Record<string, MetricChartStyle | undefined>;
   /** Сменить стиль чарта метрики (ключ — sourceMetricId). */
   onChartStyleChange?: (metricId: string, style: MetricChartStyle) => void;
+  /** Группа — для редактора CF на карточке. */
+  groupId?: string;
+  /** sourceMetricId → templateId (CF пишется в шаблон). */
+  metricTemplateIds?: Record<string, string>;
 }
 
 /**
@@ -26,6 +30,8 @@ export const GroupKpiGrid = memo(function GroupKpiGrid({
   onToggleMetric,
   chartStyleByMetricId,
   onChartStyleChange,
+  groupId,
+  metricTemplateIds,
 }: GroupKpiGridProps) {
   const handleToggle = useCallback((id: string) => {
     onToggleMetric(id);
@@ -55,6 +61,9 @@ export const GroupKpiGrid = memo(function GroupKpiGrid({
                 ? (style) => onChartStyleChange(styleKey, style)
                 : undefined
             }
+            groupId={groupId}
+            metricId={metric.sourceMetricId}
+            templateId={metricTemplateIds?.[styleKey]}
           />
         );
       })}

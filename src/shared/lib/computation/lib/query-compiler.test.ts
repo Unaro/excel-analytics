@@ -244,6 +244,50 @@ describe('compileQuery: группировка', () => {
     expect(sql).toContain(`LIMIT ${BREAKDOWN_LIMIT + 1}`);
   });
 
+  it('вторая ось = категориальная колонка (secondary.column): _date_label = сырое значение', () => {
+    const params = makeParams({
+      groupByColumn: 'region',
+      secondary: { kind: 'column', columnName: 'segment' },
+      validColumns: ['region', 'segment', 'revenue'],
+    });
+
+    const { sql } = compileQuery(params, 'duckdb');
+    expect(sql).toContain(`"region" AS "_group_label"`);
+    expect(sql).toContain(`"segment" AS "_date_label"`);
+    expect(sql).toContain(`GROUP BY "region", "segment"`);
+    expect(sql).toContain('ORDER BY "_date_label" ASC, "_group_label" ASC');
+    // никакого date_trunc для категориальной оси
+    expect(sql).not.toContain('date_trunc');
+  });
+
+  it('вторая ось column + topN: CASE WHEN … IN (подзапрос top-N) … ELSE «Прочее»', () => {
+    const params = makeParams({
+      groupByColumn: 'region',
+      secondary: { kind: 'column', columnName: 'segment', topN: 5 },
+      filters: [{ levelId: 'l', levelIndex: 0, columnName: 'region', value: 'A', operator: 'exact' }],
+      validColumns: ['region', 'segment', 'revenue'],
+    });
+    const { sql } = compileQuery(params, 'duckdb');
+    expect(sql).toContain('CASE WHEN "segment" IN (SELECT "segment" FROM');
+    expect(sql).toContain('GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT 5');
+    expect(sql).toContain(`ELSE 'Прочее' END AS "_date_label"`);
+    // подзапрос top-N учитывает те же фильтры пути
+    expect(sql).toContain('WHERE "region" = \'A\'');
+  });
+
+  it('secondary имеет приоритет над legacy date-полями', () => {
+    const params = makeParams({
+      groupByColumn: 'region',
+      secondary: { kind: 'column', columnName: 'segment' },
+      groupByDateColumn: 'created_at',
+      groupByDateGranularity: 'month',
+      validColumns: ['region', 'segment', 'created_at', 'revenue'],
+    });
+    const { sql } = compileQuery(params, 'duckdb');
+    expect(sql).toContain(`"segment" AS "_date_label"`);
+    expect(sql).not.toContain('date_trunc');
+  });
+
   it('невалидная размерность даты отбрасывается — группировка только по категории', () => {
     const params = makeParams({
       groupByColumn: 'region',

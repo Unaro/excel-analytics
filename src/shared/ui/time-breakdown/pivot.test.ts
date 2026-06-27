@@ -54,6 +54,26 @@ describe('buildPivotDates', () => {
   it('пустой массив без дат', () => {
     expect(buildPivotDates([item('A', undefined, [vm('m1', 1)])])).toEqual([]);
   });
+  it('«Прочее» (свёрнутый Top-N) всегда последним', () => {
+    const items = [
+      item('X', 'Прочее', [vm('m1', 1)]),
+      item('X', 'Бета', [vm('m1', 1)]),
+      item('X', 'Альфа', [vm('m1', 1)]),
+    ];
+    expect(buildPivotDates(items)).toEqual(['Альфа', 'Бета', 'Прочее']);
+  });
+});
+
+describe('buildPivotRows: calc-итог', () => {
+  it('расчётная метрика: total = формула на суммах операндов (а не сумма ячеек)', () => {
+    const items = [
+      item('Р1', 'Янв', [vm('a', 100), vm('b', 50)]),
+      item('Р1', 'Фев', [vm('a', 20), vm('b', 30)]),
+    ];
+    const rows = buildPivotRows(items, 'ob', { formula: 'a / b', operandVmByAlias: { a: 'a', b: 'b' } });
+    // Σa/Σb = 120/80 = 1.5
+    expect(rows[0].total).toBeCloseTo(1.5);
+  });
 });
 
 describe('buildPivotRows', () => {
