@@ -130,7 +130,7 @@ export class DuckDBWorkerManager {
 
   private getWorker(): Worker {
     if (!this.worker) {
-      this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+      this.worker = new Worker(new URL('./worker/index.ts', import.meta.url), { type: 'module' });
 
       this.worker.onerror = (event) => {
         logger.error('[DuckDBManager] Worker error:', event);
