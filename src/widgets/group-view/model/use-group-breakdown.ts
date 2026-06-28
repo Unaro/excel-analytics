@@ -63,8 +63,8 @@ export interface GroupBreakdownResult {
 
 export function useGroupBreakdown(
   groupId: string,
-  currentPath: HierarchyFilterValue[], // Переименовали из initialPath, теперь это path из URL
-  setPath: (p: HierarchyFilterValue[]) => void // Добавили сеттер
+  pathValues: string[], // только значения уровней (из URL, компактно)
+  setPathValues: (values: string[]) => void // запись значений в URL
 ): GroupBreakdownResult {
   // Вторая ось 2-D персистится per-group (group-view-prefs-store) — восстанавливаем
   // выбор между визитами. Сырое значение валидируем ниже (колонка/дата могли
@@ -99,6 +99,23 @@ export function useGroupBreakdown(
 
   const levels = useHierarchyStore(
     useShallow(s => (activeDatasetId ? s.getLevels(activeDatasetId) : EMPTY_LEVELS))
+  );
+
+  // Полный путь из URL-значений: поля уровня (id/index/columnName) берём из
+  // иерархии по позиции — путь всегда префикс уровней от корня (drill-down идёт
+  // строго по уровням). displayValue в URL не храним — крошки резолвят его сами.
+  const currentPath = useMemo<HierarchyFilterValue[]>(
+    () =>
+      pathValues.map((value, idx) => {
+        const lvl = levels[idx];
+        return {
+          levelId: lvl?.id ?? `lvl-${idx}`,
+          levelIndex: lvl?.order ?? idx,
+          columnName: lvl?.columnName ?? '',
+          value,
+        };
+      }),
+    [pathValues, levels]
   );
 
   const columnConfigs = useColumnConfigStore(s =>
@@ -273,18 +290,11 @@ const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.
     (label: string) => {
       // В двумерном режиме label — значение уровня иерархии, спуск валиден;
       // в режиме «только время» nextLevel === null, и спуск невозможен.
+      // В URL уходит только значение (label) — поля уровня восстановятся.
       if (!nextLevel) return;
-      const newFilter: HierarchyFilterValue = {
-        levelId: nextLevel.id,
-        levelIndex: nextLevel.order,
-        columnName: nextLevel.columnName,
-        value: label,
-        // Имя из справочника — в крошках виден текст, в WHERE уходит код
-        displayValue: resolveLabel(label),
-      };
-      setPath([...currentPath, newFilter]); 
+      setPathValues([...pathValues, label]);
     },
-      [nextLevel, resolveLabel, currentPath, setPath]
+    [nextLevel, pathValues, setPathValues]
   );
 
   // Клик по хлебной крошке = выбрать ЭТОТ уровень (оставить его в пути),
@@ -292,12 +302,12 @@ const formulaOptionsHash = `${formulaOptions.defaultAggregate}:${formulaOptions.
   // только более глубокие. Подъём выше — клик по родительской крошке или
   // «Все данные».
   const resetToLevel = useCallback((levelIndex: number) => {
-    setPath(currentPath.slice(0, levelIndex + 1));
-  }, [currentPath, setPath]);
+    setPathValues(pathValues.slice(0, levelIndex + 1));
+  }, [pathValues, setPathValues]);
 
   const resetAll = useCallback(() => {
-    setPath([]);
-  }, [setPath]);
+    setPathValues([]);
+  }, [setPathValues]);
 
   return {
     group,

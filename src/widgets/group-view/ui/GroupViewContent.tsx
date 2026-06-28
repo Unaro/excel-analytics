@@ -49,9 +49,10 @@ interface GroupViewContentProps {
 }
 
 export function GroupViewContent({ groupId }: GroupViewContentProps) {
-  const { path, setPath } = useGroupPath();
+  const { pathValues, setPathValues } = useGroupPath();
 
   const {
+    currentPath: path,
     group,
     nextLevel,
     summary,
@@ -69,7 +70,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     secondaryColumns,
     isTwoDimensional,
     resolveLabel,
-  } = useGroupBreakdown(groupId, path, setPath);
+  } = useGroupBreakdown(groupId, pathValues, setPathValues);
 
   // Значение/заголовок второй оси разбивки (дата|колонка) для селектора и pivot.
   const secondaryValue = !secondary
@@ -265,7 +266,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     }
     return map;
   }, [group, templates, columnByMetricId]);
-  const pathValues = useMemo(() => path.map(f => f.value), [path]);
+  // pathValues (значения уровней) приходит из useGroupPath — равно path.map(value).
   // Введённое значение узла для строки разбивки: rawLabel → vmId → число|null.
   const enteredByLabel = useMemo(() => {
     if (nodeMap.size === 0) return undefined;
