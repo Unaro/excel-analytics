@@ -32,6 +32,7 @@ import { useAggregateNodesStore, mergeEnteredVms, enteredVmValues, enteredCalcVm
 import { useMetricTemplateStore } from '@/entities/metric';
 import { extractVariables } from '@/shared/lib/utils/formula';
 import { nodePathKey } from '@/shared/lib/types/aggregate';
+import { encodePathValues } from '@/shared/lib/hooks/group-path-codec';
 
 
 const EMPTY_FILTERS: HierarchyFilterValue[] = [];
@@ -392,9 +393,14 @@ export function DashboardViewContent({ params }: DashboardViewContentProps) {
               loading={isComputing}
               hiddenMetricIds={viewState.hiddenMetricIds}
               onToggleMetricVisibility={viewState.toggleMetricVisibility}
-              getGroupHref={groupId =>
-                `/groups/${groupId}?filters=${encodeURIComponent(JSON.stringify(hierarchyFilters))}`
-              }
+              getGroupHref={groupId => {
+                // Единый параметр `path` (компактно, только значения) — тот же
+                // кодек, что у drill-down группы; рассинхрона filters/path больше нет.
+                const values = encodePathValues(hierarchyFilters.map(f => f.value));
+                return values
+                  ? `/groups/${groupId}?path=${encodeURIComponent(values)}`
+                  : `/groups/${groupId}`;
+              }}
               className="mt-6"
             />
           </ErrorBoundary>

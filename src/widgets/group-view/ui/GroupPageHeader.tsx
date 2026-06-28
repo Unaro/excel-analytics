@@ -6,6 +6,24 @@ import { ArrowLeft, Layers, Edit, Home, ChevronRight } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { cn } from '@/shared/lib/utils';
 import { IndicatorGroup, HierarchyFilterValue } from '@/shared/lib/validators';
+import { useColumnDictionary } from '@/entities/reference-type';
+
+/**
+ * Метка крошки: имя из справочника колонки (value — это код в WHERE). Резолвим
+ * здесь, т.к. в URL храним только value (без displayValue) ради компактности.
+ */
+function CrumbLabel({
+  datasetId,
+  columnName,
+  value,
+}: {
+  datasetId: string | undefined;
+  columnName: string;
+  value: string;
+}) {
+  const { resolve } = useColumnDictionary(datasetId, columnName);
+  return <>{resolve(value)}</>;
+}
 
 interface GroupPageHeaderProps {
   group: IndicatorGroup;
@@ -94,7 +112,11 @@ export const GroupPageHeader = memo(function GroupPageHeader({
                     : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
                 )}
               >
-                {filter.displayValue || filter.value}
+                <CrumbLabel
+                  datasetId={group.datasetId}
+                  columnName={filter.columnName}
+                  value={filter.value}
+                />
               </button>
             </span>
           );

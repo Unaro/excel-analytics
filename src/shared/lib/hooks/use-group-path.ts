@@ -1,56 +1,46 @@
 'use client';
 
-import { HierarchyFilterValue } from '@/shared/lib/validators';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useCallback, useMemo } from 'react';
+import { encodePathValues, decodePathValues } from './group-path-codec';
 
 export interface GroupPathReturn {
-  path: HierarchyFilterValue[];
-  setPath: (newPath: HierarchyFilterValue[]) => void;
+  /** Значения уровней пути (только value). Полный HierarchyFilterValue[]
+   *  собирает потребитель, дополняя поля из иерархии. */
+  pathValues: string[];
+  setPathValues: (values: string[]) => void;
 }
 
 /**
- * Путь иерархии текущей группы в query-параметре `path` URL
- * (читает также legacy-параметр `filters`). Запись — router.replace
- * без скролла.
+ * Путь иерархии текущей группы в query-параметре `path` URL — КОМПАКТНО, только
+ * значения уровней через «/» (см. group-path-codec). Читает также легаси `path`
+ * (старый JSON) и `filters` (приход с дашборда), мигрируя на новый формат при
+ * первой записи. Запись — router.replace без скролла.
  */
 export function useGroupPath(): GroupPathReturn {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const pathString = searchParams.get('path') || searchParams.get('filters');
+  // get() уже декодирует один слой URL-кодирования.
+  const raw = searchParams.get('path') ?? searchParams.get('filters');
   const searchParamsString = searchParams.toString();
 
-  const path = useMemo<HierarchyFilterValue[]>(() => {
-    if (!pathString) return [];
-    try {
-      return JSON.parse(decodeURIComponent(pathString));
-    } catch {
-      return [];
-    }
-  }, [pathString]);
+  const pathValues = useMemo(() => decodePathValues(raw), [raw]);
 
-  const setPath = useCallback(
-    (newPath: HierarchyFilterValue[]) => {
+  const setPathValues = useCallback(
+    (values: string[]) => {
       const params = new URLSearchParams(searchParamsString);
-      const newPathValue = newPath.length > 0 ? encodeURIComponent(JSON.stringify(newPath)) : null;
+      const next = values.length > 0 ? encodePathValues(values) : null;
 
-      const currentPathValue = params.get('path');
-      // legacy `filters` (заход с дашборда) перебивает чтение при отсутствии
-      // `path`. Пока он есть — навигация ОБЯЗАНА перезаписать URL, иначе сброс
-      // к корню (newPathValue=null) становится no-op и откатывает к исходному
-      // фильтру дашборда. Учитываем его в no-op-проверке и удаляем при записи.
+      // Легаси `filters` перебивает чтение, пока есть; сброс к корню
+      // (next=null) был бы no-op и откатил к фильтру дашборда — поэтому при его
+      // наличии запись обязательна. Сам параметр удаляем (миграция на `path`).
       const hasLegacyFilters = params.has('filters');
-      if (currentPathValue === newPathValue && !hasLegacyFilters) return;
+      if (params.get('path') === next && !hasLegacyFilters) return;
 
-      if (newPathValue) {
-        params.set('path', newPathValue);
-      } else {
-        params.delete('path');
-      }
-      // Однократная миграция: после первой навигации легаси-параметр убираем,
-      // дальше единственный источник пути — `path`.
+      if (next) params.set('path', next);
+      else params.delete('path');
       params.delete('filters');
 
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
@@ -58,5 +48,5 @@ export function useGroupPath(): GroupPathReturn {
     [pathname, router, searchParamsString]
   );
 
-  return { path, setPath };
+  return { pathValues, setPathValues };
 }

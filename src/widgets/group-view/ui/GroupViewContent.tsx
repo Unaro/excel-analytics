@@ -49,9 +49,10 @@ interface GroupViewContentProps {
 }
 
 export function GroupViewContent({ groupId }: GroupViewContentProps) {
-  const { path, setPath } = useGroupPath();
+  const { pathValues, setPathValues } = useGroupPath();
 
   const {
+    currentPath: path,
     group,
     nextLevel,
     summary,
@@ -69,7 +70,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     secondaryColumns,
     isTwoDimensional,
     resolveLabel,
-  } = useGroupBreakdown(groupId, path, setPath);
+  } = useGroupBreakdown(groupId, pathValues, setPathValues);
 
   // Значение/заголовок второй оси разбивки (дата|колонка) для селектора и pivot.
   const secondaryValue = !secondary
@@ -88,7 +89,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     sortConfig,
     setSortConfig,
     handleToggleMetric,
-  } = useGroupViewState(virtualMetrics);
+  } = useGroupViewState(groupId, virtualMetrics);
 
   const groupMetricIds = useMemo(() => {
     return group?.metrics.map(m => m.id) ?? [];
@@ -187,6 +188,12 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
   const aggregateNodes = useAggregateNodesStore(s =>
     datasetId ? s.nodesByDataset[datasetId] : undefined
   );
+  // Агрегат-датасет: расчёты идут из узлов (overlay), листья пусты. Узлы
+  // сплющены вдоль одного каскада ключевых колонок — ячейки «(категория ×
+  // вторая ось)» в узлах не существует, поэтому разбивка по второй оси даёт
+  // пустоту. Скрываем её селектор (см. также блокировку иерархии — она и есть
+  // этот каскад, структурный индекс узлов).
+  const isAggregateDataset = (aggregateNodes?.length ?? 0) > 0;
   // Rolled-up узлы (own + childrenSum); своё значение в приоритете, иначе сумма
   // детей. nodeMap = итог (value) для overlay; nodeRich несёт own/childrenSum
   // для показа расхождения «записано в файле vs сумма по детям».
@@ -259,7 +266,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     }
     return map;
   }, [group, templates, columnByMetricId]);
-  const pathValues = useMemo(() => path.map(f => f.value), [path]);
+  // pathValues (значения уровней) приходит из useGroupPath — равно path.map(value).
   // Введённое значение узла для строки разбивки: rawLabel → vmId → число|null.
   const enteredByLabel = useMemo(() => {
     if (nodeMap.size === 0) return undefined;
@@ -394,13 +401,20 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     return m;
   }, [virtualMetrics]);
   const displayFilters = group?.displayFilters;
+  // Правила действуют ТОЛЬКО на своём уровне (level = глубина пути): фильтр не
+  // распространяется на дрилл вглубь, иначе скрытый родитель ломал бы навигацию.
+  // Старые правила без level → 0 (корень).
+  const activeDisplayFilters = useMemo(
+    () => displayFilters?.filter(r => (r.level ?? 0) === path.length),
+    [displayFilters, path.length]
+  );
   const filterMetricOptions = useMemo(
     () => virtualMetrics.map(vm => ({ id: vm.id, name: vm.name })),
     [virtualMetrics]
   );
   const filteredBreakdown = useMemo(
-    () => (effectiveBreakdown ? filterBreakdownByRules(effectiveBreakdown, displayFilters, formatByMetricId) : effectiveBreakdown),
-    [effectiveBreakdown, displayFilters, formatByMetricId]
+    () => (effectiveBreakdown ? filterBreakdownByRules(effectiveBreakdown, activeDisplayFilters, formatByMetricId) : effectiveBreakdown),
+    [effectiveBreakdown, activeDisplayFilters, formatByMetricId]
   );
 
   // Условия отображения в 2-D: правила применяются к КАТЕГОРИИ по её итогу
@@ -410,11 +424,11 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
     [isTwoDimensional, breakdown]
   );
   const allowed2DLabels = useMemo(() => {
-    if (!isTwoDimensional || !breakdown || !displayFilters || displayFilters.length === 0) return null;
+    if (!isTwoDimensional || !breakdown || !activeDisplayFilters || activeDisplayFilters.length === 0) return null;
     const cats = aggregateByLabel(breakdown, calcSpecByVmId);
-    const passed = filterBreakdownByRules(cats, displayFilters, formatByMetricId);
+    const passed = filterBreakdownByRules(cats, activeDisplayFilters, formatByMetricId);
     return new Set(passed.map(c => c.label));
-  }, [isTwoDimensional, breakdown, displayFilters, calcSpecByVmId, formatByMetricId]);
+  }, [isTwoDimensional, breakdown, activeDisplayFilters, calcSpecByVmId, formatByMetricId]);
   const breakdown2D = useMemo(
     () => (allowed2DLabels && breakdown ? breakdown.filter(it => allowed2DLabels.has(it.label)) : breakdown),
     [breakdown, allowed2DLabels]
@@ -483,8 +497,16 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
         <div className="flex items-center gap-3">
           <DisplayFilterPanel
             metrics={filterMetricOptions}
-            rules={displayFilters ?? []}
-            onChange={rules => updateGroup(groupId, { displayFilters: rules.length ? rules : undefined })}
+            rules={activeDisplayFilters ?? []}
+            levelLabel={nextLevel?.displayName ?? 'корень'}
+            onChange={rules => {
+              // Правила привязаны к текущему уровню (level = глубина пути).
+              // Сохраняем правила ДРУГИХ уровней, текущие — штампуем глубиной.
+              const otherLevels = (displayFilters ?? []).filter(r => (r.level ?? 0) !== path.length);
+              const stamped = rules.map(r => ({ ...r, level: path.length }));
+              const next = [...otherLevels, ...stamped];
+              updateGroup(groupId, { displayFilters: next.length ? next : undefined });
+            }}
             shown={isTwoDimensional ? (allowed2DLabels ? allowed2DLabels.size : cat2DTotal) : filteredBreakdown?.length}
             total={isTwoDimensional ? cat2DTotal : effectiveBreakdown?.length}
           />
@@ -507,7 +529,7 @@ export function GroupViewContent({ groupId }: GroupViewContentProps) {
               )}
             </label>
           )}
-          {(dateColumn || secondaryColumns.length > 0) && (
+          {!isAggregateDataset && (dateColumn || secondaryColumns.length > 0) && (
             <div
               className="inline-flex items-center gap-1.5 h-9 pl-2 pr-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
               title="Разбивка: первая ось (уровень иерархии) × вторая ось (дата или колонка)"
